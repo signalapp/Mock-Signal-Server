@@ -1,0 +1,27 @@
+[ req ]
+default_bits           = 4096
+days                   = 9999
+distinguished_name     = req_distinguished_name
+attributes             = req_attributes
+prompt                 = no
+x509_extensions        = v3_ca
+
+[ req_distinguished_name ]
+C                      = US
+ST                     = CA
+L                      = LA
+O                      = Signal Mock
+OU                     = Signal Mock
+CN                     = mock.signal.org
+emailAddress           = indutny@signal.org
+
+[ req_attributes ]
+
+[ v3_ca ]
+authorityInfoAccess = @issuer_info
+basicConstraints       = CA:FALSE
+subjectAltName         = IP:127.0.0.1
+
+[ issuer_info ]
+OCSP;URI.0 = http://mock.signal.org/
+caIssuers;URI.0 = http://mock.signal.org/ca.cert

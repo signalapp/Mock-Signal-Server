@@ -1,0 +1,16 @@
+node_modules/
+npm-debug.log
+bin/**/*.js
+bin/**/*.d.ts
+src/**/*.js
+src/**/*.d.ts
+!src/data/json.d.ts
+test/**/*.js
+test/**/*.d.ts
+protos/*.js
+protos/*.d.ts
+scripts/**/*.js
+scripts/**/*.d.ts
+*.tsbuildinfo
+.eslintcache
+dist/
