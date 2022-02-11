@@ -17,7 +17,6 @@
     "build:protobuf": "pbjs --target static-module --force-long --wrap commonjs --out protos/compiled.js protos/*.proto",
     "build:protobuf-ts": "pbts --out protos/compiled.d.ts protos/compiled.js",
     "build": "npm run build:protobuf && npm run build:protobuf-ts && npm run build:tsc",
-    "install": "npm run build",
     "mocha": "mocha test/**/*-test.js",
     "lint": "eslint --cache src test",
     "test": "npm run mocha && npm run lint"
