@@ -533,36 +533,7 @@ export class PrimaryDevice {
       return undefined;
     }
 
-    const decryptedManifest = decryptStorageManifest(this.storageKey, manifest);
-    assert(decryptedManifest.version, 'Consistency check');
-
-    const version = decryptedManifest.version.toNumber();
-    const items = await Promise.all((decryptedManifest.keys || []).map(
-      async ({ type, raw: key }) => {
-        assert(
-          type !== null && type !== undefined,
-          'Missing manifestRecord.keys.type',
-        );
-        assert(key, 'Missing manifestRecord.keys.raw');
-
-        const keyBuffer = Buffer.from(key);
-        const item = await this.config.getStorageItem(keyBuffer);
-        if (!item) {
-          throw new Error(`Missing item ${keyBuffer.toString('base64')}`);
-        }
-
-        return {
-          type,
-          key: keyBuffer,
-          record: decryptStorageItem(this.storageKey, {
-            key,
-            value: item,
-          }),
-        };
-      },
-    ));
-
-    return new StorageState(version, items);
+    return this.convertManifestToStorageState(manifest);
   }
 
   public async expectStorageState(reason: string): Promise<StorageState> {
@@ -574,9 +545,19 @@ export class PrimaryDevice {
     return state;
   }
 
-  public async setStorageState(state: StorageState): Promise<void> {
+  public async setStorageState(state: StorageState): Promise<StorageState> {
     const writeOperation = state.createWriteOperation(this.storageKey);
-    await this.config.applyStorageWrite(writeOperation, false);
+    assert(writeOperation.manifest, 'write operation without manifest');
+
+    const { updated, error } = await this.config.applyStorageWrite(
+      writeOperation,
+      false,
+    );
+    if (!updated) {
+      throw new Error(`setStorageState: failed to update, ${error}`);
+    }
+
+    return this.convertManifestToStorageState(writeOperation.manifest);
   }
 
   //
@@ -1094,5 +1075,40 @@ export class PrimaryDevice {
       message,
       this.senderKeys,
     );
+  }
+
+  private async convertManifestToStorageState(
+    manifest: Proto.IStorageManifest,
+  ): Promise<StorageState> {
+    const decryptedManifest = decryptStorageManifest(this.storageKey, manifest);
+    assert(decryptedManifest.version, 'Consistency check');
+
+    const version = decryptedManifest.version.toNumber();
+    const items = await Promise.all((decryptedManifest.keys || []).map(
+      async ({ type, raw: key }) => {
+        assert(
+          type !== null && type !== undefined,
+          'Missing manifestRecord.keys.type',
+        );
+        assert(key, 'Missing manifestRecord.keys.raw');
+
+        const keyBuffer = Buffer.from(key);
+        const item = await this.config.getStorageItem(keyBuffer);
+        if (!item) {
+          throw new Error(`Missing item ${keyBuffer.toString('base64')}`);
+        }
+
+        return {
+          type,
+          key: keyBuffer,
+          record: decryptStorageItem(this.storageKey, {
+            key,
+            value: item,
+          }),
+        };
+      },
+    ));
+
+    return new StorageState(version, items);
   }
 }

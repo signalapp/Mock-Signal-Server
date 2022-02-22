@@ -14,9 +14,15 @@ import { Device } from '../data/device';
 import { Group } from './group';
 import { PrimaryDevice } from './primary-device';
 
-export type StorageStateItemOptions = Readonly<{
+export type StorageStateRecord = Readonly<{
   type: Proto.ManifestRecord.Identifier.Type;
   key: Buffer;
+  record: Proto.IStorageRecord;
+}>;
+
+export type StorageStateNewRecord = Readonly<{
+  type: Proto.ManifestRecord.Identifier.Type;
+  key?: Buffer;
   record: Proto.IStorageRecord;
 }>;
 
@@ -30,7 +36,7 @@ const KEY_SIZE = 16;
 const IdentifierType = Proto.ManifestRecord.Identifier.Type;
 type IdentifierType = Proto.ManifestRecord.Identifier.Type;
 
-export class StorageStateItem {
+class StorageStateItem {
   public readonly type: IdentifierType;
   public readonly key: Buffer;
   public readonly record: Proto.IStorageRecord;
@@ -39,7 +45,7 @@ export class StorageStateItem {
     type,
     key,
     record,
-  }: StorageStateItemOptions) {
+  }: StorageStateRecord) {
     this.type = type;
     this.key = key;
     this.record = record;
@@ -97,6 +103,14 @@ export class StorageStateItem {
       ...JSON.stringify(this.record, null, 2).split(/\n/g),
     ].map((line) => `  ${line}`).join('\n');
   }
+
+  public toRecord(): StorageStateRecord {
+    return {
+      type: this.type,
+      key: this.key,
+      record: this.record,
+    };
+  }
 }
 
 export class StorageState {
@@ -104,7 +118,7 @@ export class StorageState {
 
   constructor(
     public readonly version: number,
-    items: ReadonlyArray<StorageStateItemOptions>,
+    items: ReadonlyArray<StorageStateRecord>,
   ) {
     this.items = items.map((options) => new StorageStateItem(options));
   }
@@ -169,10 +183,13 @@ export class StorageState {
     group: Group,
     diff: Proto.IGroupV2Record = {},
   ): StorageState {
-    return this.addItem(IdentifierType.GROUPV2, {
-      groupV2: {
-        ...diff,
-        masterKey: group.masterKey,
+    return this.addItem({
+      type: IdentifierType.GROUPV2,
+      record: {
+        groupV2: {
+          ...diff,
+          masterKey: group.masterKey,
+        },
       },
     });
   }
@@ -219,11 +236,14 @@ export class StorageState {
     { device }: PrimaryDevice,
     diff: Proto.IContactRecord = {},
   ): StorageState {
-    return this.addItem(IdentifierType.CONTACT, {
-      contact: {
-        serviceUuid: device.uuid,
-        serviceE164: device.number,
-        ...diff,
+    return this.addItem({
+      type: IdentifierType.CONTACT,
+      record: {
+        contact: {
+          serviceUuid: device.uuid,
+          serviceE164: device.number,
+          ...diff,
+        },
       },
     });
   }
@@ -273,6 +293,54 @@ export class StorageState {
     return (account.pinnedConversations || []).some((convo) => {
       return convo?.contact?.uuid === device.uuid;
     });
+  }
+
+  //
+  // Raw record access
+  //
+
+  public addRecord(newRecord: StorageStateNewRecord): StorageState {
+    return this.addItem(newRecord);
+  }
+
+  public findRecord(
+    find: (record: StorageStateRecord) => boolean,
+  ): StorageStateRecord | undefined {
+    const item = this.items.find((item) => find(item.toRecord()));
+
+    return item?.toRecord();
+  }
+
+  public hasRecord(
+    find: (record: StorageStateRecord) => boolean,
+  ): boolean {
+    return this.findRecord(find) !== undefined;
+  }
+
+  public updateRecord(
+    find: (item: StorageStateRecord) => boolean,
+    map: (record: Proto.IStorageRecord) => Proto.IStorageRecord,
+  ): StorageState {
+    return this.updateItem(
+      (item) => find(item.toRecord()),
+      map,
+    );
+  }
+
+  public removeRecord(
+    find: (item: StorageStateRecord) => boolean,
+  ): StorageState {
+    const itemIndex = this.items.findIndex((item) => find(item.toRecord()));
+    if (itemIndex === -1) {
+      throw new Error('Record not found');
+    }
+
+    const newItems = [
+      ...this.items.slice(0, itemIndex),
+      ...this.items.slice(itemIndex + 1),
+    ];
+
+    return new StorageState(this.version, newItems);
   }
 
   //
@@ -344,6 +412,10 @@ export class StorageState {
   // Private
   //
 
+  private addItem(newRecord: StorageStateNewRecord): StorageState {
+    return this.replaceItem(this.items.length, newRecord);
+  }
+
   private updateItem(
     find: (item: StorageStateItem, index: number) => boolean,
     map: (record: Proto.IStorageRecord) => Proto.IStorageRecord,
@@ -356,26 +428,23 @@ export class StorageState {
     const item = this.items[itemIndex];
     assert(item, 'consistency check');
 
-    return this.replaceItem(itemIndex, item.type, map(item.record));
-  }
-
-  private addItem(
-    type: IdentifierType,
-    record: Proto.IStorageRecord,
-  ): StorageState {
-    return this.replaceItem(this.items.length, type, record);
+    return this.replaceItem(itemIndex, {
+      type: item.type,
+      record: map(item.record),
+    });
   }
 
   private replaceItem(
     index: number,
-    type: IdentifierType,
-    record: Proto.IStorageRecord,
+    {
+      type,
+      record,
+      key = StorageState.createStorageID(),
+    }: StorageStateNewRecord,
   ): StorageState {
-    const newKey = StorageState.createStorageID();
-
     const newItems = [
       ...this.items.slice(0, index),
-      new StorageStateItem({ type, key: newKey, record }),
+      new StorageStateItem({ type, key, record }),
       ...this.items.slice(index + 1),
     ];
 
