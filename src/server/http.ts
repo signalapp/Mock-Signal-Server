@@ -439,6 +439,9 @@ export const createHandler = (server: Server): RequestHandler => {
     putStorage,
     putStorageRead,
 
+    // TODO(indutny): support this
+    get('/v1/groups/token', notFound),
+
     get('/stickers/', notFound),
     get('/*', notFoundAfterAuth),
     put('/*', notFoundAfterAuth),
