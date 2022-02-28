@@ -12,9 +12,6 @@ in [Signal Desktop integration tests][0]. Public API surface area can be found a
 
 ```sh
 npm install --dev @signalapp/mock-server
-
-# Add an entry to the /etc/hosts
-echo "127.0.0.1 mock.signal.org" | sudo tee -a /etc/hosts
 ```
 
 ## License

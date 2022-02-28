@@ -18,7 +18,7 @@ emailAddress           = indutny@signal.org
 [ req_attributes ]
 
 [ v3_ca ]
-authorityInfoAccess = @issuer_info
+authorityInfoAccess    = @issuer_info
 basicConstraints       = CA:FALSE
 subjectAltName         = IP:127.0.0.1
 

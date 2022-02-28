@@ -1,7 +1,7 @@
 'use strict';
 
 const fs = require('fs');
-const { PrivateKey } = require('signal-client');
+const { PrivateKey } = require('@signalapp/signal-client');
 
 const rootKey = PrivateKey.generate();
 
