@@ -74,10 +74,11 @@ export interface Config {
   readonly timeout?: number;
 }
 
-export interface CreatePrimaryDeviceOptions {
-  readonly profileName: string;
-  readonly contacts?: ReadonlyArray<PrimaryDevice>;
-}
+export type CreatePrimaryDeviceOptions = Readonly<{
+  profileName: string;
+  initialPreKeyCount?: number;
+  contacts?: ReadonlyArray<PrimaryDevice>;
+}>;
 
 export type PendingProvision = {
   complete(response: PendingProvisionResponse): Promise<Device>;
@@ -236,6 +237,7 @@ export class Server extends BaseServer {
 
   public async createPrimaryDevice({
     profileName,
+    initialPreKeyCount,
     contacts = [],
   }: CreatePrimaryDeviceOptions): Promise<PrimaryDevice> {
     const number = await this.generateNumber();
@@ -282,7 +284,7 @@ export class Server extends BaseServer {
       waitForStorageManifest: this.waitForStorageManifest.bind(this, device),
       applyStorageWrite: this.applyStorageWrite.bind(this, device),
     });
-    await primary.init();
+    await primary.init(initialPreKeyCount);
 
     this.primaryDevices.set(number, primary);
     this.primaryDevices.set(uuid, primary);
