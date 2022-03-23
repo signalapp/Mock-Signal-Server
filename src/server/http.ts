@@ -13,8 +13,8 @@ import {
   put,
   router,
 } from 'microrouter';
-import { PublicKey } from '@signalapp/signal-client';
-import { GroupPublicParams } from '@signalapp/signal-client/zkgroup';
+import { PublicKey } from '@signalapp/libsignal-client';
+import { GroupPublicParams } from '@signalapp/libsignal-client/zkgroup';
 import createDebug from 'debug';
 
 import { Server } from './base';

@@ -9,7 +9,7 @@ import {
   PrivateKey,
   PublicKey,
   SenderCertificate,
-} from '@signalapp/signal-client';
+} from '@signalapp/libsignal-client';
 
 import { signalservice as Proto } from '../protos/compiled';
 

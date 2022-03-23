@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import createDebug from 'debug';
-import { ProtocolAddress, PublicKey } from '@signalapp/signal-client';
-import { ProfileKeyCommitment } from '@signalapp/signal-client/zkgroup';
+import { ProtocolAddress, PublicKey } from '@signalapp/libsignal-client';
+import { ProfileKeyCommitment } from '@signalapp/libsignal-client/zkgroup';
 
 import { DeviceId, RegistrationId, UUID } from '../types';
 

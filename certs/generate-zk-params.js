@@ -1,7 +1,7 @@
 'use strict';
 
 const fs = require('fs');
-const { ServerSecretParams } = require('@signalapp/signal-client/zkgroup');
+const { ServerSecretParams } = require('@signalapp/libsignal-client/zkgroup');
 
 const secretParams = ServerSecretParams.generate();
 const publicParams = secretParams.getPublicParams();

@@ -24,8 +24,8 @@ import {
   SignedPreKeyRecord,
   SignedPreKeyStore as SignedPreKeyStoreBase,
   Uuid,
-} from '@signalapp/signal-client';
-import * as SignalClient from '@signalapp/signal-client';
+} from '@signalapp/libsignal-client';
+import * as SignalClient from '@signalapp/libsignal-client';
 import createDebug from 'debug';
 import {
   ClientZkProfileOperations,
@@ -34,7 +34,7 @@ import {
   ProfileKeyCredentialRequest,
   ProfileKeyCredentialResponse,
   ServerPublicParams,
-} from '@signalapp/signal-client/zkgroup';
+} from '@signalapp/libsignal-client/zkgroup';
 
 import { signalservice as Proto } from '../../protos/compiled';
 import { INITIAL_PREKEY_COUNT } from '../constants';

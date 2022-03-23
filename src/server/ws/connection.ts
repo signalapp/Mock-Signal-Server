@@ -9,7 +9,7 @@ import { timingSafeEqual } from 'crypto';
 import createDebug from 'debug';
 import {
   ProfileKeyCredentialRequest,
-} from '@signalapp/signal-client/zkgroup';
+} from '@signalapp/libsignal-client/zkgroup';
 
 import WebSocket from 'ws';
 

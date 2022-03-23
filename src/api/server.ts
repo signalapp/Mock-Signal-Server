@@ -11,8 +11,8 @@ import { parse as parseURL } from 'url';
 import {
   PrivateKey,
   PublicKey,
-} from '@signalapp/signal-client';
-import { ServerSecretParams } from '@signalapp/signal-client/zkgroup';
+} from '@signalapp/libsignal-client';
+import { ServerSecretParams } from '@signalapp/libsignal-client/zkgroup';
 import createDebug from 'debug';
 import WebSocket from 'ws';
 import { run } from 'micro';

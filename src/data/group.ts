@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import assert from 'assert';
-import { GroupPublicParams } from '@signalapp/signal-client/zkgroup';
+import { GroupPublicParams } from '@signalapp/libsignal-client/zkgroup';
 
 import { signalservice as Proto } from '../../protos/compiled';
 

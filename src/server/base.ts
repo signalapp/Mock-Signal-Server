@@ -6,7 +6,7 @@ import crypto from 'crypto';
 import Long from 'long';
 import { v4 as uuidv4 } from 'uuid';
 import createDebug from 'debug';
-import { SenderCertificate } from '@signalapp/signal-client';
+import { SenderCertificate } from '@signalapp/libsignal-client';
 import {
   GroupPublicParams,
   ProfileKeyCredentialRequest,
@@ -14,7 +14,7 @@ import {
   ServerSecretParams,
   ServerZkAuthOperations,
   ServerZkProfileOperations,
-} from '@signalapp/signal-client/zkgroup';
+} from '@signalapp/libsignal-client/zkgroup';
 
 import { signalservice as Proto } from '../../protos/compiled';
 import {

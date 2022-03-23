@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import assert from 'assert';
-import { PrivateKey } from '@signalapp/signal-client';
+import { PrivateKey } from '@signalapp/libsignal-client';
 
 import { deriveAccessKey, generateServerCertificate } from '../src/crypto';
 

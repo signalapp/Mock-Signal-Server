@@ -6,7 +6,7 @@ import {
   GroupSecretParams,
   ProfileKey,
   ProfileKeyCredentialPresentation,
-} from '@signalapp/signal-client/zkgroup';
+} from '@signalapp/libsignal-client/zkgroup';
 
 import { signalservice as Proto } from '../../protos/compiled';
 import { UUID } from '../types';

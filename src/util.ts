@@ -3,7 +3,7 @@
 
 import assert from 'assert';
 import { BufferReader } from 'protobufjs';
-import { ProtocolAddress } from '@signalapp/signal-client';
+import { ProtocolAddress } from '@signalapp/libsignal-client';
 import { stringify as stringifyUUID } from 'uuid';
 
 type PromiseQueueEntry<T> = Readonly<{

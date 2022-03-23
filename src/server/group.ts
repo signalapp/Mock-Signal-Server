@@ -7,7 +7,7 @@ import {
   ProfileKeyCredentialPresentation,
   ServerZkAuthOperations,
   ServerZkProfileOperations,
-} from '@signalapp/signal-client/zkgroup';
+} from '@signalapp/libsignal-client/zkgroup';
 
 import { signalservice as Proto } from '../../protos/compiled';
 import { Group } from '../data/group';

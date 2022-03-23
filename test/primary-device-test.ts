@@ -3,8 +3,8 @@
 
 import assert from 'assert';
 import { v4 as uuidv4 } from 'uuid';
-import { PrivateKey } from '@signalapp/signal-client';
-import { ServerSecretParams } from '@signalapp/signal-client/zkgroup';
+import { PrivateKey } from '@signalapp/libsignal-client';
+import { ServerSecretParams } from '@signalapp/libsignal-client/zkgroup';
 
 import {
   generateSenderCertificate,
