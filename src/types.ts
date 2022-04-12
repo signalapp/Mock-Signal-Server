@@ -6,3 +6,8 @@ export type ProvisioningCode = string;
 export type RegistrationId = number;
 export type DeviceId = number;
 export type AttachmentId = string;
+
+export enum UUIDKind {
+  ACI = 'ACI',
+  PNI = 'PNI'
+}

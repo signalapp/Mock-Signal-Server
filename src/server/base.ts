@@ -760,7 +760,7 @@ export abstract class Server {
   }
 
   public async getGroupCredentials(
-    { uuid }: Device,
+    uuid: UUID,
     { from, to }: GroupCredentialsRange,
   ): Promise<GroupCredentials> {
     const today = getEpochDay();
