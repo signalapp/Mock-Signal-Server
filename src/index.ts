@@ -3,7 +3,7 @@
 
 export { Group } from './api/group';
 export { StorageState } from './api/storage-state';
-import { Server } from './api/server';
+export { Server, Config } from './api/server';
 export {
   EncryptOptions,
   PrimaryDevice,
@@ -17,5 +17,3 @@ export { Device, SingleUseKey } from './data/device';
 export { EnvelopeType } from './server/base';
 export { signalservice as Proto } from '../protos/compiled';
 export { load as loadCertificates, Certificates } from './data/certificates';
-
-export { Server };

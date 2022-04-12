@@ -50,44 +50,46 @@ import { Connection as WSConnection } from '../server/ws';
 
 import { PrimaryDevice } from './primary-device';
 
-type TrustRoot = {
-  readonly privateKey: string;
-  readonly publicKey: string;
-};
+type TrustRoot = Readonly<{
+  privateKey: string;
+  publicKey: string;
+}>
 
-type ZKParams = {
-  readonly secretParams: string;
-  readonly publicParams: string;
-};
+type ZKParams = Readonly<{
+  secretParams: string;
+  publicParams: string;
+}>
 
-interface StrictConfig {
-  readonly trustRoot: TrustRoot;
-  readonly zkParams: ZKParams;
-  readonly https: ServerOptions;
-  readonly timeout: number;
-}
+type StrictConfig = Readonly<{
+  trustRoot: TrustRoot;
+  zkParams: ZKParams;
+  https: ServerOptions;
+  timeout: number;
+  maxStorageReadKeys?: number;
+}>
 
-export interface Config {
-  readonly trustRoot?: TrustRoot;
-  readonly zkParams?: ZKParams;
-  readonly https?: ServerOptions;
-  readonly timeout?: number;
-}
+export type Config = Readonly<{
+  trustRoot?: TrustRoot;
+  zkParams?: ZKParams;
+  https?: ServerOptions;
+  timeout?: number;
+  maxStorageReadKeys?: number;
+}>
 
 export type CreatePrimaryDeviceOptions = Readonly<{
   profileName: string;
   initialPreKeyCount?: number;
   contacts?: ReadonlyArray<PrimaryDevice>;
-}>;
+}>
 
 export type PendingProvision = {
   complete(response: PendingProvisionResponse): Promise<Device>;
 }
 
-export type PendingProvisionResponse = {
-  readonly provisionURL: string;
-  readonly primaryDevice: PrimaryDevice;
-}
+export type PendingProvisionResponse = Readonly<{
+  provisionURL: string;
+  primaryDevice: PrimaryDevice;
+}>
 
 const debug = createDebug('mock:server:mock');
 
@@ -450,6 +452,22 @@ export class Server extends BaseServer {
     primary?.addSecondaryDevice(device);
 
     return device;
+  }
+
+  // Override `getStorageItems` to provide configurable limit for maximum
+  // storage read keys.
+  public override async getStorageItems(
+    device: Device,
+    keys: ReadonlyArray<Buffer>,
+  ): Promise<Array<Proto.IStorageItem> | undefined> {
+    if (
+      this.config.maxStorageReadKeys !== undefined &&
+      keys.length > this.config.maxStorageReadKeys) {
+      debug('getStorageItems: requested more than max keys', device.debugId);
+      return undefined;
+    }
+
+    return super.getStorageItems(device, keys);
   }
 
   protected async onStorageManifestUpdate(

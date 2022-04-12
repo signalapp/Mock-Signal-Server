@@ -378,15 +378,15 @@ export const createHandler = (server: Server): RequestHandler => {
       Buffer.from(await buffer(req)),
     );
 
-    const items = (readOperation.readKey || []).map(async (key) => {
-      return {
-        key,
-        value: await server.getStorageItem(device, Buffer.from(key)),
-      };
-    });
+    const keys = (readOperation.readKey || []).map((key) => Buffer.from(key));
+
+    const items = await server.getStorageItems(device, keys);
+    if (!items) {
+      return send(res, 413, { error: 'Requested too many items' });
+    }
 
     return send(res, 200, Proto.StorageItems.encode({
-      items: await Promise.all(items),
+      items,
     }).finish());
   });
 

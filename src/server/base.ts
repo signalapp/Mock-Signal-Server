@@ -671,6 +671,22 @@ export abstract class Server {
     return map.get(key.toString('hex'));
   }
 
+  public async getStorageItems(
+    device: Device,
+    keys: ReadonlyArray<Buffer>,
+  ): Promise<Array<Proto.IStorageItem> | undefined> {
+    const result = new Array<Proto.IStorageItem>();
+
+    await Promise.all(keys.map(async (key) => {
+      const value = await this.getStorageItem(device, key);
+      if (value !== undefined) {
+        result.push({ key, value });
+      }
+    }));
+
+    return result;
+  }
+
   public async deleteStorageItem(
     device: Device,
     key: Buffer,
