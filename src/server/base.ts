@@ -8,6 +8,7 @@ import { v4 as uuidv4 } from 'uuid';
 import createDebug from 'debug';
 import { SenderCertificate } from '@signalapp/libsignal-client';
 import {
+  AuthCredentialPresentation,
   GroupPublicParams,
   ProfileKeyCredentialRequest,
   ProfileKeyCredentialResponse,
@@ -514,9 +515,9 @@ export abstract class Server {
   }
 
   public async getGroup(
-    publicParams: GroupPublicParams,
+    publicParams: Buffer,
   ): Promise<ServerGroup | undefined> {
-    return this.groups.get(publicParams.serialize().toString('base64'));
+    return this.groups.get(publicParams.toString('base64'));
   }
 
   //
@@ -778,6 +779,22 @@ export abstract class Server {
       });
     }
     return result;
+  }
+
+  public async verifyGroupCredentials(
+    publicParams: Buffer,
+    credential: Buffer,
+  ): Promise<AuthCredentialPresentation> {
+    const auth = new ServerZkAuthOperations(this.zkSecret);
+
+    const groupParams = new GroupPublicParams(publicParams);
+    const presentation = new AuthCredentialPresentation(credential);
+
+    auth.verifyAuthCredentialPresentation(groupParams, presentation);
+
+    // TODO(indutny): verify credential timestamp
+
+    return presentation;
   }
 
   public async issueProfileKeyCredential(

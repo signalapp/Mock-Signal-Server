@@ -494,6 +494,7 @@ export class PrimaryDevice {
         uuid: device.uuid,
         profileKey,
         presentation,
+        joinedAtVersion: Long.fromNumber(0),
       };
     }));
 
@@ -504,7 +505,7 @@ export class PrimaryDevice {
       members,
     });
 
-    await this.config.createGroup(clientGroup.getState());
+    await this.config.createGroup(clientGroup.state);
 
     return clientGroup;
   }

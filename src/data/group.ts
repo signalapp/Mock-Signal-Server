@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import assert from 'assert';
-import { GroupPublicParams } from '@signalapp/libsignal-client/zkgroup';
+import {
+  GroupPublicParams,
+  UuidCiphertext,
+} from '@signalapp/libsignal-client/zkgroup';
 
 import { signalservice as Proto } from '../../protos/compiled';
 
@@ -20,9 +23,11 @@ export abstract class Group {
     return this.privPublicParams;
   }
 
-  public getState(): Proto.IGroup {
-    const state = this.changes.groupChanges?.[0].groupState;
-    assert(state, 'Group must have initial state');
+  public get state(): Proto.IGroup {
+    const { groupChanges } = this.changes;
+    assert(groupChanges, 'Missing group changes in the group state');
+    const state = groupChanges[groupChanges.length - 1].groupState;
+    assert(state, 'Group must have the last state');
     return state;
   }
 
@@ -30,5 +35,19 @@ export abstract class Group {
     return {
       groupChanges: this.changes.groupChanges?.slice(since),
     };
+  }
+
+  public getMember(
+    uuidCiphertext: UuidCiphertext,
+  ): Proto.IMember | undefined {
+    const state = this.state;
+    const userId = uuidCiphertext.serialize();
+    return state.members?.find((member) => {
+      if (!member.userId) {
+        return false;
+      }
+
+      return userId.equals(member.userId);
+    }) ?? undefined;
   }
 }

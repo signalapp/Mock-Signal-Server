@@ -14,7 +14,10 @@ import {
   router,
 } from 'microrouter';
 import { PublicKey } from '@signalapp/libsignal-client';
-import { GroupPublicParams } from '@signalapp/libsignal-client/zkgroup';
+import type {
+  AuthCredentialPresentation,
+  UuidCiphertext,
+} from '@signalapp/libsignal-client/zkgroup';
 import createDebug from 'debug';
 
 import { Server } from './base';
@@ -159,10 +162,15 @@ export const createHandler = (server: Server): RequestHandler => {
     return device;
   }
 
+  type GroupAuthResult = Readonly<{
+    group: ServerGroup;
+    uuidCiphertext: UuidCiphertext;
+  }>;
+
   async function groupAuth(
     req: ServerRequest,
     res: ServerResponse,
-  ): Promise<ServerGroup | undefined> {
+  ): Promise<GroupAuthResult | undefined> {
     const { error, username, password } = parsePassword(req);
 
     if (error) {
@@ -174,9 +182,19 @@ export const createHandler = (server: Server): RequestHandler => {
       return undefined;
     }
 
-    const publicParams = new GroupPublicParams(Buffer.from(username, 'hex'));
+    const publicParams = Buffer.from(username, 'hex');
+    const credential = Buffer.from(password, 'hex');
 
-    // TODO(indutny): validate password
+    let auth: AuthCredentialPresentation;
+    try {
+      auth = await server.verifyGroupCredentials(
+        publicParams,
+        credential,
+      );
+    } catch (error) {
+      send(res, 403, { error: 'Invalid credentials' });
+      return undefined;
+    }
 
     const group = await server.getGroup(publicParams);
     if (!group) {
@@ -184,7 +202,9 @@ export const createHandler = (server: Server): RequestHandler => {
       return undefined;
     }
 
-    return group;
+    const uuidCiphertext = auth.getUuidCiphertext();
+
+    return { group, uuidCiphertext };
   }
 
   async function storageAuth(
@@ -271,33 +291,50 @@ export const createHandler = (server: Server): RequestHandler => {
   //
 
   const getGroup = get('/v1/groups', async (req, res) => {
-    const group = await groupAuth(req, res);
-    if (!group) {
+    const auth = await groupAuth(req, res);
+    if (!auth) {
       return;
     }
 
-    return send(res, 200, Proto.Group.encode(group.getState()).finish());
+    const { group } = auth;
+    return send(res, 200, Proto.Group.encode(group.state).finish());
   });
 
   const getGroupVersion = get('/v1/groups/joined_at_version', async (req, res) => {
-    const group = await groupAuth(req, res);
-    if (!group) {
+    const auth = await groupAuth(req, res);
+    if (!auth) {
       return;
     }
 
-    // TODO(indutny): support this for real?
+    const { group, uuidCiphertext } = auth;
+
+    const member = group.getMember(uuidCiphertext);
+
+    if (!member) {
+      return send(res, 403);
+    }
+
     return send(res, 200, Proto.Member.encode({
-      joinedAtVersion: 0,
+      joinedAtVersion: member.joinedAtVersion,
     }).finish());
   });
 
   const getGroupLogs = get('/v1/groups/logs/:since', async (req, res) => {
-    const group = await groupAuth(req, res);
-    if (!group) {
+    const auth = await groupAuth(req, res);
+    if (!auth) {
       return;
     }
 
+    const { group, uuidCiphertext } = auth;
+    const member = group.getMember(uuidCiphertext);
+    if (!member) {
+      return send(res, 403);
+    }
+
     const since = parseInt(req.params.since, 10);
+    if (since < (member.joinedAtVersion ?? 0)) {
+      return send(res, 403);
+    }
 
     return send(
       res,
