@@ -89,7 +89,7 @@ export class Group extends GroupData {
       accessControl: {
         attributes: AccessRequired.MEMBER,
         members: AccessRequired.MEMBER,
-        addFromInviteLink: AccessRequired.MEMBER,
+        addFromInviteLink: AccessRequired.UNSATISFIABLE,
       },
 
       members: members.map(({ presentation }) => {
