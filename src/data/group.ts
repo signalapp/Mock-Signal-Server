@@ -50,4 +50,18 @@ export abstract class Group {
       return userId.equals(member.userId);
     }) ?? undefined;
   }
+
+  public getPendingMember(
+    uuidCiphertext: UuidCiphertext,
+  ): Proto.IMemberPendingProfileKey | undefined {
+    const state = this.state;
+    const userId = uuidCiphertext.serialize();
+    return state.membersPendingProfileKey?.find(({ member }) => {
+      if (!member?.userId) {
+        return false;
+      }
+
+      return userId.equals(member.userId);
+    }) ?? undefined;
+  }
 }

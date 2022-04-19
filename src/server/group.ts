@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import assert from 'assert';
+import Long from 'long';
 import {
   GroupPublicParams,
+  PniCredentialPresentation,
   ProfileKeyCredentialPresentation,
   ServerSecretParams,
   ServerZkProfileOperations,
@@ -62,31 +64,146 @@ export class ServerGroup extends Group {
   }
 
   public modify(
-    auth: UuidCiphertext,
+    sourceUuid: UuidCiphertext,
+    aciUuid: UuidCiphertext | undefined,
     actions: Proto.GroupChange.IActions,
   ): Proto.IGroupChange {
     const appliedActions: Proto.GroupChange.IActions = {
-      sourceUuid: auth.serialize(),
+      sourceUuid: sourceUuid.serialize(),
     };
+
+    const timestamp = Long.fromNumber(Date.now());
 
     const newState = {
       ...this.state,
     };
 
-    const member = this.getMember(auth);
+    const authMember = this.getMember(sourceUuid);
     const { accessControl } = newState;
 
-    const changeEpoch = 1;
+    let changeEpoch = 1;
 
     if (actions.modifyTitle) {
       this.verifyAccess(
         'title',
-        member,
+        authMember,
         accessControl?.attributes ?? AccessRequired.UNKNOWN,
       );
 
       appliedActions.modifyTitle = actions.modifyTitle;
       newState.title = actions.modifyTitle.title;
+    }
+
+    const addPendingMembers = actions.addPendingMembers ?? [];
+    for (const { added } of addPendingMembers) {
+      assert.ok(added, 'Missing addPendingMember.added');
+
+      const { member } = added;
+      assert.ok(member, 'Missing addPendingMembers.added.member');
+
+      const { userId } = member;
+      assert.ok(userId, 'Missing addPendingMembers.added.member.userId');
+
+      this.verifyAccess(
+        'pendingMembers',
+        authMember,
+        accessControl?.members ?? AccessRequired.UNKNOWN,
+      );
+
+      const newPendingMember = {
+        member: { userId },
+        addedByUserId: sourceUuid.serialize(),
+        timestamp,
+      };
+
+      newState.membersPendingProfileKey = [
+        ...(newState.membersPendingProfileKey ?? []),
+        newPendingMember,
+      ];
+
+      appliedActions.addPendingMembers = [
+        ...(appliedActions.addPendingMembers ?? []),
+        { added: newPendingMember },
+      ];
+    }
+
+    const deletePendingMembers = actions.deletePendingMembers ?? [];
+    for (const { deletedUserId } of deletePendingMembers) {
+      assert.ok(deletedUserId, 'Missing deletedUserId');
+
+      this.verifyAccess(
+        'pendingMembers',
+        authMember,
+        accessControl?.members ?? AccessRequired.UNKNOWN,
+        deletedUserId ?? undefined,
+      );
+
+      const pendingMember = this.getPendingMember(
+        new UuidCiphertext(Buffer.from(deletedUserId)),
+      );
+      assert.ok(pendingMember, 'Pending member not found for deletion');
+
+      newState.membersPendingProfileKey =
+        (newState.membersPendingProfileKey ?? []).filter(
+          entry => entry !== pendingMember,
+        );
+
+      appliedActions.deletePendingMembers = [
+        ...(appliedActions.deletePendingMembers ?? []),
+        { deletedUserId },
+      ];
+    }
+
+    const promotePNIMembers = actions.promoteMembersPendingPniAciProfileKey;
+    for (const { presentation } of promotePNIMembers ?? []) {
+      assert.ok(
+        presentation,
+        'Missing presentation in promoteMembersPendingPniAciProfileKey',
+      );
+      const presentationFFI = new PniCredentialPresentation(
+        Buffer.from(presentation),
+      );
+
+      this.profileOps.verifyPniCredentialPresentation(
+        this.publicParams,
+        presentationFFI,
+      );
+
+      this.verifyAccess(
+        'pendingMembers',
+        authMember,
+        accessControl?.members ?? AccessRequired.UNKNOWN,
+        presentationFFI.getPniCiphertext()?.serialize(),
+      );
+
+      const pendingMember = this.getPendingMember(
+        presentationFFI.getPniCiphertext(),
+      );
+      assert.ok(pendingMember, 'No pending pni member');
+      assert.ok(
+        !this.getMember(presentationFFI.getAciCiphertext()),
+        'ACI is already a member',
+      );
+
+      newState.membersPendingProfileKey =
+        (newState.membersPendingProfileKey ?? []).filter(
+          entry => entry !== pendingMember,
+        );
+
+      newState.members = [
+        ...(newState.members ?? []),
+        {
+          role: Role.DEFAULT,
+          userId: presentationFFI.getAciCiphertext().serialize(),
+          profileKey: presentationFFI.getProfileKeyCiphertext().serialize(),
+        },
+      ];
+
+      changeEpoch = Math.max(changeEpoch, 5);
+      appliedActions.promoteMembersPendingPniAciProfileKey = [
+        ...(appliedActions.promoteMembersPendingPniAciProfileKey ?? []),
+        { presentation },
+      ];
     }
 
     const encodedActions = Proto.GroupChange.Actions.encode(
@@ -121,7 +238,17 @@ export class ServerGroup extends Group {
     attribute: string,
     member: Proto.IMember | undefined,
     access: Proto.AccessControl.AccessRequired,
+    affectedUserId?: Uint8Array,
   ): void {
+    // Changing something about ourselves is always allowed
+    if (
+      member?.userId &&
+      affectedUserId &&
+      Buffer.from(member.userId).equals(affectedUserId)
+    ) {
+      return;
+    }
+
     switch (access) {
     case AccessRequired.ANY:
       break;

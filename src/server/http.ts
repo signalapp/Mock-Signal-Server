@@ -15,10 +15,7 @@ import {
   router,
 } from 'microrouter';
 import { PublicKey } from '@signalapp/libsignal-client';
-import type {
-  AuthCredentialPresentation,
-  UuidCiphertext,
-} from '@signalapp/libsignal-client/zkgroup';
+import type { UuidCiphertext } from '@signalapp/libsignal-client/zkgroup';
 import createDebug from 'debug';
 
 import { Server } from './base';
@@ -165,7 +162,8 @@ export const createHandler = (server: Server): RequestHandler => {
 
   type GroupAuthResult = Readonly<{
     publicParams: Buffer;
-    uuidCiphertext: UuidCiphertext;
+    aciCiphertext: UuidCiphertext;
+    pniCiphertext?: UuidCiphertext;
   }>;
 
   async function groupAuth(
@@ -186,25 +184,37 @@ export const createHandler = (server: Server): RequestHandler => {
     const publicParams = Buffer.from(username, 'hex');
     const credential = Buffer.from(password, 'hex');
 
-    let auth: AuthCredentialPresentation;
+    let aciCiphertext: UuidCiphertext;
+    let pniCiphertext: UuidCiphertext | undefined;
     try {
-      auth = await server.verifyGroupCredentials(
+      const auth = await server.verifyGroupACICredentials(
         publicParams,
         credential,
       );
-    } catch (error) {
-      send(res, 403, { error: 'Invalid credentials' });
-      return undefined;
+
+      aciCiphertext = auth.getUuidCiphertext();
+    } catch (_) {
+      try {
+        const auth = await server.verifyGroupPNICredentials(
+          publicParams,
+          credential,
+        );
+
+        aciCiphertext = auth.getAciCiphertext();
+        pniCiphertext = auth.getPniCiphertext();
+      } catch (_) {
+        send(res, 403, { error: 'Invalid credentials' });
+        return undefined;
+      }
     }
 
-    const uuidCiphertext = auth.getUuidCiphertext();
-
-    return { publicParams, uuidCiphertext };
+    return { publicParams, aciCiphertext, pniCiphertext };
   }
 
   type GroupAuthAndFetchResult = Readonly<{
     group: ServerGroup;
-    uuidCiphertext: UuidCiphertext;
+    aciCiphertext: UuidCiphertext;
+    pniCiphertext?: UuidCiphertext;
   }>;
 
   async function groupAuthAndFetch(
@@ -222,7 +232,7 @@ export const createHandler = (server: Server): RequestHandler => {
       return undefined;
     }
 
-    return { group, uuidCiphertext: auth.uuidCiphertext };
+    return { group, ...auth };
   }
 
   async function storageAuth(
@@ -324,9 +334,9 @@ export const createHandler = (server: Server): RequestHandler => {
       return;
     }
 
-    const { group, uuidCiphertext } = auth;
+    const { group, aciCiphertext } = auth;
 
-    const member = group.getMember(uuidCiphertext);
+    const member = group.getMember(aciCiphertext);
 
     if (!member) {
       return send(res, 403, { error: 'Not a member of this group' });
@@ -343,8 +353,8 @@ export const createHandler = (server: Server): RequestHandler => {
       return;
     }
 
-    const { group, uuidCiphertext } = auth;
-    const member = group.getMember(uuidCiphertext);
+    const { group, aciCiphertext } = auth;
+    const member = group.getMember(aciCiphertext);
     if (!member) {
       return send(res, 403, { error: 'Not a member of this group' });
     }
@@ -395,10 +405,13 @@ export const createHandler = (server: Server): RequestHandler => {
       Buffer.from(await buffer(req)),
     );
 
-    const { group, uuidCiphertext } = auth;
+    const { group, aciCiphertext, pniCiphertext } = auth;
 
     try {
-      const signedChange = group.modify(uuidCiphertext, changes);
+      const signedChange = pniCiphertext ?
+        // PNI is always the source of the change
+        group.modify(pniCiphertext, aciCiphertext, changes) :
+        group.modify(aciCiphertext, undefined, changes);
       return send(res, 200, Proto.GroupChange.encode(signedChange).finish());
     } catch (error) {
       assert(error instanceof Error);

@@ -10,6 +10,7 @@ import { SenderCertificate } from '@signalapp/libsignal-client';
 import {
   AuthCredentialPresentation,
   GroupPublicParams,
+  PniCredentialPresentation,
   ProfileKeyCredentialRequest,
   ProfileKeyCredentialResponse,
   ServerSecretParams,
@@ -781,7 +782,7 @@ export abstract class Server {
     return result;
   }
 
-  public async verifyGroupCredentials(
+  public async verifyGroupACICredentials(
     publicParams: Buffer,
     credential: Buffer,
   ): Promise<AuthCredentialPresentation> {
@@ -791,6 +792,22 @@ export abstract class Server {
     const presentation = new AuthCredentialPresentation(credential);
 
     auth.verifyAuthCredentialPresentation(groupParams, presentation);
+
+    // TODO(indutny): verify credential timestamp
+
+    return presentation;
+  }
+
+  public async verifyGroupPNICredentials(
+    publicParams: Buffer,
+    credential: Buffer,
+  ): Promise<PniCredentialPresentation> {
+    const profile = new ServerZkProfileOperations(this.zkSecret);
+
+    const groupParams = new GroupPublicParams(publicParams);
+    const presentation = new PniCredentialPresentation(credential);
+
+    profile.verifyPniCredentialPresentation(groupParams, presentation);
 
     // TODO(indutny): verify credential timestamp
 
