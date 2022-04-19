@@ -29,6 +29,7 @@ import * as SignalClient from '@signalapp/libsignal-client';
 import createDebug from 'debug';
 import {
   ClientZkProfileOperations,
+  GroupMasterKey,
   GroupSecretParams,
   ProfileKey,
   ProfileKeyCredentialRequest,
@@ -74,6 +75,7 @@ export type Config = Readonly<{
     request: ProfileKeyCredentialRequest,
   ): Promise<ProfileKeyCredentialResponse | undefined>;
 
+  getGroup(publicParams: Buffer): Promise<ServerGroup | undefined>;
   createGroup(group: Proto.IGroup): Promise<ServerGroup>;
 
   getStorageManifest(): Promise<Proto.IStorageManifest | undefined>;
@@ -459,6 +461,35 @@ export class PrimaryDevice {
   // Groups
   //
 
+  public async getAllGroups(
+    storage: StorageState,
+  ): Promise<ReadonlyArray<Group>> {
+    const records = storage.getAllGroupRecords();
+
+    return await Promise.all(
+      records.map(async ({ record }) => {
+        const { groupV2 } = record;
+        assert.ok(groupV2, 'Not a group v2 record!');
+
+        const { masterKey } = groupV2;
+        assert.ok(masterKey, 'Group v2 record without master key');
+
+        const secretParams = GroupSecretParams.deriveFromMasterKey(
+          new GroupMasterKey(Buffer.from(masterKey)),
+        );
+        const publicParams = secretParams.getPublicParams().serialize();
+
+        const serverGroup = await this.config.getGroup(publicParams);
+        assert.ok(
+          serverGroup,
+          `Group not found: ${publicParams.toString('base64')}`,
+        );
+
+        return new Group(secretParams, serverGroup.state);
+      }),
+    );
+  }
+
   public async createGroup(
     { title, members: memberDevices }: CreateGroupOptions,
   ): Promise<Group> {
@@ -498,7 +529,7 @@ export class PrimaryDevice {
       };
     }));
 
-    const clientGroup = new Group({
+    const clientGroup = Group.fromConfig({
       secretParams: groupParams,
 
       title,

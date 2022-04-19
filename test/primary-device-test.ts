@@ -57,6 +57,9 @@ async function createPrimaryDevice(name: string): Promise<PrimaryDevice> {
     async createGroup() {
       throw new Error('Not implemented');
     },
+    async getGroup() {
+      throw new Error('Not implemented');
+    },
     async getStorageManifest() {
       throw new Error('Not implemented');
     },

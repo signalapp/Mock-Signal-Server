@@ -119,6 +119,16 @@ export class Connection extends Service {
           { name: 'desktop.storage', enabled: true },
           { name: 'desktop.storageWrite3', enabled: true },
           { name: 'desktop.messageRequests', enabled: true },
+          {
+            name: 'global.groupsv2.maxGroupSize',
+            value: '32',
+            enabled: true,
+          },
+          {
+            name: 'global.groupsv2.groupSizeHardLimit',
+            value: '64',
+            enabled: true,
+          },
         ],
       } ];
     }));

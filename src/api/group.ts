@@ -1,6 +1,7 @@
 // Copyright 2022 Signal Messenger, LLC
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import assert from 'assert';
 import {
   ClientZkGroupCipher,
   GroupSecretParams,
@@ -20,56 +21,82 @@ export type GroupMember = Readonly<{
   uuid: UUID;
 }>;
 
-export type GroupOptions = Readonly<{
+export type GroupFromConfigOptions = Readonly<{
   secretParams: GroupSecretParams;
   title: string;
   members: ReadonlyArray<GroupMember>;
 }>;
 
+function encryptBlob(
+  cipher: ClientZkGroupCipher,
+  proto: Proto.IGroupAttributeBlob,
+): Buffer {
+  const plaintext = Proto.GroupAttributeBlob.encode(proto).finish();
+  return cipher.encryptBlob(Buffer.from(plaintext));
+}
+
+function decryptBlob(
+  cipher: ClientZkGroupCipher,
+  ciphertext: Uint8Array,
+): Proto.IGroupAttributeBlob {
+  const plaintext = cipher.decryptBlob(Buffer.from(ciphertext));
+  return Proto.GroupAttributeBlob.decode(plaintext);
+}
+
 export class Group extends GroupData {
   private privRevision = 0;
-  private readonly secretParams: GroupSecretParams;
-  private readonly cipher: ClientZkGroupCipher;
 
   public readonly title: string;
 
-  constructor({ secretParams, title, members }: GroupOptions) {
+  constructor(
+    private readonly secretParams: GroupSecretParams,
+    groupState: Proto.IGroup,
+  ) {
     super();
 
+    assert.ok(groupState.title, 'Group must have a title blob');
+
     this.secretParams = secretParams;
-    this.cipher = new ClientZkGroupCipher(this.secretParams);
-    this.title = title;
+
+    const cipher = new ClientZkGroupCipher(secretParams);
+    this.title = decryptBlob(cipher, groupState.title)?.title ?? '';
 
     this.privPublicParams = this.secretParams.getPublicParams();
+    this.privRevision = groupState.version ?? 0;
 
     // Build group log
 
     this.privChanges = {
       groupChanges: [ {
-        groupState: {
-          publicKey: this.publicParams.serialize(),
-          version: this.revision,
-          title: this.encryptBlob({ title }),
-
-          // TODO(indutny): make it configurable
-          accessControl: {
-            attributes: AccessRequired.MEMBER,
-            members: AccessRequired.MEMBER,
-            addFromInviteLink: AccessRequired.UNSATISFIABLE,
-          },
-
-          members: members.map(({ uuid, profileKey, presentation }) => {
-            return {
-              role: Proto.Member.Role.ADMINISTRATOR,
-              userId: this.cipher.encryptUuid(uuid).serialize(),
-              profileKey: this.cipher.encryptProfileKey(profileKey, uuid)
-                .serialize(),
-              presentation: presentation.serialize(),
-            };
-          }),
-        },
+        groupState,
       } ],
     };
+  }
+
+  public static fromConfig(
+    { secretParams, title, members }: GroupFromConfigOptions,
+  ): Group {
+    const cipher = new ClientZkGroupCipher(secretParams);
+
+    return new Group(secretParams, {
+      publicKey: secretParams.getPublicParams().serialize(),
+      version: 0,
+      title: encryptBlob(cipher, { title }),
+
+      // TODO(indutny): make it configurable
+      accessControl: {
+        attributes: AccessRequired.MEMBER,
+        members: AccessRequired.MEMBER,
+        addFromInviteLink: AccessRequired.MEMBER,
+      },
+
+      members: members.map(({ presentation }) => {
+        return {
+          role: Proto.Member.Role.ADMINISTRATOR,
+          presentation: presentation.serialize(),
+        };
+      }),
+    });
   }
 
   public get revision(): number {
@@ -86,16 +113,5 @@ export class Group extends GroupData {
       masterKey,
       revision: this.revision,
     };
-  }
-
-  //
-  // Private
-  //
-
-  private encryptBlob(
-    proto: Proto.IGroupAttributeBlob,
-  ): Buffer {
-    const plaintext = Proto.GroupAttributeBlob.encode(proto).finish();
-    return this.cipher.encryptBlob(Buffer.from(plaintext));
   }
 }

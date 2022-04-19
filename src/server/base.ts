@@ -498,7 +498,7 @@ export abstract class Server {
 
   public async createGroup(group: Proto.IGroup): Promise<ServerGroup> {
     const result = new ServerGroup({
-      authOps: new ServerZkAuthOperations(this.zkSecret),
+      zkSecret: this.zkSecret,
       profileOps: new ServerZkProfileOperations(this.zkSecret),
       state: group,
     });

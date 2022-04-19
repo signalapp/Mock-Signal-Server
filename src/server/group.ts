@@ -5,23 +5,28 @@ import assert from 'assert';
 import {
   GroupPublicParams,
   ProfileKeyCredentialPresentation,
-  ServerZkAuthOperations,
+  ServerSecretParams,
   ServerZkProfileOperations,
+  UuidCiphertext,
 } from '@signalapp/libsignal-client/zkgroup';
 
 import { signalservice as Proto } from '../../protos/compiled';
 import { Group } from '../data/group';
 
 export type ServerGroupOptions = Readonly<{
-  authOps: ServerZkAuthOperations;
   profileOps: ServerZkProfileOperations;
+  zkSecret: ServerSecretParams;
   state: Proto.IGroup,
 }>;
 
+const { AccessRequired } = Proto.AccessControl;
+const { Role } = Proto.Member;
+
 export class ServerGroup extends Group {
   private readonly profileOps: ServerZkProfileOperations;
+  private readonly zkSecret: ServerSecretParams;
 
-  constructor({ profileOps, state }: ServerGroupOptions) {
+  constructor({ profileOps, zkSecret, state }: ServerGroupOptions) {
     super();
 
     // TODO(indutny): use zod or something
@@ -41,31 +46,128 @@ export class ServerGroup extends Group {
 
     this.privPublicParams = new GroupPublicParams(Buffer.from(state.publicKey));
     this.profileOps = profileOps;
+    this.zkSecret = zkSecret;
 
-    for (const { role, presentation } of state.members) {
-      assert.strictEqual(
-        typeof role,
-        'number',
-        'Group member role is undefined',
-      );
-      assert.ok(
-        presentation,
-        'Group member presentation is undefined',
-      );
+    const unrolledState = { ...state };
 
-      const presentationFFI = new ProfileKeyCredentialPresentation(
-        Buffer.from(presentation),
-      );
-      this.profileOps.verifyProfileKeyCredentialPresentation(
-        this.publicParams,
-        presentationFFI,
-      );
-    }
+    unrolledState.members = state.members.map(
+      (member) => this.unrollMember(member),
+    );
 
     this.privChanges = {
       groupChanges: [ {
-        groupState: state,
+        groupState: unrolledState,
       } ],
+    };
+  }
+
+  public modify(
+    auth: UuidCiphertext,
+    actions: Proto.GroupChange.IActions,
+  ): Proto.IGroupChange {
+    const appliedActions: Proto.GroupChange.IActions = {
+      sourceUuid: auth.serialize(),
+    };
+
+    const newState = {
+      ...this.state,
+    };
+
+    const member = this.getMember(auth);
+    const { accessControl } = newState;
+
+    if (actions.modifyTitle) {
+      this.verifyAccess(
+        'title',
+        member,
+        accessControl?.attributes ?? AccessRequired.UNKNOWN,
+      );
+
+      appliedActions.modifyTitle = actions.modifyTitle;
+      newState.title = actions.modifyTitle.title;
+    }
+
+    const encodedActions = Proto.GroupChange.Actions.encode(
+      appliedActions,
+    ).finish();
+    const serverSignature = this.zkSecret.sign(
+      Buffer.from(encodedActions),
+    ).serialize();
+
+    const groupChange: Proto.IGroupChange = {
+      actions: encodedActions,
+      // TODO(indutny): Use appropriate change epoch
+      changeEpoch: 1,
+    };
+
+    assert.ok(this.privChanges?.groupChanges, 'Must be initialized');
+    this.privChanges.groupChanges.push({
+      groupChange,
+      groupState: newState,
+    });
+
+    return {
+      ...groupChange,
+      serverSignature,
+    };
+  }
+
+  //
+  // Private
+  //
+
+  private verifyAccess(
+    attribute: string,
+    member: Proto.IMember | undefined,
+    access: Proto.AccessControl.AccessRequired,
+  ): void {
+    switch (access) {
+    case AccessRequired.ANY:
+      break;
+
+    case AccessRequired.MEMBER:
+      assert.ok(member, `Must be a member to access: ${attribute}`);
+      break;
+
+    case AccessRequired.ADMINISTRATOR:
+      assert.strictEqual(
+        member?.role,
+        Role.ADMINISTRATOR,
+        `Must be an administrator to modify: ${attribute}`,
+      );
+      break;
+
+    case AccessRequired.UNSATISFIABLE:
+      throw new Error(`Unsatisfiable access attribute: ${attribute}`);
+
+    case AccessRequired.UNKNOWN:
+      throw new Error(`Unknown access for attribute: ${attribute}`);
+    }
+  }
+
+  private unrollMember({ role, presentation }: Proto.IMember): Proto.IMember {
+    assert.strictEqual(
+      typeof role,
+      'number',
+      'Group member role is undefined',
+    );
+    assert.ok(
+      presentation,
+      'Group member presentation is undefined',
+    );
+
+    const presentationFFI = new ProfileKeyCredentialPresentation(
+      Buffer.from(presentation),
+    );
+    this.profileOps.verifyProfileKeyCredentialPresentation(
+      this.publicParams,
+      presentationFFI,
+    );
+
+    return {
+      role,
+      userId: presentationFFI.getUuidCiphertext().serialize(),
+      profileKey: presentationFFI.getProfileKeyCiphertext().serialize(),
     };
   }
 }

@@ -280,6 +280,7 @@ export class Server extends BaseServer {
       getSenderCertificate: this.getSenderCertificate.bind(this, device),
       getDeviceByUUID: this.getDeviceByUUID.bind(this),
       issueProfileKeyCredential: this.issueProfileKeyCredential.bind(this),
+      getGroup: this.getGroup.bind(this),
       createGroup: this.createGroup.bind(this),
       getStorageManifest: this.getStorageManifest.bind(this, device),
       getStorageItem: this.getStorageItem.bind(this, device),

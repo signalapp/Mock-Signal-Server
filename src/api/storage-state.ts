@@ -343,6 +343,13 @@ export class StorageState {
     return new StorageState(this.version, newItems);
   }
 
+  public getAllGroupRecords(
+  ): ReadonlyArray<StorageStateRecord> {
+    return this.items
+      .filter((item) => item.type === IdentifierType.GROUPV2)
+      .map((item) => item.toRecord());
+  }
+
   //
   // General
   //

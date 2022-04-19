@@ -10,6 +10,7 @@ import {
   ServerRequest,
   ServerResponse,
   get,
+  patch,
   put,
   router,
 } from 'microrouter';
@@ -163,7 +164,7 @@ export const createHandler = (server: Server): RequestHandler => {
   }
 
   type GroupAuthResult = Readonly<{
-    group: ServerGroup;
+    publicParams: Buffer;
     uuidCiphertext: UuidCiphertext;
   }>;
 
@@ -196,15 +197,32 @@ export const createHandler = (server: Server): RequestHandler => {
       return undefined;
     }
 
-    const group = await server.getGroup(publicParams);
+    const uuidCiphertext = auth.getUuidCiphertext();
+
+    return { publicParams, uuidCiphertext };
+  }
+
+  type GroupAuthAndFetchResult = Readonly<{
+    group: ServerGroup;
+    uuidCiphertext: UuidCiphertext;
+  }>;
+
+  async function groupAuthAndFetch(
+    req: ServerRequest,
+    res: ServerResponse,
+  ): Promise<GroupAuthAndFetchResult | undefined> {
+    const auth = await groupAuth(req, res);
+    if (!auth) {
+      return;
+    }
+
+    const group = await server.getGroup(auth.publicParams);
     if (!group) {
       send(res, 404, { error: 'Group not found' });
       return undefined;
     }
 
-    const uuidCiphertext = auth.getUuidCiphertext();
-
-    return { group, uuidCiphertext };
+    return { group, uuidCiphertext: auth.uuidCiphertext };
   }
 
   async function storageAuth(
@@ -291,7 +309,7 @@ export const createHandler = (server: Server): RequestHandler => {
   //
 
   const getGroup = get('/v1/groups', async (req, res) => {
-    const auth = await groupAuth(req, res);
+    const auth = await groupAuthAndFetch(req, res);
     if (!auth) {
       return;
     }
@@ -301,7 +319,7 @@ export const createHandler = (server: Server): RequestHandler => {
   });
 
   const getGroupVersion = get('/v1/groups/joined_at_version', async (req, res) => {
-    const auth = await groupAuth(req, res);
+    const auth = await groupAuthAndFetch(req, res);
     if (!auth) {
       return;
     }
@@ -311,7 +329,7 @@ export const createHandler = (server: Server): RequestHandler => {
     const member = group.getMember(uuidCiphertext);
 
     if (!member) {
-      return send(res, 403);
+      return send(res, 403, { error: 'Not a member of this group' });
     }
 
     return send(res, 200, Proto.Member.encode({
@@ -320,7 +338,7 @@ export const createHandler = (server: Server): RequestHandler => {
   });
 
   const getGroupLogs = get('/v1/groups/logs/:since', async (req, res) => {
-    const auth = await groupAuth(req, res);
+    const auth = await groupAuthAndFetch(req, res);
     if (!auth) {
       return;
     }
@@ -328,12 +346,12 @@ export const createHandler = (server: Server): RequestHandler => {
     const { group, uuidCiphertext } = auth;
     const member = group.getMember(uuidCiphertext);
     if (!member) {
-      return send(res, 403);
+      return send(res, 403, { error: 'Not a member of this group' });
     }
 
     const since = parseInt(req.params.since, 10);
     if (since < (member.joinedAtVersion ?? 0)) {
-      return send(res, 403);
+      return send(res, 403, { error: '`since` is before joinedAtVersion' });
     }
 
     return send(
@@ -341,6 +359,57 @@ export const createHandler = (server: Server): RequestHandler => {
       200,
       Proto.GroupChanges.encode(group.getChangesSince(since)).finish(),
     );
+  });
+
+  // TODO(indutny): implement me
+  const createGroup = put('/v1/groups', async (req, res) => {
+    const auth = await groupAuth(req, res);
+    if (!auth) {
+      return;
+    }
+
+    const groupData = Proto.Group.decode(
+      Buffer.from(await buffer(req)),
+    );
+    if (!groupData.title) {
+      return send(res, 400, { error: 'Missing group title' });
+    }
+    if (!groupData.publicKey || !auth.publicParams.equals(groupData.publicKey)) {
+      return send(res, 400, { error: 'Invalid group public key' });
+    }
+
+    await server.createGroup(groupData);
+
+    // TODO(indutny): verify that creator is a member
+
+    return send(res, 200);
+  });
+
+  const modifyGroup = patch('/v1/groups', async (req, res) => {
+    const auth = await groupAuthAndFetch(req, res);
+    if (!auth) {
+      return;
+    }
+
+    const changes = Proto.GroupChange.Actions.decode(
+      Buffer.from(await buffer(req)),
+    );
+
+    const { group, uuidCiphertext } = auth;
+
+    try {
+      const signedChange = group.modify(uuidCiphertext, changes);
+      return send(res, 200, Proto.GroupChange.encode(signedChange).finish());
+    } catch (error) {
+      assert(error instanceof Error);
+
+      debug('Failed to modify group', error.stack);
+
+      // TODO(indutny): would be nice to give 403 here
+      return send(res, 500, { error: error.stack });
+    }
+
+    return send(res, 200, Proto.Group.encode(group.state).finish());
   });
 
   //
@@ -470,6 +539,8 @@ export const createHandler = (server: Server): RequestHandler => {
     getGroup,
     getGroupVersion,
     getGroupLogs,
+    createGroup,
+    modifyGroup,
 
     getStorageManifest,
     getStorageManifestByVersion,

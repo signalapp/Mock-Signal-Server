@@ -13,7 +13,7 @@ export abstract class Group {
   protected privChanges?: Proto.IGroupChanges;
   protected privPublicParams?: GroupPublicParams;
 
-  public get changes(): Proto.IGroupChanges {
+  public get changes(): Readonly<Proto.IGroupChanges> {
     assert(this.privChanges !== undefined, 'Group not initialized');
     return this.privChanges;
   }
@@ -23,7 +23,7 @@ export abstract class Group {
     return this.privPublicParams;
   }
 
-  public get state(): Proto.IGroup {
+  public get state(): Readonly<Proto.IGroup> {
     const { groupChanges } = this.changes;
     assert(groupChanges, 'Missing group changes in the group state');
     const state = groupChanges[groupChanges.length - 1].groupState;
@@ -31,7 +31,7 @@ export abstract class Group {
     return state;
   }
 
-  public getChangesSince(since: number): Proto.IGroupChanges {
+  public getChangesSince(since: number): Readonly<Proto.IGroupChanges> {
     return {
       groupChanges: this.changes.groupChanges?.slice(since),
     };
