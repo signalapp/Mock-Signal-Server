@@ -65,17 +65,19 @@ export class ServerGroup extends Group {
 
   public modify(
     sourceUuid: UuidCiphertext,
-    aciUuid: UuidCiphertext | undefined,
     actions: Proto.GroupChange.IActions,
   ): Proto.IGroupChange {
     const appliedActions: Proto.GroupChange.IActions = {
       sourceUuid: sourceUuid.serialize(),
     };
 
+    assert.ok(actions.version, 'Actions should have a new version');
+
     const timestamp = Long.fromNumber(Date.now());
 
     const newState = {
       ...this.state,
+      version: actions.version,
     };
 
     const authMember = this.getMember(sourceUuid);
@@ -205,6 +207,16 @@ export class ServerGroup extends Group {
         { presentation },
       ];
     }
+
+    const { version: oldVersion } = this.state;
+    assert.ok(
+      typeof oldVersion === 'number',
+      'Group must have existing version',
+    );
+    assert.ok(
+      actions.version === oldVersion + 1,
+      `Group version can't jump from ${oldVersion} to ${actions.version}`,
+    );
 
     const encodedActions = Proto.GroupChange.Actions.encode(
       appliedActions,

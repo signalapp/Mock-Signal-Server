@@ -15,6 +15,12 @@ import { Group as GroupData } from '../data/group';
 
 const AccessRequired = Proto.AccessControl.AccessRequired;
 
+export type GroupOptions = Readonly<{
+  secretParams: GroupSecretParams;
+
+  groupState: Proto.IGroup;
+}>;
+
 export type GroupMember = Readonly<{
   presentation: ProfileKeyCredentialPresentation;
   profileKey: ProfileKey;
@@ -23,6 +29,7 @@ export type GroupMember = Readonly<{
 
 export type GroupFromConfigOptions = Readonly<{
   secretParams: GroupSecretParams;
+
   title: string;
   members: ReadonlyArray<GroupMember>;
 }>;
@@ -44,14 +51,10 @@ function decryptBlob(
 }
 
 export class Group extends GroupData {
-  private privRevision = 0;
-
+  public readonly secretParams: GroupSecretParams;
   public readonly title: string;
 
-  constructor(
-    private readonly secretParams: GroupSecretParams,
-    groupState: Proto.IGroup,
-  ) {
+  constructor({ secretParams, groupState }: GroupOptions) {
     super();
 
     assert.ok(groupState.title, 'Group must have a title blob');
@@ -62,7 +65,6 @@ export class Group extends GroupData {
     this.title = decryptBlob(cipher, groupState.title)?.title ?? '';
 
     this.privPublicParams = this.secretParams.getPublicParams();
-    this.privRevision = groupState.version ?? 0;
 
     // Build group log
 
@@ -78,7 +80,7 @@ export class Group extends GroupData {
   ): Group {
     const cipher = new ClientZkGroupCipher(secretParams);
 
-    return new Group(secretParams, {
+    const groupState = {
       publicKey: secretParams.getPublicParams().serialize(),
       version: 0,
       title: encryptBlob(cipher, { title }),
@@ -96,11 +98,12 @@ export class Group extends GroupData {
           presentation: presentation.serialize(),
         };
       }),
-    });
-  }
+    };
 
-  public get revision(): number {
-    return this.privRevision;
+    return new Group({
+      secretParams,
+      groupState,
+    });
   }
 
   public get masterKey(): Buffer {

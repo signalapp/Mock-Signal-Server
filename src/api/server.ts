@@ -32,6 +32,9 @@ import {
   serializeContacts,
 } from '../data/contacts';
 import {
+  Group as GroupData,
+} from '../data/group';
+import {
   encryptAttachment,
   encryptProvisionMessage,
   generateServerCertificate,
@@ -40,6 +43,7 @@ import { signalservice as Proto } from '../../protos/compiled';
 import {
   Server as BaseServer,
   EnvelopeType,
+  ModifyGroupOptions,
   ProvisioningResponse,
 } from '../server/base';
 import { Device, DeviceKeys } from '../data/device';
@@ -120,6 +124,7 @@ export class Server extends BaseServer {
     new Map<ProvisioningCode, PromiseQueue<Device>>();
   private provisionResultQueueByKey = new Map<string, PromiseQueue<Device>>();
   private manifestQueueByUuid = new Map<UUID, PromiseQueue<number>>();
+  private groupQueueById = new Map<string, PromiseQueue<number>>();
 
   constructor(config: Config = {}) {
     super();
@@ -233,6 +238,19 @@ export class Server extends BaseServer {
     } while (afterVersion !== undefined && version <= afterVersion);
   }
 
+  public async waitForGroupUpdate(group: GroupData): Promise<void> {
+    let queue = this.groupQueueById.get(group.id);
+    if (!queue) {
+      queue = this.createQueue();
+      this.groupQueueById.set(group.id, queue);
+    }
+
+    let version: number;
+    do {
+      version = await queue.shift();
+    } while (version <= group.revision);
+  }
+
   //
   // Helper methods
   //
@@ -282,6 +300,7 @@ export class Server extends BaseServer {
       issueProfileKeyCredential: this.issueProfileKeyCredential.bind(this),
       getGroup: this.getGroup.bind(this),
       createGroup: this.createGroup.bind(this),
+      waitForGroupUpdate: this.waitForGroupUpdate.bind(this),
       getStorageManifest: this.getStorageManifest.bind(this, device),
       getStorageItem: this.getStorageItem.bind(this, device),
       waitForStorageManifest: this.waitForStorageManifest.bind(this, device),
@@ -473,6 +492,26 @@ export class Server extends BaseServer {
     }
 
     return super.getStorageItems(device, keys);
+  }
+
+  // Override updateGroup to notify about group modifications
+  public override async modifyGroup(
+    options: ModifyGroupOptions,
+  ): Promise<Proto.IGroupChange> {
+    const { group } = options;
+    debug('modifyGroup', group.id);
+
+    const result = await super.modifyGroup(options);
+
+    let queue = this.groupQueueById.get(group.id);
+    if (!queue) {
+      queue = this.createQueue();
+      this.groupQueueById.set(group.id, queue);
+    }
+
+    queue.push(group.revision);
+
+    return result;
   }
 
   protected async onStorageManifestUpdate(

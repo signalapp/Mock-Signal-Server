@@ -31,6 +31,17 @@ export abstract class Group {
     return state;
   }
 
+  public get id(): string {
+    const { publicKey } = this.state;
+    assert.ok(publicKey, 'Group must have public key');
+
+    return Buffer.from(publicKey).toString('base64');
+  }
+
+  public get revision(): number {
+    return this.state.version ?? 0;
+  }
+
   public getChangesSince(since: number): Readonly<Proto.IGroupChanges> {
     return {
       groupChanges: this.changes.groupChanges?.slice(since),

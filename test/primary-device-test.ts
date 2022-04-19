@@ -54,10 +54,13 @@ async function createPrimaryDevice(name: string): Promise<PrimaryDevice> {
     async issueProfileKeyCredential() {
       throw new Error('Not implemented');
     },
+    async getGroup() {
+      throw new Error('Not implemented');
+    },
     async createGroup() {
       throw new Error('Not implemented');
     },
-    async getGroup() {
+    async waitForGroupUpdate() {
       throw new Error('Not implemented');
     },
     async getStorageManifest() {

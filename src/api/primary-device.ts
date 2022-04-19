@@ -41,6 +41,7 @@ import { signalservice as Proto } from '../../protos/compiled';
 import { INITIAL_PREKEY_COUNT } from '../constants';
 import { DeviceId, UUID } from '../types';
 import { Contact } from '../data/contacts';
+import { Group as GroupData } from '../data/group';
 import {
   decryptStorageItem,
   decryptStorageManifest,
@@ -48,7 +49,6 @@ import {
   encryptProfileName,
 } from '../crypto';
 import { EnvelopeType, StorageWriteResult } from '../server/base';
-import { ServerGroup } from '../server/group';
 import { Device, DeviceKeys, SingleUseKey } from '../data/device';
 import { PromiseQueue, addressToString } from '../util';
 import { Group } from './group';
@@ -75,8 +75,9 @@ export type Config = Readonly<{
     request: ProfileKeyCredentialRequest,
   ): Promise<ProfileKeyCredentialResponse | undefined>;
 
-  getGroup(publicParams: Buffer): Promise<ServerGroup | undefined>;
-  createGroup(group: Proto.IGroup): Promise<ServerGroup>;
+  getGroup(publicParams: Buffer): Promise<GroupData | undefined>;
+  createGroup(group: Proto.IGroup): Promise<GroupData>;
+  waitForGroupUpdate(group: GroupData): Promise<void>;
 
   getStorageManifest(): Promise<Proto.IStorageManifest | undefined>;
   getStorageItem(key: Buffer): Promise<Buffer | undefined>;
@@ -485,7 +486,10 @@ export class PrimaryDevice {
           `Group not found: ${publicParams.toString('base64')}`,
         );
 
-        return new Group(secretParams, serverGroup.state);
+        return new Group({
+          secretParams,
+          groupState: serverGroup.state,
+        });
       }),
     );
   }
@@ -539,6 +543,19 @@ export class PrimaryDevice {
     await this.config.createGroup(clientGroup.state);
 
     return clientGroup;
+  }
+
+  public async waitForGroupUpdate(group: Group): Promise<Group> {
+    await this.config.waitForGroupUpdate(group);
+
+    const publicParams = group.publicParams.serialize();
+    const serverGroup = await this.config.getGroup(publicParams);
+    assert.ok(serverGroup, `Group not found: ${group.id}`);
+
+    return new Group({
+      secretParams: group.secretParams,
+      groupState: serverGroup.state,
+    });
   }
 
   //

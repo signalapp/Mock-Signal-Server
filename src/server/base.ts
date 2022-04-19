@@ -16,6 +16,7 @@ import {
   ServerSecretParams,
   ServerZkAuthOperations,
   ServerZkProfileOperations,
+  UuidCiphertext,
 } from '@signalapp/libsignal-client/zkgroup';
 
 import { signalservice as Proto } from '../../protos/compiled';
@@ -100,6 +101,13 @@ export type StorageWriteResult = Readonly<{
 } | {
   updated?: void;
   error: string;
+}>;
+
+export type ModifyGroupOptions = Readonly<{
+  group: ServerGroup;
+  actions: Proto.GroupChange.IActions;
+  aciCiphertext: UuidCiphertext;
+  pniCiphertext?: UuidCiphertext;
 }>;
 
 interface WebSocket {
@@ -513,6 +521,18 @@ export abstract class Server {
     this.groups.set(key, result);
 
     return result;
+  }
+
+  public async modifyGroup({
+    group,
+    actions,
+    aciCiphertext,
+    pniCiphertext,
+  }: ModifyGroupOptions): Promise<Proto.IGroupChange> {
+    // PNI is always the source of the change when available
+    const sourceUuid = pniCiphertext || aciCiphertext;
+
+    return group.modify(sourceUuid, actions);
   }
 
   public async getGroup(

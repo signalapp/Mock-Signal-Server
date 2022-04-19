@@ -401,17 +401,20 @@ export const createHandler = (server: Server): RequestHandler => {
       return;
     }
 
-    const changes = Proto.GroupChange.Actions.decode(
+    const actions = Proto.GroupChange.Actions.decode(
       Buffer.from(await buffer(req)),
     );
 
     const { group, aciCiphertext, pniCiphertext } = auth;
 
     try {
-      const signedChange = pniCiphertext ?
-        // PNI is always the source of the change
-        group.modify(pniCiphertext, aciCiphertext, changes) :
-        group.modify(aciCiphertext, undefined, changes);
+      const signedChange = await server.modifyGroup({
+        group,
+        aciCiphertext,
+        pniCiphertext,
+        actions,
+      });
+
       return send(res, 200, Proto.GroupChange.encode(signedChange).finish());
     } catch (error) {
       assert(error instanceof Error);
