@@ -36,6 +36,7 @@ import {
   ProvisioningCode,
   RegistrationId,
   UUID,
+  UUIDKind,
 } from '../types';
 import { getEpochDay } from '../util';
 import { JSONMessage } from '../data/json.d';
@@ -87,6 +88,7 @@ export type PrepareMultiDeviceMessageResult = Readonly<{
   status: 'unknown';
 } | {
   status: 'ok';
+  targetUUID: UUID;
   result: PreparedMultiDeviceMessage;
 }>;
 
@@ -289,10 +291,11 @@ export abstract class Server {
 
   public async updateDeviceKeys(
     device: Device,
+    uuidKind: UUIDKind,
     keys: DeviceKeys,
   ): Promise<void> {
     debug('setting device=%s keys', device.debugId);
-    await device.setKeys(keys);
+    await device.setKeys(uuidKind, keys);
   }
 
   //
@@ -387,11 +390,12 @@ export abstract class Server {
       };
     }
 
-    return { status: 'ok', result };
+    return { status: 'ok', targetUUID, result };
   }
 
   public async handlePreparedMultiDeviceMessage(
     source: Device | undefined,
+    targetUUID: UUID,
     prepared: PreparedMultiDeviceMessage,
   ): Promise<void> {
     for (const [ target, message ] of prepared) {
@@ -406,8 +410,11 @@ export abstract class Server {
         throw new Error(`Unsupported envelope type: ${message.type}`);
       }
 
+      const uuidKind = target.getUUIDKind(targetUUID);
+
       await this.handleMessage(
         source,
+        uuidKind,
         envelopeType,
         target,
         Buffer.from(message.content, 'base64'),
@@ -417,6 +424,7 @@ export abstract class Server {
 
   public abstract handleMessage(
     source: Device | undefined,
+    uuidKind: UUIDKind,
     envelopeType: EnvelopeType,
     target: Device,
     encrypted: Buffer,
@@ -777,7 +785,7 @@ export abstract class Server {
       number: device.number,
       uuid: device.uuid,
       deviceId: device.deviceId,
-      identityKey: await device.getIdentityKey(),
+      identityKey: await device.getIdentityKey(UUIDKind.ACI),
     });
   }
 

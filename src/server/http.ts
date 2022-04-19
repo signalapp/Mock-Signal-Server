@@ -23,6 +23,7 @@ import { ServerGroup } from './group';
 import { Device } from '../data/device';
 import { ParseAuthHeaderResult, parseAuthHeader } from '../util';
 import { JSONDeviceKeys } from '../data/json.d';
+import { UUIDKind } from '../types';
 import { signalservice as Proto } from '../../protos/compiled';
 
 const debug = createDebug('mock:http');
@@ -33,18 +34,19 @@ const parsePassword = (req: ServerRequest): ParseAuthHeaderResult => {
 
 const sendDevicesKeys = async (
   res: ServerResponse,
+  uuidKind: UUIDKind,
   devices: ReadonlyArray<Device>,
 ): Promise<void> => {
   const [ primary ] = devices;
   assert(primary !== undefined, 'Empty device list');
 
-  const identityKey = await primary.getIdentityKey();
+  const identityKey = await primary.getIdentityKey(uuidKind);
 
   send(res, 200, {
     identityKey: identityKey.serialize().toString('base64'),
     devices: await Promise.all(devices.map(async (device) => {
       const { signedPreKey, preKey } =
-        await device.popSingleUseKey();
+        await device.popSingleUseKey(uuidKind);
       return {
         deviceId: device.deviceId,
         registrationId: device.registrationId,
@@ -104,7 +106,8 @@ export const createHandler = (server: Server): RequestHandler => {
       return send(res, 404, { error: 'Device not found' });
     }
 
-    return await sendDevicesKeys(res, [ device ]);
+    const uuidKind = device.getUUIDKind(uuid);
+    return await sendDevicesKeys(res, uuidKind, [ device ]);
   });
 
   const getAllDeviceKeys = get('/v2/keys/:uuid(/\\*)', async (req, res) => {
@@ -118,7 +121,8 @@ export const createHandler = (server: Server): RequestHandler => {
       return send(res, 404, { error: 'Account not found' });
     }
 
-    return await sendDevicesKeys(res, devices);
+    const uuidKind = devices[0].getUUIDKind(uuid);
+    return await sendDevicesKeys(res, uuidKind, devices);
   });
 
   //
@@ -260,11 +264,20 @@ export const createHandler = (server: Server): RequestHandler => {
     return device;
   }
 
+  function uuidKindFromQuery(req: ServerRequest): UUIDKind {
+    if (req.query.identity === 'pni') {
+      return UUIDKind.PNI;
+    }
+    return UUIDKind.ACI;
+  }
+
   const putKeys = put('/v2/keys', async (req, res) => {
     const device = await auth(req, res);
     if (!device) {
       return;
     }
+
+    const uuidKind = uuidKindFromQuery(req);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const body: JSONDeviceKeys = await json(req) as any;
@@ -273,7 +286,7 @@ export const createHandler = (server: Server): RequestHandler => {
         return PublicKey.deserialize(Buffer.from(base64, 'base64'));
       };
 
-      await server.updateDeviceKeys(device, {
+      await server.updateDeviceKeys(device, uuidKind, {
         identityKey: parseKey(body.identityKey),
         signedPreKey: {
           keyId: body.signedPreKey.keyId,
@@ -302,7 +315,9 @@ export const createHandler = (server: Server): RequestHandler => {
       return;
     }
 
-    return { count: await device.getSingleUseKeyCount() };
+    const uuidKind = uuidKindFromQuery(req);
+
+    return { count: await device.getSingleUseKeyCount(uuidKind) };
   });
 
   const whoami = get('/v1/accounts/whoami', async (req, res) => {

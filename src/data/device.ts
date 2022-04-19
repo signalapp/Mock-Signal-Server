@@ -9,42 +9,42 @@ import { DeviceId, RegistrationId, UUID, UUIDKind } from '../types';
 
 const debug = createDebug('mock:device');
 
-export interface DeviceOptions {
-  readonly uuid: UUID;
-  readonly pni: UUID;
-  readonly number: string;
-  readonly deviceId: DeviceId;
-  readonly registrationId: RegistrationId;
-}
+export type DeviceOptions = Readonly<{
+  uuid: UUID;
+  pni: UUID;
+  number: string;
+  deviceId: DeviceId;
+  registrationId: RegistrationId;
+}>;
 
-export interface SignedPreKey {
-  readonly keyId: number;
-  readonly publicKey: PublicKey;
-  readonly signature: Buffer;
-}
+export type SignedPreKey = Readonly<{
+  keyId: number;
+  publicKey: PublicKey;
+  signature: Buffer;
+}>;
 
-export interface PreKey {
-  readonly keyId: number;
-  readonly publicKey: PublicKey;
-}
+export type PreKey = Readonly<{
+  keyId: number;
+  publicKey: PublicKey;
+}>;
 
-export interface DeviceKeys {
-  readonly identityKey: PublicKey;
-  readonly signedPreKey: SignedPreKey;
-  readonly preKeys: ReadonlyArray<PreKey>;
-}
+export type DeviceKeys = Readonly<{
+  identityKey: PublicKey;
+  signedPreKey: SignedPreKey;
+  preKeys: ReadonlyArray<PreKey>;
+}>;
 
-export interface SingleUseKey {
-  readonly identityKey: PublicKey;
-  readonly signedPreKey: SignedPreKey;
-  readonly preKey: PreKey | undefined;
-}
+export type SingleUseKey = Readonly<{
+  identityKey: PublicKey;
+  signedPreKey: SignedPreKey;
+  preKey: PreKey | undefined;
+}>;
 
-interface InternalDeviceKeys {
-  readonly identityKey: PublicKey;
-  readonly signedPreKey: SignedPreKey;
-  readonly preKeys: Array<PreKey>;
-}
+type InternalDeviceKeys = Readonly<{
+  identityKey: PublicKey;
+  signedPreKey: SignedPreKey;
+  preKeys: Array<PreKey>;
+}>;
 
 export class Device {
   public readonly uuid: UUID;
@@ -58,7 +58,7 @@ export class Device {
   public profileKeyCommitment?: ProfileKeyCommitment;
   public profileName?: Buffer;
 
-  private keys: InternalDeviceKeys | undefined;
+  private keys = new Map<UUIDKind, InternalDeviceKeys>();
 
   constructor(options: DeviceOptions) {
     this.uuid = options.uuid;
@@ -74,45 +74,47 @@ export class Device {
     return `${this.uuid}.${this.deviceId}`;
   }
 
-  public async setKeys(keys: DeviceKeys): Promise<void> {
-    debug('setting keys for %s', this.debugId);
+  public async setKeys(uuidKind: UUIDKind, keys: DeviceKeys): Promise<void> {
+    debug('setting %s keys for %s', uuidKind, this.debugId);
 
-    // TODO(indutny): concat old preKeys with new ones?
-    this.keys = {
+    this.keys.set(uuidKind, {
       identityKey: keys.identityKey,
       signedPreKey: keys.signedPreKey,
       preKeys: keys.preKeys.slice(),
-    };
+    });
   }
 
-  public async getIdentityKey(): Promise<PublicKey> {
-    if (!this.keys) {
+  public async getIdentityKey(uuidKind = UUIDKind.ACI): Promise<PublicKey> {
+    const keys = this.keys.get(uuidKind);
+    if (!keys) {
       throw new Error('No keys available for device');
     }
-    return this.keys.identityKey;
+    return keys.identityKey;
   }
 
-  public async popSingleUseKey(): Promise<SingleUseKey> {
-    if (!this.keys) {
+  public async popSingleUseKey(uuidKind = UUIDKind.ACI): Promise<SingleUseKey> {
+    const keys = this.keys.get(uuidKind);
+    if (!keys) {
       throw new Error('No keys available for device');
     }
 
     debug('popping single use key for %s', this.debugId);
 
-    const preKey = this.keys.preKeys.shift();
+    const preKey = keys.preKeys.shift();
 
     return {
-      identityKey: this.keys.identityKey,
-      signedPreKey: this.keys.signedPreKey,
+      identityKey: keys.identityKey,
+      signedPreKey: keys.signedPreKey,
       preKey,
     };
   }
 
-  public async getSingleUseKeyCount(): Promise<number> {
-    if (!this.keys) {
+  public async getSingleUseKeyCount(uuidKind = UUIDKind.ACI): Promise<number> {
+    const keys = this.keys.get(uuidKind);
+    if (!keys) {
       throw new Error('No keys available for device');
     }
-    return this.keys.preKeys.length;
+    return keys.preKeys.length;
   }
 
   public getUUIDByKind(uuidKind: UUIDKind): UUID {
@@ -122,5 +124,15 @@ export class Device {
     case UUIDKind.PNI:
       return this.pni;
     }
+  }
+
+  public getUUIDKind(uuid: UUID): UUIDKind {
+    if (uuid === this.uuid) {
+      return UUIDKind.ACI;
+    }
+    if (uuid === this.pni) {
+      return UUIDKind.PNI;
+    }
+    throw new Error(`Unknown uuid: ${uuid}`);
   }
 }

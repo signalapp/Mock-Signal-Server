@@ -11,6 +11,7 @@ import {
   generateServerCertificate,
 } from '../src/crypto';
 import { Device } from '../src/data/device';
+import { UUIDKind } from '../src/types';
 import { PrimaryDevice } from '../src/api/primary-device';
 
 const trustRoot = PrivateKey.generate();
@@ -41,7 +42,7 @@ async function createPrimaryDevice(name: string): Promise<PrimaryDevice> {
         number: device.number,
         uuid: device.uuid,
         deviceId: device.deviceId,
-        identityKey: await device.getIdentityKey(),
+        identityKey: await device.getIdentityKey(UUIDKind.ACI),
       });
     },
 
@@ -91,7 +92,7 @@ describe('PrimaryDevice', () => {
     const alice = await createPrimaryDevice('Alice');
     const bob = await createPrimaryDevice('Bob');
 
-    const key = await bob.device.popSingleUseKey();
+    const key = await bob.device.popSingleUseKey(UUIDKind.ACI);
     await alice.addSingleUseKey(bob.device, key);
 
     const encrypted = await alice.encryptText(bob.device, 'Hello');

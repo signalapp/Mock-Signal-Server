@@ -27,6 +27,7 @@ import {
   ProvisioningCode,
   RegistrationId,
   UUID,
+  UUIDKind,
 } from '../types';
 import {
   serializeContacts,
@@ -326,7 +327,13 @@ export class Server extends BaseServer {
       registrationId,
     });
 
-    await this.updateDeviceKeys(device, await primary.generateKeys(device));
+    for (const uuidKind of [ UUIDKind.ACI, UUIDKind.PNI ]) {
+      await this.updateDeviceKeys(
+        device,
+        uuidKind,
+        await primary.generateKeys(device, uuidKind),
+      );
+    }
 
     primary.addSecondaryDevice(device);
 
@@ -366,17 +373,18 @@ export class Server extends BaseServer {
     const publicKey = PublicKey.deserialize(
       Buffer.from(query.pub_key, 'base64'));
 
-    const identityKey = await primaryDevice.getIdentityKey();
+    const aciIdentityKey = await primaryDevice.getIdentityKey(UUIDKind.ACI);
+    const pniIdentityKey = await primaryDevice.getIdentityKey(UUIDKind.PNI);
     const provisioningCode = await this.getProvisioningCode(
       uuid, primaryDevice.device.number);
 
     this.provisionResultQueueByCode.set(provisioningCode, resultQueue);
 
     const envelopeData = Proto.ProvisionMessage.encode({
-      aciIdentityKeyPrivate: identityKey.serialize(),
-      aciIdentityKeyPublic: identityKey.getPublicKey().serialize(),
-      pniIdentityKeyPrivate: identityKey.serialize(),
-      pniIdentityKeyPublic: identityKey.getPublicKey().serialize(),
+      aciIdentityKeyPrivate: aciIdentityKey.serialize(),
+      aciIdentityKeyPublic: aciIdentityKey.getPublicKey().serialize(),
+      pniIdentityKeyPrivate: pniIdentityKey.serialize(),
+      pniIdentityKeyPublic: pniIdentityKey.getPublicKey().serialize(),
       number: primaryDevice.device.number,
       aci: primaryDevice.device.uuid,
       pni: primaryDevice.device.pni,
@@ -401,6 +409,7 @@ export class Server extends BaseServer {
 
   public async handleMessage(
     source: Device | undefined,
+    uuidKind: UUIDKind,
     envelopeType: EnvelopeType,
     target: Device,
     encrypted: Buffer,
@@ -423,7 +432,7 @@ export class Server extends BaseServer {
       return;
     }
 
-    await primary.handleEnvelope(source, envelopeType, encrypted);
+    await primary.handleEnvelope(source, uuidKind, envelopeType, encrypted);
   }
 
   //
@@ -435,11 +444,12 @@ export class Server extends BaseServer {
 
   public override async updateDeviceKeys(
     device: Device,
+    uuidKind: UUIDKind,
     keys: DeviceKeys,
   ): Promise<void> {
-    await super.updateDeviceKeys(device, keys);
+    await super.updateDeviceKeys(device, uuidKind, keys);
 
-    const key = `${device.uuid}.${device.registrationId}`;
+    const key = `${device.uuid}.${device.registrationId}.${uuidKind}`;
 
     // Device is marked as provisioned only once we have its keys
     const resultQueue = this.provisionResultQueueByKey.get(key);
@@ -468,7 +478,7 @@ export class Server extends BaseServer {
       provisioningCode,
       registrationId);
 
-    const key = `${device.uuid}.${device.registrationId}`;
+    const key = `${device.uuid}.${device.registrationId}.${UUIDKind.ACI}`;
 
     this.provisionResultQueueByKey.set(key, queue);
 

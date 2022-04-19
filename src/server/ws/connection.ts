@@ -75,7 +75,8 @@ export class Connection extends Service {
         credential = response?.serialize();
       }
 
-      const identityKey = await device.getIdentityKey();
+      const uuidKind = device.getUUIDKind(uuid);
+      const identityKey = await device.getIdentityKey(uuidKind);
 
       return [ 200, {
         name: device.profileName,
@@ -233,6 +234,7 @@ export class Connection extends Service {
           assert.ok(prepared.status === 'ok');
           return this.server.handlePreparedMultiDeviceMessage(
             undefined,
+            prepared.targetUUID,
             prepared.result,
           );
         }));
@@ -262,6 +264,7 @@ export class Connection extends Service {
       case 'ok':
         await this.server.handlePreparedMultiDeviceMessage(
           this.device,
+          prepared.targetUUID,
           prepared.result,
         );
         return [ 200, { ok: true } ];
@@ -350,7 +353,7 @@ export class Connection extends Service {
           throw new Error('No support for unauthorized delivery');
         }
 
-        let uuidKind: UUIDKind;
+        let uuidKind = UUIDKind.ACI;
         if (identity === 'aci') {
           uuidKind = UUIDKind.ACI;
         } else if (identity === 'pni') {

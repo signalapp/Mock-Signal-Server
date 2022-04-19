@@ -39,7 +39,7 @@ import {
 
 import { signalservice as Proto } from '../../protos/compiled';
 import { INITIAL_PREKEY_COUNT } from '../constants';
-import { DeviceId, UUID } from '../types';
+import { DeviceId, UUID, UUIDKind } from '../types';
 import { Contact } from '../data/contacts';
 import { Group as GroupData } from '../data/group';
 import {
@@ -136,6 +136,7 @@ export type ReceiptOptions = Readonly<{
 
 export type MessageQueueEntry = Readonly<{
   source: Device;
+  uuidKind: UUIDKind;
   envelopeType: EnvelopeType;
   body: string;
   dataMessage: Proto.IDataMessage;
@@ -300,20 +301,22 @@ export class PrimaryDevice {
   private readonly syncStates = new WeakMap<Device, SyncEntry>();
   private readonly storageKey = crypto.randomBytes(16);
   private readonly privateKey = PrivateKey.generate();
+  private readonly pniPrivateKey = PrivateKey.generate();
   private readonly contactsBlob: Proto.IAttachmentPointer;
   private readonly groupsBlob: Proto.IAttachmentPointer;
   private privSenderCertificate: SenderCertificate | undefined;
   private readonly messageQueue = new PromiseQueue<MessageQueueEntry>();
 
   // Various stores
-  private readonly signedPreKeys = new SignedPreKeyStore();
-  private readonly preKeys = new PreKeyStore();
-  private readonly sessions = new SessionStore();
-  private readonly senderKeys = new SenderKeyStore();
-  private readonly identity: IdentityStore;
+  private readonly signedPreKeys = new Map<UUIDKind, SignedPreKeyStore>();
+  private readonly preKeys = new Map<UUIDKind, PreKeyStore>();
+  private readonly sessions = new Map<UUIDKind, SessionStore>();
+  private readonly senderKeys = new Map<UUIDKind, SenderKeyStore>();
+  private readonly identity = new Map<UUIDKind, IdentityStore>();
 
   public readonly signedPreKeyId: number = 1;
   public readonly publicKey = this.privateKey.getPublicKey();
+  public readonly pniPublicKey = this.pniPrivateKey.getPublicKey();
   public readonly profileKey: ProfileKey;
   public readonly profileName: string;
   public readonly secondaryDevices = new Array<Device>();
@@ -325,8 +328,18 @@ export class PrimaryDevice {
     public readonly device: Device,
     private readonly config: Config,
   ) {
-    this.identity = new IdentityStore(
-      this.privateKey, this.device.registrationId);
+    for (const uuidKind of [ UUIDKind.ACI, UUIDKind.PNI ]) {
+      this.identity.set(uuidKind, new IdentityStore(
+        uuidKind === UUIDKind.ACI ? this.privateKey : this.pniPrivateKey,
+        // TODO(indutny): different registration id for PNI
+        this.device.registrationId,
+      ));
+
+      this.preKeys.set(uuidKind, new PreKeyStore());
+      this.signedPreKeys.set(uuidKind, new SignedPreKeyStore());
+      this.sessions.set(uuidKind, new SessionStore());
+      this.senderKeys.set(uuidKind, new SenderKeyStore());
+    }
 
     this.contactsBlob = this.config.contacts;
     this.groupsBlob = this.config.groups;
@@ -345,9 +358,18 @@ export class PrimaryDevice {
       throw new Error('Already initialized');
     }
 
-    await this.identity.saveIdentity(this.device.address, this.publicKey);
-
-    await this.device.setKeys(await this.generateKeys(this.device, preKeyCount));
+    for (const uuidKind of [ UUIDKind.ACI, UUIDKind.PNI ]) {
+      const identity = this.identity.get(uuidKind);
+      assert.ok(identity);
+      await identity.saveIdentity(
+        this.device.address,
+        uuidKind === UUIDKind.ACI ? this.publicKey : this.pniPublicKey,
+      );
+      await this.device.setKeys(
+        uuidKind,
+        await this.generateKeys(this.device, uuidKind, preKeyCount),
+      );
+    }
 
     this.privSenderCertificate = await this.config.getSenderCertificate();
 
@@ -382,6 +404,7 @@ export class PrimaryDevice {
 
   public async generateKeys(
     device: Device,
+    uuidKind: UUIDKind,
     preKeyCount = INITIAL_PREKEY_COUNT,
   ): Promise<DeviceKeys> {
     const signedPreKey = PrivateKey.generate();
@@ -398,7 +421,7 @@ export class PrimaryDevice {
       signedPreKeySig);
 
     if (shouldSave) {
-      await this.signedPreKeys.saveSignedPreKey(
+      await this.signedPreKeys.get(uuidKind)?.saveSignedPreKey(
         this.signedPreKeyId,
         record);
     }
@@ -411,7 +434,7 @@ export class PrimaryDevice {
 
       const record = PreKeyRecord.new(i, publicKey, preKey);
       if (shouldSave) {
-        await this.preKeys.savePreKey(i, record);
+        await this.preKeys.get(uuidKind)?.savePreKey(i, record);
       }
 
       preKeys.push({ keyId: i, publicKey });
@@ -428,8 +451,10 @@ export class PrimaryDevice {
     };
   }
 
-  public async getIdentityKey(): Promise<PrivateKey> {
-    return await this.identity.getIdentityKey();
+  public async getIdentityKey(uuidKind: UUIDKind): Promise<PrivateKey> {
+    const identity = this.identity.get(uuidKind);
+    assert.ok(identity);
+    return identity.getIdentityKey();
   }
 
   public async addSingleUseKey(
@@ -439,7 +464,12 @@ export class PrimaryDevice {
     assert.ok(this.isInitialized, 'Not initialized');
     debug('adding singleUseKey for', target.debugId);
 
-    await this.identity.saveIdentity(target.address, key.identityKey);
+    // Outgoing stores
+    const identity = this.identity.get(UUIDKind.ACI);
+    const sessions = this.sessions.get(UUIDKind.ACI);
+    assert(identity && sessions);
+
+    await identity.saveIdentity(target.address, key.identityKey);
 
     const bundle = PreKeyBundle.new(
       target.registrationId,
@@ -454,8 +484,8 @@ export class PrimaryDevice {
     await SignalClient.processPreKeyBundle(
       bundle,
       target.address,
-      this.sessions,
-      this.identity);
+      sessions,
+      identity);
   }
 
   //
@@ -631,20 +661,23 @@ export class PrimaryDevice {
 
   public async handleEnvelope(
     source: Device | undefined,
+    uuidKind: UUIDKind,
     envelopeType: EnvelopeType,
     encrypted: Buffer,
   ): Promise<void> {
     const { unsealedSource, content, envelopeType: unsealedType } =
       await this.lock(async () => {
-        return await this.decrypt(source, envelopeType, encrypted);
+        return await this.decrypt(source, uuidKind, envelopeType, encrypted);
       });
 
     let handled = true;
     if (content.syncMessage) {
+      assert.strictEqual(uuidKind, UUIDKind.ACI, 'Got sync message on PNI');
       await this.handleSync(unsealedSource, content.syncMessage);
     } else if (content.dataMessage) {
       await this.handleDataMessage(
         unsealedSource,
+        uuidKind,
         unsealedType,
         content.dataMessage,
       );
@@ -806,8 +839,12 @@ export class PrimaryDevice {
       throw new Error('Unsupported envelope type');
     }
 
+    const uuidKind = envelope.destinationUuid ?
+      this.device.getUUIDKind(envelope.destinationUuid) :
+      UUIDKind.ACI;
+
     return await this.handleEnvelope(
-      source, envelopeType, Buffer.from(envelope.content));
+      source, uuidKind, envelopeType, Buffer.from(envelope.content));
   }
 
   public async waitForMessage(): Promise<MessageQueueEntry> {
@@ -928,12 +965,14 @@ export class PrimaryDevice {
 
   private async handleDataMessage(
     source: Device,
+    uuidKind: UUIDKind,
     envelopeType: EnvelopeType,
     dataMessage: Proto.IDataMessage,
   ): Promise<void> {
     const { body } = dataMessage;
     this.messageQueue.push({
       source,
+      uuidKind,
       body: body ?? '',
       envelopeType,
       dataMessage,
@@ -956,21 +995,26 @@ export class PrimaryDevice {
     let envelopeType: Proto.Envelope.Type;
     let content: Buffer;
 
+    // Outgoing stores
+    const sessions = this.sessions.get(UUIDKind.ACI);
+    const identity = this.identity.get(UUIDKind.ACI);
+    assert(sessions && identity);
+
     if (sealed) {
       content = await SignalClient.sealedSenderEncryptMessage(
         paddedMessage,
         target.address,
         this.senderCertificate,
-        this.sessions,
-        this.identity);
+        sessions,
+        identity);
 
       envelopeType = Proto.Envelope.Type.UNIDENTIFIED_SENDER;
     } else {
       const ciphertext = await SignalClient.signalEncrypt(
         paddedMessage,
         target.address,
-        this.sessions,
-        this.identity);
+        sessions,
+        identity);
       content = ciphertext.serialize();
 
       if (ciphertext.type() === CiphertextMessageType.Whisper) {
@@ -1000,10 +1044,18 @@ export class PrimaryDevice {
 
   private async decrypt(
     source: Device | undefined,
+    uuidKind: UUIDKind,
     envelopeType: EnvelopeType,
     encrypted: Buffer,
   ): Promise<DecryptResult> {
     debug('decrypting envelope type=%s start', envelopeType);
+
+    const sessions = this.sessions.get(uuidKind);
+    const identity = this.identity.get(uuidKind);
+    const preKeys = this.preKeys.get(uuidKind);
+    const signedPreKeys = this.signedPreKeys.get(uuidKind);
+    const senderKeys = this.senderKeys.get(uuidKind);
+    assert(sessions && identity && preKeys && signedPreKeys && senderKeys);
 
     let decrypted: Buffer;
     if (envelopeType === EnvelopeType.CipherText) {
@@ -1012,31 +1064,32 @@ export class PrimaryDevice {
       decrypted = await SignalClient.signalDecrypt(
         SignalMessage.deserialize(encrypted),
         source.address,
-        this.sessions,
-        this.identity);
+        sessions,
+        identity);
     } else if (envelopeType === EnvelopeType.PreKey) {
       assert(source !== undefined, 'PreKey must have source');
 
       decrypted = await SignalClient.signalDecryptPreKey(
         PreKeySignalMessage.deserialize(encrypted),
         source.address,
-        this.sessions,
-        this.identity,
-        this.preKeys,
-        this.signedPreKeys);
+        sessions,
+        identity,
+        preKeys,
+        signedPreKeys);
     } else if (envelopeType === EnvelopeType.SenderKey) {
       assert(source !== undefined, 'SenderKey must have source');
 
       decrypted = await SignalClient.groupDecrypt(
         source.address,
-        this.senderKeys,
+        senderKeys,
         encrypted,
       );
     } else if (envelopeType === EnvelopeType.SealedSender) {
+      assert.strictEqual(uuidKind, UUIDKind.ACI, 'Got sealed message on PNI');
       assert(source === undefined, 'Sealed sender must have no source');
 
       const usmc =
-        await SignalClient.sealedSenderDecryptToUsmc(encrypted, this.identity);
+        await SignalClient.sealedSenderDecryptToUsmc(encrypted, identity);
 
       const unsealedType = usmc.msgType();
       const certificate = usmc.senderCertificate();
@@ -1065,6 +1118,7 @@ export class PrimaryDevice {
       // sender key.
       return this.decrypt(
         sender,
+        uuidKind,
         subType,
         usmc.contents(),
       );
@@ -1118,11 +1172,14 @@ export class PrimaryDevice {
       Buffer.from(rawMessage),
     );
 
+    const senderKeys = this.senderKeys.get(UUIDKind.ACI);
+    assert(senderKeys);
+
     debug('received SKDM from', source.debugId);
     await SignalClient.processSenderKeyDistributionMessage(
       source.address,
       message,
-      this.senderKeys,
+      senderKeys,
     );
   }
 
