@@ -26,9 +26,9 @@ message Envelope {
   optional string source          = 2;
   optional string sourceUuid      = 11;
   optional uint32 sourceDevice    = 7;
-  optional string relay           = 3;
+  // reserved                          3; // formerly optional string relay = 3;
   optional uint64 timestamp       = 5;
-  optional bytes  legacyMessage   = 6; // Contains an encrypted DataMessage
+  // reserved                          6; // formerly optional bytes legacyMessage = 6;
   optional bytes  content         = 8; // Contains an encrypted Content
   optional string serverGuid      = 9;
   optional uint64 serverTimestamp = 10;
@@ -320,7 +320,37 @@ message TypingMessage {
 message StoryMessage {
   optional bytes profileKey = 1;
   optional GroupContextV2 group = 2;
-  optional AttachmentPointer attachment = 3;
+  oneof attachment {
+    AttachmentPointer fileAttachment = 3;
+    TextAttachment textAttachment = 4;
+  }
+}
+
+message TextAttachment {
+  enum Style {
+    DEFAULT = 0;
+    REGULAR = 1;
+    BOLD = 2;
+    SERIF = 3;
+    SCRIPT = 4;
+    CONDENSED = 5;
+  }
+
+  message Gradient {
+    optional uint32 startColor = 1;
+    optional uint32 endColor = 2;
+    optional uint32 angle = 3; // degrees
+  }
+
+  optional string text = 1;
+  optional Style textStyle = 2;
+  optional uint32 textForegroundColor = 3; // integer representation of hex color
+  optional uint32 textBackgroundColor = 4;
+  optional Preview preview = 5;
+  oneof background {
+    Gradient gradient = 6;
+    uint32 color = 7;
+  }
 }
 
 message Verified {
@@ -377,6 +407,7 @@ message SyncMessage {
       BLOCKED       = 3;
       CONFIGURATION = 4;
       KEYS          = 5;
+      PNI_IDENTITY  = 6;
     }
 
     optional Type type = 1;
@@ -384,6 +415,11 @@ message SyncMessage {
 
   message Keys {
     optional bytes storageService = 1;
+  }
+
+  message PniIdentity {
+    optional bytes publicKey = 1;
+    optional bytes privateKey = 2;
   }
 
   message Read {
@@ -466,6 +502,7 @@ message SyncMessage {
   optional MessageRequestResponse messageRequestResponse = 14;
   reserved                                                 15; // not yet added
   repeated Viewed                 viewed                 = 16;
+  optional PniIdentity            pniIdentity            = 17;
 }
 
 message AttachmentPointer {

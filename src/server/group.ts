@@ -76,6 +76,8 @@ export class ServerGroup extends Group {
     const member = this.getMember(auth);
     const { accessControl } = newState;
 
+    const changeEpoch = 1;
+
     if (actions.modifyTitle) {
       this.verifyAccess(
         'title',
@@ -96,8 +98,7 @@ export class ServerGroup extends Group {
 
     const groupChange: Proto.IGroupChange = {
       actions: encodedActions,
-      // TODO(indutny): Use appropriate change epoch
-      changeEpoch: 1,
+      changeEpoch,
     };
 
     assert.ok(this.privChanges?.groupChanges, 'Must be initialized');

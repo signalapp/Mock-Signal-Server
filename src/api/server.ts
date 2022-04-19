@@ -354,9 +354,13 @@ export class Server extends BaseServer {
     this.provisionResultQueueByCode.set(provisioningCode, resultQueue);
 
     const envelopeData = Proto.ProvisionMessage.encode({
-      identityKeyPrivate: identityKey.serialize(),
+      aciIdentityKeyPrivate: identityKey.serialize(),
+      aciIdentityKeyPublic: identityKey.getPublicKey().serialize(),
+      pniIdentityKeyPrivate: identityKey.serialize(),
+      pniIdentityKeyPublic: identityKey.getPublicKey().serialize(),
       number: primaryDevice.device.number,
-      uuid: primaryDevice.device.uuid,
+      aci: primaryDevice.device.uuid,
+      pni: primaryDevice.device.pni,
       provisioningCode,
       profileKey: primaryDevice.profileKey.serialize(),
       userAgent: primaryDevice.userAgent,
