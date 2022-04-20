@@ -12,7 +12,6 @@ import {
   GroupPublicParams,
   PniCredentialPresentation,
   ProfileKeyCredentialRequest,
-  ProfileKeyCredentialResponse,
   ServerSecretParams,
   ServerZkAuthOperations,
   ServerZkProfileOperations,
@@ -108,8 +107,8 @@ export type StorageWriteResult = Readonly<{
 export type ModifyGroupOptions = Readonly<{
   group: ServerGroup;
   actions: Proto.GroupChange.IActions;
-  aciCiphertext: UuidCiphertext;
-  pniCiphertext?: UuidCiphertext;
+  aciCiphertext: Uint8Array;
+  pniCiphertext?: Uint8Array;
 }>;
 
 interface WebSocket {
@@ -540,7 +539,10 @@ export abstract class Server {
     // PNI is always the source of the change when available
     const sourceUuid = pniCiphertext || aciCiphertext;
 
-    return group.modify(sourceUuid, actions);
+    return group.modify(
+      new UuidCiphertext(Buffer.from(sourceUuid)),
+      actions,
+    );
   }
 
   public async getGroup(
@@ -845,7 +847,7 @@ export abstract class Server {
   public async issueProfileKeyCredential(
     { uuid, profileKeyCommitment }: Device,
     request: ProfileKeyCredentialRequest,
-  ): Promise<ProfileKeyCredentialResponse | undefined> {
+  ): Promise<Buffer | undefined> {
     if (!profileKeyCommitment) {
       return undefined;
     }
@@ -855,7 +857,24 @@ export abstract class Server {
       request,
       uuid,
       profileKeyCommitment,
-    );
+    ).serialize();
+  }
+
+  public async issuePniCredential(
+    { uuid, pni, profileKeyCommitment }: Device,
+    request: ProfileKeyCredentialRequest,
+  ): Promise<Buffer | undefined> {
+    if (!profileKeyCommitment) {
+      return undefined;
+    }
+
+    const profile = new ServerZkProfileOperations(this.zkSecret);
+    return profile.issuePniCredential(
+      request,
+      uuid,
+      pni,
+      profileKeyCommitment,
+    ).serialize();
   }
 
   //

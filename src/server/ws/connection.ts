@@ -41,7 +41,12 @@ export class Connection extends Service {
   ) {
     super(ws);
 
-    const getProfile: Handler = async (params, _, headers) => {
+    const getProfile: Handler = async (
+      params,
+      _,
+      headers,
+      { credentialType = 'profileKey' } = {},
+    ) => {
       const uuid = params.uuid as string;
 
       const device = await this.server.getDeviceByUUID(uuid);
@@ -64,15 +69,24 @@ export class Connection extends Service {
       }
 
       let credential: Buffer | undefined;
+      let pniCredential: Buffer | undefined;
       if (params.request) {
         const request = new ProfileKeyCredentialRequest(
           Buffer.from(params.request as string, 'hex'),
         );
-        const response = await this.server.issueProfileKeyCredential(
-          device,
-          request,
-        );
-        credential = response?.serialize();
+        if (credentialType === 'profileKey') {
+          credential = await this.server.issueProfileKeyCredential(
+            device,
+            request,
+          );
+        } else if (credentialType === 'pni') {
+          pniCredential = await this.server.issuePniCredential(
+            device,
+            request,
+          );
+        } else {
+          return [ 400, { error: 'Unsupported credential type' } ];
+        }
       }
 
       const uuidKind = device.getUUIDKind(uuid);
@@ -91,6 +105,7 @@ export class Connection extends Service {
           senderKey: true,
         },
         credential: credential?.toString('base64'),
+        pniCredential: pniCredential?.toString('base64'),
       } ];
     };
     this.router.get('/v1/profile/:uuid', getProfile);

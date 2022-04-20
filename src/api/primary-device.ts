@@ -48,7 +48,12 @@ import {
   deriveAccessKey,
   encryptProfileName,
 } from '../crypto';
-import { EnvelopeType, StorageWriteResult } from '../server/base';
+import {
+  EnvelopeType,
+  ModifyGroupOptions,
+  StorageWriteResult,
+} from '../server/base';
+import { ServerGroup } from '../server/group';
 import { Device, DeviceKeys, SingleUseKey } from '../data/device';
 import { PromiseQueue, addressToString } from '../util';
 import { Group } from './group';
@@ -73,10 +78,11 @@ export type Config = Readonly<{
   issueProfileKeyCredential(
     device: Device,
     request: ProfileKeyCredentialRequest,
-  ): Promise<ProfileKeyCredentialResponse | undefined>;
+  ): Promise<Buffer | undefined>;
 
-  getGroup(publicParams: Buffer): Promise<GroupData | undefined>;
-  createGroup(group: Proto.IGroup): Promise<GroupData>;
+  getGroup(publicParams: Buffer): Promise<ServerGroup | undefined>;
+  createGroup(group: Proto.IGroup): Promise<ServerGroup>;
+  modifyGroup(options: ModifyGroupOptions): Promise<Proto.IGroupChange>;
   waitForGroupUpdate(group: GroupData): Promise<void>;
 
   getStorageManifest(): Promise<Proto.IStorageManifest | undefined>;
@@ -91,6 +97,7 @@ export type Config = Readonly<{
 export type EncryptOptions = Readonly<{
   timestamp?: number;
   sealed?: boolean;
+  uuidKind?: UUIDKind;
 }>;
 
 export type EncryptTextOptions = EncryptOptions & Readonly<{
@@ -362,7 +369,7 @@ export class PrimaryDevice {
       const identity = this.identity.get(uuidKind);
       assert.ok(identity);
       await identity.saveIdentity(
-        this.device.address,
+        this.device.getAddressByKind(uuidKind),
         uuidKind === UUIDKind.ACI ? this.publicKey : this.pniPublicKey,
       );
       await this.device.setKeys(
@@ -460,6 +467,7 @@ export class PrimaryDevice {
   public async addSingleUseKey(
     target: Device,
     key: SingleUseKey,
+    uuidKind = UUIDKind.ACI,
   ): Promise<void> {
     assert.ok(this.isInitialized, 'Not initialized');
     debug('adding singleUseKey for', target.debugId);
@@ -469,7 +477,10 @@ export class PrimaryDevice {
     const sessions = this.sessions.get(UUIDKind.ACI);
     assert(identity && sessions);
 
-    await identity.saveIdentity(target.address, key.identityKey);
+    await identity.saveIdentity(
+      target.getAddressByKind(uuidKind),
+      key.identityKey,
+    );
 
     const bundle = PreKeyBundle.new(
       target.registrationId,
@@ -483,7 +494,7 @@ export class PrimaryDevice {
     );
     await SignalClient.processPreKeyBundle(
       bundle,
-      target.address,
+      target.getAddressByKind(uuidKind),
       sessions,
       identity);
   }
@@ -548,7 +559,10 @@ export class PrimaryDevice {
         `Member device ${device.uuid} not initialized`,
       );
 
-      const credential = ops.receiveProfileKeyCredential(ctx, response);
+      const credential = ops.receiveProfileKeyCredential(
+        ctx,
+        new ProfileKeyCredentialResponse(response),
+      );
 
       const presentation = ops.createProfileKeyCredentialPresentation(
         groupParams,
@@ -586,6 +600,58 @@ export class PrimaryDevice {
       secretParams: group.secretParams,
       groupState: serverGroup.state,
     });
+  }
+
+  public async inviteToGroup(
+    group: Group,
+    device: Device,
+    options: EncryptOptions = {},
+  ): Promise<Group> {
+    const serverGroup = await this.config.getGroup(
+      group.publicParams.serialize(),
+    );
+    assert(serverGroup !== undefined, 'Group does not exist on server');
+
+    const { uuidKind = UUIDKind.ACI } = options;
+
+    const targetUUID = device.getUUIDByKind(uuidKind);
+    const userId = group.encryptUUID(targetUUID);
+
+    const signedChange = await this.config.modifyGroup({
+      group: serverGroup,
+      actions: {
+        version: group.revision + 1,
+        addPendingMembers: [ {
+          added: {
+            member: { userId, role: Proto.Member.Role.DEFAULT },
+          },
+        } ],
+      },
+      aciCiphertext: group.encryptUUID(this.device.uuid),
+    });
+
+    const updatedGroup = new Group({
+      secretParams: group.secretParams,
+      groupState: serverGroup.state,
+    });
+
+    // Send the invitation
+    const encryptOptions = {
+      timestamp: Date.now(),
+      ...options,
+    };
+    const envelope = await this.encryptContent(device, {
+      dataMessage: {
+        groupV2: {
+          ...updatedGroup.toContext(),
+          groupChange: Proto.GroupChange.encode(signedChange).finish(),
+        },
+        timestamp: Long.fromNumber(encryptOptions.timestamp),
+      },
+    }, encryptOptions);
+    await this.config.send(device, envelope);
+
+    return updatedGroup;
   }
 
   //
@@ -982,7 +1048,11 @@ export class PrimaryDevice {
   private async encrypt(
     target: Device,
     message: Buffer,
-    { timestamp = Date.now(), sealed = false }: EncryptOptions = {},
+    {
+      timestamp = Date.now(),
+      sealed = false,
+      uuidKind = UUIDKind.ACI,
+    }: EncryptOptions = {},
   ): Promise<Buffer> {
     assert.ok(this.isInitialized, 'Not initialized');
 
@@ -1003,7 +1073,7 @@ export class PrimaryDevice {
     if (sealed) {
       content = await SignalClient.sealedSenderEncryptMessage(
         paddedMessage,
-        target.address,
+        target.getAddressByKind(uuidKind),
         this.senderCertificate,
         sessions,
         identity);
@@ -1012,7 +1082,7 @@ export class PrimaryDevice {
     } else {
       const ciphertext = await SignalClient.signalEncrypt(
         paddedMessage,
-        target.address,
+        target.getAddressByKind(uuidKind),
         sessions,
         identity);
       content = ciphertext.serialize();
@@ -1031,8 +1101,8 @@ export class PrimaryDevice {
       type: envelopeType,
       sourceUuid: this.device.uuid,
       sourceDevice: this.device.deviceId,
+      destinationUuid: target.getUUIDByKind(uuidKind),
       serverTimestamp: Long.fromNumber(timestamp),
-      destinationUuid: target.uuid,
       timestamp: Long.fromNumber(timestamp),
       content,
     }).finish());
@@ -1063,7 +1133,7 @@ export class PrimaryDevice {
 
       decrypted = await SignalClient.signalDecrypt(
         SignalMessage.deserialize(encrypted),
-        source.address,
+        source.getAddressByKind(uuidKind),
         sessions,
         identity);
     } else if (envelopeType === EnvelopeType.PreKey) {
@@ -1071,7 +1141,7 @@ export class PrimaryDevice {
 
       decrypted = await SignalClient.signalDecryptPreKey(
         PreKeySignalMessage.deserialize(encrypted),
-        source.address,
+        source.getAddressByKind(uuidKind),
         sessions,
         identity,
         preKeys,
@@ -1080,7 +1150,7 @@ export class PrimaryDevice {
       assert(source !== undefined, 'SenderKey must have source');
 
       decrypted = await SignalClient.groupDecrypt(
-        source.address,
+        source.getAddressByKind(uuidKind),
         senderKeys,
         encrypted,
       );

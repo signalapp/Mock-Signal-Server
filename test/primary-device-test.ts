@@ -61,6 +61,9 @@ async function createPrimaryDevice(name: string): Promise<PrimaryDevice> {
     async createGroup() {
       throw new Error('Not implemented');
     },
+    async modifyGroup() {
+      throw new Error('Not implemented');
+    },
     async waitForGroupUpdate() {
       throw new Error('Not implemented');
     },

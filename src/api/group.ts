@@ -7,6 +7,7 @@ import {
   GroupSecretParams,
   ProfileKey,
   ProfileKeyCredentialPresentation,
+  UuidCiphertext,
 } from '@signalapp/libsignal-client/zkgroup';
 
 import { signalservice as Proto } from '../../protos/compiled';
@@ -116,5 +117,16 @@ export class Group extends GroupData {
       masterKey,
       revision: this.revision,
     };
+  }
+
+  public encryptUUID(uuid: UUID): Buffer {
+    const cipher = new ClientZkGroupCipher(this.secretParams);
+    return cipher.encryptUuid(uuid).serialize();
+  }
+
+  public decryptUUID(ciphertext: Uint8Array): UUID {
+    const cipher = new ClientZkGroupCipher(this.secretParams);
+    const uuidCiphertext = new UuidCiphertext(Buffer.from(ciphertext));
+    return cipher.decryptUuid(uuidCiphertext).toString();
   }
 }

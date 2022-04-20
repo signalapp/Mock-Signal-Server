@@ -301,6 +301,7 @@ export class Server extends BaseServer {
       issueProfileKeyCredential: this.issueProfileKeyCredential.bind(this),
       getGroup: this.getGroup.bind(this),
       createGroup: this.createGroup.bind(this),
+      modifyGroup: this.modifyGroup.bind(this),
       waitForGroupUpdate: this.waitForGroupUpdate.bind(this),
       getStorageManifest: this.getStorageManifest.bind(this, device),
       getStorageItem: this.getStorageItem.bind(this, device),

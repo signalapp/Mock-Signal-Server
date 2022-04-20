@@ -425,8 +425,8 @@ export const createHandler = (server: Server): RequestHandler => {
     try {
       const signedChange = await server.modifyGroup({
         group,
-        aciCiphertext,
-        pniCiphertext,
+        aciCiphertext: aciCiphertext.serialize(),
+        pniCiphertext: pniCiphertext?.serialize(),
         actions,
       });
 

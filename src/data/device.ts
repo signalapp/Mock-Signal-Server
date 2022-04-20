@@ -53,6 +53,7 @@ export class Device {
   public readonly deviceId: DeviceId;
   public readonly registrationId: RegistrationId;
   public readonly address: ProtocolAddress;
+  public readonly pniAddress: ProtocolAddress;
 
   public accessKey?: Buffer;
   public profileKeyCommitment?: ProfileKeyCommitment;
@@ -68,6 +69,7 @@ export class Device {
     this.registrationId = options.registrationId;
 
     this.address = ProtocolAddress.new(this.uuid, this.deviceId);
+    this.pniAddress = ProtocolAddress.new(this.pni, this.deviceId);
   }
 
   public get debugId(): string {
@@ -134,5 +136,14 @@ export class Device {
       return UUIDKind.PNI;
     }
     throw new Error(`Unknown uuid: ${uuid}`);
+  }
+
+  public getAddressByKind(uuidKind: UUIDKind): ProtocolAddress {
+    switch (uuidKind) {
+    case UUIDKind.ACI:
+      return this.address;
+    case UUIDKind.PNI:
+      return this.pniAddress;
+    }
   }
 }

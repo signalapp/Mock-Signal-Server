@@ -103,8 +103,9 @@ export class ServerGroup extends Group {
       const { member } = added;
       assert.ok(member, 'Missing addPendingMembers.added.member');
 
-      const { userId } = member;
+      const { userId, role } = member;
       assert.ok(userId, 'Missing addPendingMembers.added.member.userId');
+      assert.ok(role, 'Missing addPendingMembers.added.member.role');
 
       this.verifyAccess(
         'pendingMembers',
@@ -113,7 +114,7 @@ export class ServerGroup extends Group {
       );
 
       const newPendingMember = {
-        member: { userId },
+        member: { userId, role },
         addedByUserId: sourceUuid.serialize(),
         timestamp,
       };
@@ -133,11 +134,9 @@ export class ServerGroup extends Group {
     for (const { deletedUserId } of deletePendingMembers) {
       assert.ok(deletedUserId, 'Missing deletedUserId');
 
-      this.verifyAccess(
-        'pendingMembers',
-        authMember,
-        accessControl?.members ?? AccessRequired.UNKNOWN,
-        deletedUserId ?? undefined,
+      assert.ok(
+        Buffer.from(deletedUserId).equals(sourceUuid.serialize()),
+        'Not a pending member',
       );
 
       const pendingMember = this.getPendingMember(
@@ -171,11 +170,11 @@ export class ServerGroup extends Group {
         presentationFFI,
       );
 
-      this.verifyAccess(
-        'pendingMembers',
-        authMember,
-        accessControl?.members ?? AccessRequired.UNKNOWN,
-        presentationFFI.getPniCiphertext()?.serialize(),
+      assert.ok(
+        presentationFFI.getPniCiphertext().serialize().equals(
+          sourceUuid.serialize(),
+        ),
+        'Not a pending member',
       );
 
       const pendingMember = this.getPendingMember(
