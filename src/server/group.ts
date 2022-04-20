@@ -181,6 +181,56 @@ export class ServerGroup extends Group {
       ];
     }
 
+    const promotePendingMembers = actions.promotePendingMembers ?? [];
+    for (const { presentation } of promotePendingMembers) {
+      assert.ok(
+        presentation,
+        'Missing presentation in promotePendingMembers',
+      );
+      const presentationFFI = new ProfileKeyCredentialPresentation(
+        Buffer.from(presentation),
+      );
+      this.profileOps.verifyProfileKeyCredentialPresentation(
+        this.publicParams,
+        presentationFFI,
+      );
+
+      assert.ok(
+        presentationFFI.getUuidCiphertext().serialize().equals(
+          sourceUuid.serialize(),
+        ),
+        'Not a pending member',
+      );
+
+      const pendingMember = this.getPendingMember(
+        presentationFFI.getUuidCiphertext(),
+      );
+      assert.ok(pendingMember, 'No pending member');
+      assert.ok(
+        !this.getMember(presentationFFI.getUuidCiphertext()),
+        'Member is both pending and active',
+      );
+
+      newState.membersPendingProfileKey =
+        (newState.membersPendingProfileKey ?? []).filter(
+          entry => entry !== pendingMember,
+        );
+
+      newState.members = [
+        ...(newState.members ?? []),
+        {
+          role: Role.DEFAULT,
+          userId: presentationFFI.getUuidCiphertext().serialize(),
+          profileKey: presentationFFI.getProfileKeyCiphertext().serialize(),
+        },
+      ];
+
+      appliedActions.promotePendingMembers = [
+        ...(appliedActions.promotePendingMembers ?? []),
+        { presentation },
+      ];
+    }
+
     const promotePNIMembers = actions.promoteMembersPendingPniAciProfileKey;
     for (const { presentation } of promotePNIMembers ?? []) {
       assert.ok(
