@@ -76,6 +76,7 @@ export class ServerGroup extends Group {
     actions: Proto.GroupChange.IActions,
   ): ModifyGroupResult {
     const appliedActions: Proto.GroupChange.IActions = {
+      version: actions.version,
       sourceUuid: sourceUuid.serialize(),
     };
 
