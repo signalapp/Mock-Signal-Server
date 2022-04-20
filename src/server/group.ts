@@ -96,6 +96,32 @@ export class ServerGroup extends Group {
       newState.title = actions.modifyTitle.title;
     }
 
+    const deleteMembers = actions.deleteMembers ?? [];
+    for (const { deletedUserId } of deleteMembers) {
+      assert.ok(deletedUserId, 'Missing deletedUserId');
+
+      this.verifyAccess(
+        'members',
+        authMember,
+        accessControl?.members ?? AccessRequired.UNKNOWN,
+        deletedUserId,
+      );
+
+      const member = this.getMember(
+        new UuidCiphertext(Buffer.from(deletedUserId)),
+      );
+      assert.ok(member, 'Pending member not found for deletion');
+
+      newState.members = (newState.members ?? []).filter(
+        entry => entry !== member,
+      );
+
+      appliedActions.deleteMembers = [
+        ...(appliedActions.deleteMembers ?? []),
+        { deletedUserId },
+      ];
+    }
+
     const addPendingMembers = actions.addPendingMembers ?? [];
     for (const { added } of addPendingMembers) {
       assert.ok(added, 'Missing addPendingMember.added');
