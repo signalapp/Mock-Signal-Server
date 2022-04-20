@@ -45,6 +45,7 @@ import {
   Server as BaseServer,
   EnvelopeType,
   ModifyGroupOptions,
+  ModifyGroupResult,
   ProvisioningResponse,
 } from '../server/base';
 import { Device, DeviceKeys } from '../data/device';
@@ -508,7 +509,7 @@ export class Server extends BaseServer {
   // Override updateGroup to notify about group modifications
   public override async modifyGroup(
     options: ModifyGroupOptions,
-  ): Promise<Proto.IGroupChange> {
+  ): Promise<ModifyGroupResult> {
     const { group } = options;
     debug('modifyGroup', group.id);
 

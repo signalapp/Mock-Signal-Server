@@ -51,6 +51,7 @@ import {
 import {
   EnvelopeType,
   ModifyGroupOptions,
+  ModifyGroupResult,
   StorageWriteResult,
 } from '../server/base';
 import { ServerGroup } from '../server/group';
@@ -82,7 +83,7 @@ export type Config = Readonly<{
 
   getGroup(publicParams: Buffer): Promise<ServerGroup | undefined>;
   createGroup(group: Proto.IGroup): Promise<ServerGroup>;
-  modifyGroup(options: ModifyGroupOptions): Promise<Proto.IGroupChange>;
+  modifyGroup(options: ModifyGroupOptions): Promise<ModifyGroupResult>;
   waitForGroupUpdate(group: GroupData): Promise<void>;
 
   getStorageManifest(): Promise<Proto.IStorageManifest | undefined>;
@@ -617,7 +618,7 @@ export class PrimaryDevice {
     const targetUUID = device.getUUIDByKind(uuidKind);
     const userId = group.encryptUUID(targetUUID);
 
-    const signedChange = await this.config.modifyGroup({
+    const modifyResult = await this.config.modifyGroup({
       group: serverGroup,
       actions: {
         version: group.revision + 1,
@@ -629,6 +630,8 @@ export class PrimaryDevice {
       },
       aciCiphertext: group.encryptUUID(this.device.uuid),
     });
+
+    assert(!modifyResult.conflict, 'Group update conflict!');
 
     const updatedGroup = new Group({
       secretParams: group.secretParams,
@@ -644,7 +647,7 @@ export class PrimaryDevice {
       dataMessage: {
         groupV2: {
           ...updatedGroup.toContext(),
-          groupChange: Proto.GroupChange.encode(signedChange).finish(),
+          groupChange: Proto.GroupChange.encode(modifyResult.signedChange).finish(),
         },
         timestamp: Long.fromNumber(encryptOptions.timestamp),
       },

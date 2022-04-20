@@ -423,14 +423,18 @@ export const createHandler = (server: Server): RequestHandler => {
     const { group, aciCiphertext, pniCiphertext } = auth;
 
     try {
-      const signedChange = await server.modifyGroup({
+      const modifyResult = await server.modifyGroup({
         group,
         aciCiphertext: aciCiphertext.serialize(),
         pniCiphertext: pniCiphertext?.serialize(),
         actions,
       });
 
-      return send(res, 200, Proto.GroupChange.encode(signedChange).finish());
+      if (modifyResult.conflict) {
+        return send(res, 409, { error: 'Conflict' });
+      }
+
+      return send(res, 200, Proto.GroupChange.encode(modifyResult.signedChange).finish());
     } catch (error) {
       assert(error instanceof Error);
 

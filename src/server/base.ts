@@ -39,7 +39,7 @@ import {
 } from '../types';
 import { getEpochDay } from '../util';
 import { JSONMessage } from '../data/json.d';
-import { ServerGroup } from './group';
+import { ModifyGroupResult, ServerGroup } from './group';
 
 export enum EnvelopeType {
   CipherText = 'CipherText',
@@ -110,6 +110,8 @@ export type ModifyGroupOptions = Readonly<{
   aciCiphertext: Uint8Array;
   pniCiphertext?: Uint8Array;
 }>;
+
+export { ModifyGroupResult };
 
 interface WebSocket {
   sendMessage(message: Buffer | 'empty'): Promise<void>;
@@ -535,7 +537,7 @@ export abstract class Server {
     actions,
     aciCiphertext,
     pniCiphertext,
-  }: ModifyGroupOptions): Promise<Proto.IGroupChange> {
+  }: ModifyGroupOptions): Promise<ModifyGroupResult> {
     // PNI is always the source of the change when available
     const sourceUuid = pniCiphertext || aciCiphertext;
 

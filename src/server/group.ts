@@ -21,6 +21,14 @@ export type ServerGroupOptions = Readonly<{
   state: Proto.IGroup,
 }>;
 
+export type ModifyGroupResult = Readonly<{
+  conflict: false;
+  signedChange: Proto.IGroupChange;
+} | {
+  conflict: true;
+  signedChange: undefined;
+}>;
+
 const { AccessRequired } = Proto.AccessControl;
 const { Role } = Proto.Member;
 
@@ -66,7 +74,7 @@ export class ServerGroup extends Group {
   public modify(
     sourceUuid: UuidCiphertext,
     actions: Proto.GroupChange.IActions,
-  ): Proto.IGroupChange {
+  ): ModifyGroupResult {
     const appliedActions: Proto.GroupChange.IActions = {
       sourceUuid: sourceUuid.serialize(),
     };
@@ -288,10 +296,9 @@ export class ServerGroup extends Group {
       typeof oldVersion === 'number',
       'Group must have existing version',
     );
-    assert.ok(
-      actions.version === oldVersion + 1,
-      `Group version can't jump from ${oldVersion} to ${actions.version}`,
-    );
+    if (actions.version !== oldVersion + 1) {
+      return { conflict: true, signedChange: undefined };
+    }
 
     const encodedActions = Proto.GroupChange.Actions.encode(
       appliedActions,
@@ -312,8 +319,11 @@ export class ServerGroup extends Group {
     });
 
     return {
-      ...groupChange,
-      serverSignature,
+      conflict: false,
+      signedChange: {
+        ...groupChange,
+        serverSignature,
+      },
     };
   }
 
