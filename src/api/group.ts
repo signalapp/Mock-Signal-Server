@@ -129,4 +129,16 @@ export class Group extends GroupData {
     const uuidCiphertext = new UuidCiphertext(Buffer.from(ciphertext));
     return cipher.decryptUuid(uuidCiphertext).toString();
   }
+
+  public getMemberByUUID(
+    uuid: UUID,
+  ): Proto.IMember | undefined {
+    return this.getMember(new UuidCiphertext(this.encryptUUID(uuid)));
+  }
+
+  public getPendingMemberByUUID(
+    uuid: UUID,
+  ): Proto.IMemberPendingProfileKey | undefined {
+    return this.getPendingMember(new UuidCiphertext(this.encryptUUID(uuid)));
+  }
 }
