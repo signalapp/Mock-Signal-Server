@@ -117,6 +117,9 @@ message GroupChange {
 
     message PromoteMemberPendingPniAciProfileKeyAction {
       bytes presentation = 1;
+      bytes user_id = 2;
+      bytes pni = 3;
+      bytes profile_key = 4;
     }
 
     message AddMemberPendingAdminApprovalAction {

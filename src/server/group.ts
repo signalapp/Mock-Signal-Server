@@ -255,21 +255,18 @@ export class ServerGroup extends Group {
         presentationFFI,
       );
 
+      const aci = presentationFFI.getAciCiphertext();
+      const pni = presentationFFI.getPniCiphertext();
+      const profileKey = presentationFFI.getProfileKeyCiphertext();
+
       assert.ok(
-        presentationFFI.getPniCiphertext().serialize().equals(
-          sourceUuid.serialize(),
-        ),
+        pni.serialize().equals(sourceUuid.serialize()),
         'Not a pending member',
       );
 
-      const pendingMember = this.getPendingMember(
-        presentationFFI.getPniCiphertext(),
-      );
+      const pendingMember = this.getPendingMember(pni);
       assert.ok(pendingMember, 'No pending pni member');
-      assert.ok(
-        !this.getMember(presentationFFI.getAciCiphertext()),
-        'ACI is already a member',
-      );
+      assert.ok(!this.getMember(aci), 'ACI is already a member');
 
       newState.membersPendingProfileKey =
         (newState.membersPendingProfileKey ?? []).filter(
@@ -280,15 +277,19 @@ export class ServerGroup extends Group {
         ...(newState.members ?? []),
         {
           role: Role.DEFAULT,
-          userId: presentationFFI.getAciCiphertext().serialize(),
-          profileKey: presentationFFI.getProfileKeyCiphertext().serialize(),
+          userId: aci.serialize(),
+          profileKey: profileKey.serialize(),
         },
       ];
 
       changeEpoch = Math.max(changeEpoch, 5);
       appliedActions.promoteMembersPendingPniAciProfileKey = [
         ...(appliedActions.promoteMembersPendingPniAciProfileKey ?? []),
-        { presentation },
+        {
+          userId: aci.serialize(),
+          pni: pni.serialize(),
+          profileKey: profileKey.serialize(),
+        },
       ];
     }
 
