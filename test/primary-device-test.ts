@@ -52,7 +52,7 @@ async function createPrimaryDevice(name: string): Promise<PrimaryDevice> {
     async getDeviceByUUID() {
       throw new Error('Not implemented');
     },
-    async issueProfileKeyCredential() {
+    async issueExpiringProfileKeyCredential() {
       throw new Error('Not implemented');
     },
     async getGroup() {

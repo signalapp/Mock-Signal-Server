@@ -29,11 +29,11 @@ import * as SignalClient from '@signalapp/libsignal-client';
 import createDebug from 'debug';
 import {
   ClientZkProfileOperations,
+  ExpiringProfileKeyCredentialResponse,
   GroupMasterKey,
   GroupSecretParams,
   ProfileKey,
   ProfileKeyCredentialRequest,
-  ProfileKeyCredentialResponse,
   ServerPublicParams,
 } from '@signalapp/libsignal-client/zkgroup';
 
@@ -76,7 +76,7 @@ export type Config = Readonly<{
     uuid: UUID,
     deviceId?: DeviceId,
   ): Promise<Device | undefined>;
-  issueProfileKeyCredential(
+  issueExpiringProfileKeyCredential(
     device: Device,
     request: ProfileKeyCredentialRequest,
   ): Promise<Buffer | undefined>;
@@ -551,7 +551,7 @@ export class PrimaryDevice {
         device.uuid,
         profileKey,
       );
-      const response = await this.config.issueProfileKeyCredential(
+      const response = await this.config.issueExpiringProfileKeyCredential(
         member.device,
         ctx.getRequest(),
       );
@@ -560,12 +560,12 @@ export class PrimaryDevice {
         `Member device ${device.uuid} not initialized`,
       );
 
-      const credential = ops.receiveProfileKeyCredential(
+      const credential = ops.receiveExpiringProfileKeyCredential(
         ctx,
-        new ProfileKeyCredentialResponse(response),
+        new ExpiringProfileKeyCredentialResponse(response),
       );
 
-      const presentation = ops.createProfileKeyCredentialPresentation(
+      const presentation = ops.createExpiringProfileKeyCredentialPresentation(
         groupParams,
         credential,
       );
@@ -629,6 +629,7 @@ export class PrimaryDevice {
         } ],
       },
       aciCiphertext: group.encryptUUID(this.device.uuid),
+      pniCiphertext: group.encryptUUID(this.device.pni),
     });
 
     assert(!modifyResult.conflict, 'Group update conflict!');

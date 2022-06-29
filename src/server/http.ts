@@ -167,7 +167,7 @@ export const createHandler = (server: Server): RequestHandler => {
   type GroupAuthResult = Readonly<{
     publicParams: Buffer;
     aciCiphertext: UuidCiphertext;
-    pniCiphertext?: UuidCiphertext;
+    pniCiphertext: UuidCiphertext;
   }>;
 
   async function groupAuth(
@@ -189,27 +189,20 @@ export const createHandler = (server: Server): RequestHandler => {
     const credential = Buffer.from(password, 'hex');
 
     let aciCiphertext: UuidCiphertext;
-    let pniCiphertext: UuidCiphertext | undefined;
+    let pniCiphertext: UuidCiphertext;
     try {
-      const auth = await server.verifyGroupACICredentials(
+      const auth = await server.verifyGroupCredentials(
         publicParams,
         credential,
       );
 
       aciCiphertext = auth.getUuidCiphertext();
+      const maybePni = auth.getPniCiphertext();
+      assert(maybePni, 'Auth credentials must have PNI');
+      pniCiphertext = maybePni;
     } catch (_) {
-      try {
-        const auth = await server.verifyGroupPNICredentials(
-          publicParams,
-          credential,
-        );
-
-        aciCiphertext = auth.getAciCiphertext();
-        pniCiphertext = auth.getPniCiphertext();
-      } catch (_) {
-        send(res, 403, { error: 'Invalid credentials' });
-        return undefined;
-      }
+      send(res, 403, { error: 'Invalid credentials' });
+      return undefined;
     }
 
     return { publicParams, aciCiphertext, pniCiphertext };
@@ -218,7 +211,7 @@ export const createHandler = (server: Server): RequestHandler => {
   type GroupAuthAndFetchResult = Readonly<{
     group: ServerGroup;
     aciCiphertext: UuidCiphertext;
-    pniCiphertext?: UuidCiphertext;
+    pniCiphertext: UuidCiphertext;
   }>;
 
   async function groupAuthAndFetch(
@@ -426,7 +419,7 @@ export const createHandler = (server: Server): RequestHandler => {
       const modifyResult = await server.modifyGroup({
         group,
         aciCiphertext: aciCiphertext.serialize(),
-        pniCiphertext: pniCiphertext?.serialize(),
+        pniCiphertext: pniCiphertext.serialize(),
         actions,
       });
 

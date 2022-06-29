@@ -72,12 +72,13 @@ export class ServerGroup extends Group {
   }
 
   public modify(
-    sourceUuid: UuidCiphertext,
+    sourceACI: UuidCiphertext,
+    sourcePNI: UuidCiphertext,
     actions: Proto.GroupChange.IActions,
   ): ModifyGroupResult {
     const appliedActions: Proto.GroupChange.IActions = {
       version: actions.version,
-      sourceUuid: sourceUuid.serialize(),
+      sourceUuid: sourceACI.serialize(),
     };
 
     assert.ok(actions.version, 'Actions should have a new version');
@@ -89,7 +90,7 @@ export class ServerGroup extends Group {
       version: actions.version,
     };
 
-    const authMember = this.getMember(sourceUuid);
+    const authMember = this.getMember(sourceACI);
     const { accessControl } = newState;
 
     let changeEpoch = 1;
@@ -150,7 +151,7 @@ export class ServerGroup extends Group {
 
       const newPendingMember = {
         member: { userId, role },
-        addedByUserId: sourceUuid.serialize(),
+        addedByUserId: sourceACI.serialize(),
         timestamp,
       };
 
@@ -170,7 +171,8 @@ export class ServerGroup extends Group {
       assert.ok(deletedUserId, 'Missing deletedUserId');
 
       assert.ok(
-        Buffer.from(deletedUserId).equals(sourceUuid.serialize()),
+        Buffer.from(deletedUserId).equals(sourceACI.serialize()) ||
+          Buffer.from(deletedUserId).equals(sourcePNI.serialize()),
         'Not a pending member',
       );
 
@@ -206,7 +208,7 @@ export class ServerGroup extends Group {
 
       assert.ok(
         presentationFFI.getUuidCiphertext().serialize().equals(
-          sourceUuid.serialize(),
+          sourceACI.serialize(),
         ),
         'Not a pending member',
       );
@@ -260,7 +262,7 @@ export class ServerGroup extends Group {
       const profileKey = presentationFFI.getProfileKeyCiphertext();
 
       assert.ok(
-        pni.serialize().equals(sourceUuid.serialize()),
+        pni.serialize().equals(sourcePNI.serialize()),
         'Not a pending member',
       );
 
@@ -283,6 +285,7 @@ export class ServerGroup extends Group {
       ];
 
       changeEpoch = Math.max(changeEpoch, 5);
+      appliedActions.sourceUuid = sourcePNI.serialize();
       appliedActions.promoteMembersPendingPniAciProfileKey = [
         ...(appliedActions.promoteMembersPendingPniAciProfileKey ?? []),
         {

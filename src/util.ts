@@ -6,6 +6,8 @@ import { BufferReader } from 'protobufjs';
 import { ProtocolAddress } from '@signalapp/libsignal-client';
 import { stringify as stringifyUUID } from 'uuid';
 
+import { DAY_IN_SECONDS } from './constants';
+
 type PromiseQueueEntry<T> = Readonly<{
   value: T;
   resolvePush?: () => void;
@@ -191,10 +193,6 @@ export class PromiseQueue<T> {
   }
 }
 
-export function getEpochDay(): number {
-  return Math.floor(Date.now() / (24 * 3600 * 1000));
-}
-
 export function addressToString(address: ProtocolAddress): string {
   return `${address.name()}.${address.deviceId()}`;
 }
@@ -246,4 +244,10 @@ export function combineMultiRecipientMessage({ material, commonMaterial }: {
     material,
     commonMaterial,
   ]);
+}
+
+export function getTodayInSeconds(): number {
+  const now = Date.now() / 1000;
+
+  return now - (now % DAY_IN_SECONDS);
 }

@@ -16,7 +16,7 @@ import WebSocket from 'ws';
 import { signalservice as Proto } from '../../../protos/compiled';
 import { Device } from '../../data/device';
 import { JSONMessage, JSONMessageList } from '../../data/json.d';
-import { UUID, UUIDKind } from '../../types';
+import { UUID } from '../../types';
 import { generateAccessKeyVerifier } from '../../crypto';
 import { Server } from '../base';
 import {
@@ -45,7 +45,7 @@ export class Connection extends Service {
       params,
       _,
       headers,
-      { credentialType = 'profileKey' } = {},
+      { credentialType } = {},
     ) => {
       const uuid = params.uuid as string;
 
@@ -74,8 +74,8 @@ export class Connection extends Service {
         const request = new ProfileKeyCredentialRequest(
           Buffer.from(params.request as string, 'hex'),
         );
-        if (credentialType === 'profileKey') {
-          credential = await this.server.issueProfileKeyCredential(
+        if (credentialType === 'expiringProfileKey') {
+          credential = await this.server.issueExpiringProfileKeyCredential(
             device,
             request,
           );
@@ -361,30 +361,24 @@ export class Connection extends Service {
     //
 
     this.router.get(
-      '/v1/certificate/group/:from/:to',
-      async (params, _body, _heaers, { identity = 'aci' } = {}) => {
+      '/v1/group/auth',
+      async (_params, _body, _headers, query = {}) => {
         const device = this.device;
         if (!device) {
           throw new Error('No support for unauthorized delivery');
         }
 
-        let uuidKind = UUIDKind.ACI;
-        if (identity === 'aci') {
-          uuidKind = UUIDKind.ACI;
-        } else if (identity === 'pni') {
-          uuidKind = UUIDKind.PNI;
-        } else {
-          return [ 400, {error: 'Invalid identity query'} ];
-        }
-
-        const uuid = device.getUUIDByKind(uuidKind);
+        const {
+          redemptionStartSeconds: from,
+          redemptionEndSeconds: to,
+        } = query;
 
         return [
           200,
           {
-            credentials:  await this.server.getGroupCredentials(uuid, {
-              from: parseInt(params.from as string, 10),
-              to: parseInt(params.to as string, 10),
+            credentials:  await this.server.getGroupCredentials(device, {
+              from: parseInt(from as string, 10),
+              to: parseInt(to as string, 10),
             }),
           },
         ];

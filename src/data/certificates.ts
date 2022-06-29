@@ -7,7 +7,6 @@ import path from 'path';
 
 export type Certificates = Readonly<{
   certificateAuthority: string;
-  directoryTrustAnchor: string;
   serverPublicParams: string;
   serverTrustRoot: string;
 }>;
@@ -55,7 +54,6 @@ export async function load(): Promise<Certificates> {
 
   return {
     certificateAuthority,
-    directoryTrustAnchor: certificateAuthority,
     serverPublicParams,
     serverTrustRoot,
   };

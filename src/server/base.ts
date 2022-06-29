@@ -10,7 +10,6 @@ import { SenderCertificate } from '@signalapp/libsignal-client';
 import {
   AuthCredentialPresentation,
   GroupPublicParams,
-  PniCredentialPresentation,
   ProfileKeyCredentialRequest,
   ServerSecretParams,
   ServerZkAuthOperations,
@@ -26,8 +25,10 @@ import {
 import { Device, DeviceKeys } from '../data/device';
 import {
   ATTACHMENT_PREFIX,
+  DAY_IN_SECONDS,
   MAX_GROUP_CREDENTIALS_DAYS,
   PRIMARY_DEVICE_ID,
+  PROFILE_KEY_CREDENTIAL_EXPIRATION,
 } from '../constants';
 import {
   AttachmentId,
@@ -37,7 +38,7 @@ import {
   UUID,
   UUIDKind,
 } from '../types';
-import { getEpochDay } from '../util';
+import { getTodayInSeconds } from '../util';
 import { JSONMessage } from '../data/json.d';
 import { ModifyGroupResult, ServerGroup } from './group';
 
@@ -108,7 +109,7 @@ export type ModifyGroupOptions = Readonly<{
   group: ServerGroup;
   actions: Proto.GroupChange.IActions;
   aciCiphertext: Uint8Array;
-  pniCiphertext?: Uint8Array;
+  pniCiphertext: Uint8Array;
 }>;
 
 export { ModifyGroupResult };
@@ -538,11 +539,9 @@ export abstract class Server {
     aciCiphertext,
     pniCiphertext,
   }: ModifyGroupOptions): Promise<ModifyGroupResult> {
-    // PNI is always the source of the change when available
-    const sourceUuid = pniCiphertext || aciCiphertext;
-
     return group.modify(
-      new UuidCiphertext(Buffer.from(sourceUuid)),
+      new UuidCiphertext(Buffer.from(aciCiphertext)),
+      new UuidCiphertext(Buffer.from(pniCiphertext)),
       actions,
     );
   }
@@ -794,19 +793,28 @@ export abstract class Server {
   }
 
   public async getGroupCredentials(
-    uuid: UUID,
+    { uuid, pni }: Device,
     { from, to }: GroupCredentialsRange,
   ): Promise<GroupCredentials> {
-    const today = getEpochDay();
-    if (from > to || from < today || to > today + MAX_GROUP_CREDENTIALS_DAYS) {
+    const today = getTodayInSeconds();
+    if (
+      from > to ||
+      from < today ||
+      to > today + DAY_IN_SECONDS * MAX_GROUP_CREDENTIALS_DAYS
+    ) {
       throw new Error('Invalid redemption range');
     }
 
     const auth = new ServerZkAuthOperations(this.zkSecret);
     const result: GroupCredentials = [];
-    for (let redemptionTime = from; redemptionTime <= to; redemptionTime++) {
+
+    for (
+      let redemptionTime = from;
+      redemptionTime <= to;
+      redemptionTime += DAY_IN_SECONDS
+    ) {
       result.push({
-        credential: auth.issueAuthCredential(uuid, redemptionTime)
+        credential: auth.issueAuthCredentialWithPni(uuid, pni, redemptionTime)
           .serialize().toString('base64'),
         redemptionTime,
       });
@@ -814,7 +822,7 @@ export abstract class Server {
     return result;
   }
 
-  public async verifyGroupACICredentials(
+  public async verifyGroupCredentials(
     publicParams: Buffer,
     credential: Buffer,
   ): Promise<AuthCredentialPresentation> {
@@ -830,23 +838,7 @@ export abstract class Server {
     return presentation;
   }
 
-  public async verifyGroupPNICredentials(
-    publicParams: Buffer,
-    credential: Buffer,
-  ): Promise<PniCredentialPresentation> {
-    const profile = new ServerZkProfileOperations(this.zkSecret);
-
-    const groupParams = new GroupPublicParams(publicParams);
-    const presentation = new PniCredentialPresentation(credential);
-
-    profile.verifyPniCredentialPresentation(groupParams, presentation);
-
-    // TODO(indutny): verify credential timestamp
-
-    return presentation;
-  }
-
-  public async issueProfileKeyCredential(
+  public async issueExpiringProfileKeyCredential(
     { uuid, profileKeyCommitment }: Device,
     request: ProfileKeyCredentialRequest,
   ): Promise<Buffer | undefined> {
@@ -854,11 +846,14 @@ export abstract class Server {
       return undefined;
     }
 
+    const today = getTodayInSeconds();
+
     const profile = new ServerZkProfileOperations(this.zkSecret);
-    return profile.issueProfileKeyCredential(
+    return profile.issueExpiringProfileKeyCredential(
       request,
       uuid,
       profileKeyCommitment,
+      today + PROFILE_KEY_CREDENTIAL_EXPIRATION,
     ).serialize();
   }
 
