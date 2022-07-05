@@ -361,7 +361,7 @@ export class Connection extends Service {
     //
 
     this.router.get(
-      '/v1/group/auth',
+      '/v1/certificate/auth/group',
       async (_params, _body, _headers, query = {}) => {
         const device = this.device;
         if (!device) {

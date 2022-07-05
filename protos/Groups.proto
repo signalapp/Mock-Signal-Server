@@ -101,6 +101,8 @@ message GroupChange {
 
     message ModifyMemberProfileKeyAction {
       bytes presentation = 1;
+      bytes user_id = 2;
+      bytes profile_key = 3;
     }
 
     message AddMemberPendingProfileKeyAction {
@@ -113,6 +115,8 @@ message GroupChange {
 
     message PromoteMemberPendingProfileKeyAction {
       bytes presentation = 1;
+      bytes user_id = 2;
+      bytes profile_key = 3;
     }
 
     message PromoteMemberPendingPniAciProfileKeyAction {

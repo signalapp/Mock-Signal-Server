@@ -227,18 +227,21 @@ export class ServerGroup extends Group {
           entry => entry !== pendingMember,
         );
 
+      const userId = presentationFFI.getUuidCiphertext().serialize();
+      const profileKey = presentationFFI.getProfileKeyCiphertext().serialize();
+
       newState.members = [
         ...(newState.members ?? []),
         {
           role: Role.DEFAULT,
-          userId: presentationFFI.getUuidCiphertext().serialize(),
-          profileKey: presentationFFI.getProfileKeyCiphertext().serialize(),
+          userId,
+          profileKey,
         },
       ];
 
       appliedActions.promotePendingMembers = [
         ...(appliedActions.promotePendingMembers ?? []),
-        { presentation },
+        { userId, profileKey },
       ];
     }
 
