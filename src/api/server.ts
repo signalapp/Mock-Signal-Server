@@ -97,6 +97,11 @@ export type PendingProvisionResponse = Readonly<{
   primaryDevice: PrimaryDevice;
 }>
 
+type ProvisionResultQueue = Readonly<{
+  seenUuidKinds: Set<UUIDKind>;
+  promiseQueue: PromiseQueue<Device>;
+}>;
+
 const debug = createDebug('mock:server:mock');
 
 const CERTS_DIR = path.join(__dirname, '..', '..', 'certs');
@@ -123,8 +128,8 @@ export class Server extends BaseServer {
 
   private provisionQueue: PromiseQueue<PendingProvision>;
   private provisionResultQueueByCode =
-    new Map<ProvisioningCode, PromiseQueue<Device>>();
-  private provisionResultQueueByKey = new Map<string, PromiseQueue<Device>>();
+    new Map<ProvisioningCode, ProvisionResultQueue>();
+  private provisionResultQueueByKey = new Map<string, ProvisionResultQueue>();
   private manifestQueueByUuid = new Map<UUID, PromiseQueue<number>>();
   private groupQueueById = new Map<string, PromiseQueue<number>>();
 
@@ -381,7 +386,10 @@ export class Server extends BaseServer {
     const provisioningCode = await this.getProvisioningCode(
       uuid, primaryDevice.device.number);
 
-    this.provisionResultQueueByCode.set(provisioningCode, resultQueue);
+    this.provisionResultQueueByCode.set(provisioningCode, {
+      seenUuidKinds: new Set(),
+      promiseQueue: resultQueue,
+    });
 
     const envelopeData = Proto.ProvisionMessage.encode({
       aciIdentityKeyPrivate: aciIdentityKey.serialize(),
@@ -452,15 +460,31 @@ export class Server extends BaseServer {
   ): Promise<void> {
     await super.updateDeviceKeys(device, uuidKind, keys);
 
-    const key = `${device.uuid}.${device.registrationId}.${uuidKind}`;
+    const key = `${device.uuid}.${device.registrationId}`;
 
     // Device is marked as provisioned only once we have its keys
     const resultQueue = this.provisionResultQueueByKey.get(key);
     if (!resultQueue) {
       return;
     }
+
+    debug('updateDeviceKeys: got keys for', device.debugId, uuidKind);
+
+    const { seenUuidKinds, promiseQueue } = resultQueue;
+
+    assert(
+      !seenUuidKinds.has(uuidKind),
+      `Duplicate uuid kind ${uuidKind} for device: ${device.debugId}`);
+    seenUuidKinds.add(uuidKind);
+    if (
+      !seenUuidKinds.has(UUIDKind.ACI) ||
+      !seenUuidKinds.has(UUIDKind.PNI)
+    ) {
+      return;
+    }
+
     this.provisionResultQueueByKey.delete(key);
-    await resultQueue.pushAndWait(device);
+    await promiseQueue.pushAndWait(device);
   }
 
   public override async provisionDevice(
@@ -481,7 +505,7 @@ export class Server extends BaseServer {
       provisioningCode,
       registrationId);
 
-    const key = `${device.uuid}.${device.registrationId}.${UUIDKind.ACI}`;
+    const key = `${device.uuid}.${device.registrationId}`;
 
     this.provisionResultQueueByKey.set(key, queue);
 
