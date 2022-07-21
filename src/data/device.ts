@@ -17,6 +17,12 @@ export type DeviceOptions = Readonly<{
   registrationId: RegistrationId;
 }>;
 
+export type ChangeNumberOptions = Readonly<{
+  number: string;
+  pni: UUID;
+  pniRegistrationId: RegistrationId;
+}>;
+
 export type SignedPreKey = Readonly<{
   keyId: number;
   publicKey: PublicKey;
@@ -48,12 +54,8 @@ type InternalDeviceKeys = Readonly<{
 
 export class Device {
   public readonly uuid: UUID;
-  public readonly pni: UUID;
-  public readonly number: string;
   public readonly deviceId: DeviceId;
-  public readonly registrationId: RegistrationId;
   public readonly address: ProtocolAddress;
-  public readonly pniAddress: ProtocolAddress;
 
   public accessKey?: Buffer;
   public profileKeyCommitment?: ProfileKeyCommitment;
@@ -61,19 +63,59 @@ export class Device {
 
   private keys = new Map<UUIDKind, InternalDeviceKeys>();
 
+  private privPni: UUID;
+  private privNumber: string;
+  private privPniAddress: ProtocolAddress;
+  private readonly registrationId: RegistrationId;
+  private pniRegistrationId: RegistrationId;
+
   constructor(options: DeviceOptions) {
     this.uuid = options.uuid;
-    this.pni = options.pni;
-    this.number = options.number;
     this.deviceId = options.deviceId;
     this.registrationId = options.registrationId;
 
+    this.privPni = options.pni;
+    this.privNumber = options.number;
+    this.pniRegistrationId = options.registrationId;
+
     this.address = ProtocolAddress.new(this.uuid, this.deviceId);
-    this.pniAddress = ProtocolAddress.new(this.pni, this.deviceId);
+    this.privPniAddress = ProtocolAddress.new(this.pni, this.deviceId);
   }
 
   public get debugId(): string {
     return `${this.uuid}.${this.deviceId}`;
+  }
+
+  public getRegistrationId(uuidKind: UUIDKind): number {
+    switch (uuidKind) {
+    case UUIDKind.ACI:
+      return this.registrationId;
+    case UUIDKind.PNI:
+      return this.pniRegistrationId;
+    }
+  }
+
+  public get pni(): UUID {
+    return this.privPni;
+  }
+
+  public get number(): string {
+    return this.privNumber;
+  }
+
+  public get pniAddress(): ProtocolAddress {
+    return this.privPniAddress;
+  }
+
+  public async changeNumber({
+    number,
+    pni,
+    pniRegistrationId,
+  }: ChangeNumberOptions): Promise<void> {
+    this.privNumber = number;
+    this.privPni = pni;
+    this.pniRegistrationId = pniRegistrationId;
+    this.privPniAddress = ProtocolAddress.new(this.pni, this.deviceId);
   }
 
   public async setKeys(uuidKind: UUIDKind, keys: DeviceKeys): Promise<void> {

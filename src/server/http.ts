@@ -49,7 +49,7 @@ const sendDevicesKeys = async (
         await device.popSingleUseKey(uuidKind);
       return {
         deviceId: device.deviceId,
-        registrationId: device.registrationId,
+        registrationId: device.getRegistrationId(uuidKind),
         signedPreKey: {
           keyId: signedPreKey.keyId,
           publicKey: signedPreKey.publicKey.serialize().toString('base64'),

@@ -46,6 +46,18 @@ async function createPrimaryDevice(name: string): Promise<PrimaryDevice> {
       });
     },
 
+    async generateNumber() {
+      throw new Error('Should not be called');
+    },
+    async generateUUID() {
+      throw new Error('Should not be called');
+    },
+    async releaseUUID() {
+      throw new Error('Should not be called');
+    },
+    async changeDeviceNumber() {
+      throw new Error('Should not be called');
+    },
     async send() {
       throw new Error('Should not be called');
     },

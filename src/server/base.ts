@@ -22,7 +22,7 @@ import {
   ServerCertificate,
   generateSenderCertificate,
 } from '../crypto';
-import { Device, DeviceKeys } from '../data/device';
+import { ChangeNumberOptions, Device, DeviceKeys } from '../data/device';
 import {
   ATTACHMENT_PREFIX,
   DAY_IN_SECONDS,
@@ -180,10 +180,6 @@ export abstract class Server {
     this.usedUUIDs.delete(uuid);
   }
 
-  public async generateRegistrationId(): Promise<RegistrationId> {
-    return Math.max(1, (Math.random() * 0x4000) | 0);
-  }
-
   public abstract getProvisioningResponse(
     uuid: UUID
   ): Promise<ProvisioningResponse>;
@@ -263,6 +259,7 @@ export abstract class Server {
     const [ primary ] = this.devices.get(number) || [];
     assert(primary !== undefined, 'Missing primary device when provisioning');
 
+    // TODO(indutny): different registration id for PNI
     const device = await this.registerDevice({
       uuid: primary.uuid,
       pni: primary.pni,
@@ -298,6 +295,37 @@ export abstract class Server {
   ): Promise<void> {
     debug('setting device=%s keys', device.debugId);
     await device.setKeys(uuidKind, keys);
+  }
+
+  public async changeDeviceNumber(
+    device: Device,
+    options: ChangeNumberOptions,
+  ): Promise<void> {
+    const oldNumber = device.number;
+    const oldPni = device.pni;
+    await device.changeNumber(options);
+
+    const oldDevices = this.devices.get(oldNumber) ?? [];
+    const oldDeviceIndex = oldDevices.indexOf(device);
+    if (oldDeviceIndex !== -1) {
+      oldDevices.splice(oldDeviceIndex, 1);
+      if (oldDevices.length === 0) {
+        this.devices.delete(oldNumber);
+      }
+    }
+
+    let newDevices = this.devices.get(options.number);
+    if (!newDevices) {
+      newDevices = [];
+      this.devices.set(options.number, newDevices);
+    }
+    newDevices.push(device);
+
+    const oldPrimary = this.devicesByUUID.get(oldPni);
+    if (oldPrimary === device) {
+      this.devicesByUUID.delete(oldPni);
+      this.devicesByUUID.set(options.pni, device);
+    }
   }
 
   //
@@ -366,9 +394,11 @@ export abstract class Server {
         continue;
       }
 
+      const uuidKind = target.getUUIDKind(targetUUID);
+
       deviceById.delete(destinationDeviceId);
 
-      if (target.registrationId !== destinationRegistrationId) {
+      if (target.getRegistrationId(uuidKind) !== destinationRegistrationId) {
         staleDevices.add(destinationDeviceId);
         continue;
       }

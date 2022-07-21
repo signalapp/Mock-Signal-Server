@@ -49,7 +49,7 @@ import {
   ProvisioningResponse,
 } from '../server/base';
 import { Device, DeviceKeys } from '../data/device';
-import { PromiseQueue, generateRandomE164 } from '../util';
+import { PromiseQueue, generateRandomE164, generateRegistrationId } from '../util';
 
 import { createHandler as createHTTPHandler } from '../server/http';
 import { Connection as WSConnection } from '../server/ws';
@@ -271,7 +271,7 @@ export class Server extends BaseServer {
 
     const uuid = await this.generateUUID();
     const pni = await this.generateUUID();
-    const registrationId = await this.generateRegistrationId();
+    const registrationId = await generateRegistrationId();
     const device = await this.registerDevice({
       uuid,
       pni,
@@ -301,6 +301,10 @@ export class Server extends BaseServer {
       trustRoot: this.trustRoot.getPublicKey(),
       serverPublicParams: this.zkSecret.getPublicParams(),
 
+      generateNumber: this.generateNumber.bind(this),
+      generateUUID: this.generateUUID.bind(this),
+      releaseUUID: this.releaseUUID.bind(this),
+      changeDeviceNumber: this.changeDeviceNumber.bind(this),
       send: this.send.bind(this),
       getSenderCertificate: this.getSenderCertificate.bind(this, device),
       getDeviceByUUID: this.getDeviceByUUID.bind(this),
@@ -326,7 +330,7 @@ export class Server extends BaseServer {
   }
 
   public async createSecondaryDevice(primary: PrimaryDevice): Promise<Device> {
-    const registrationId = await this.generateRegistrationId();
+    const registrationId = await generateRegistrationId();
 
     const device = await this.registerDevice({
       uuid: primary.device.uuid,
@@ -460,7 +464,7 @@ export class Server extends BaseServer {
   ): Promise<void> {
     await super.updateDeviceKeys(device, uuidKind, keys);
 
-    const key = `${device.uuid}.${device.registrationId}`;
+    const key = `${device.uuid}.${device.getRegistrationId(uuidKind)}`;
 
     // Device is marked as provisioned only once we have its keys
     const resultQueue = this.provisionResultQueueByKey.get(key);
@@ -505,9 +509,10 @@ export class Server extends BaseServer {
       provisioningCode,
       registrationId);
 
-    const key = `${device.uuid}.${device.registrationId}`;
-
-    this.provisionResultQueueByKey.set(key, queue);
+    for (const uuidKind of [ UUIDKind.ACI, UUIDKind.PNI ]) {
+      const key = `${device.uuid}.${device.getRegistrationId(uuidKind)}`;
+      this.provisionResultQueueByKey.set(key, queue);
+    }
 
     const primary = this.primaryDevices.get(device.uuid);
     primary?.addSecondaryDevice(device);

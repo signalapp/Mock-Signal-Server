@@ -26,13 +26,17 @@ message Envelope {
   optional string source          = 2;
   optional string sourceUuid      = 11;
   optional uint32 sourceDevice    = 7;
+  optional string destinationUuid = 13;
   // reserved                          3; // formerly optional string relay = 3;
   optional uint64 timestamp       = 5;
   // reserved                          6; // formerly optional bytes legacyMessage = 6;
   optional bytes  content         = 8; // Contains an encrypted Content
   optional string serverGuid      = 9;
   optional uint64 serverTimestamp = 10;
-  optional string destinationUuid = 13;
+  optional bool ephemeral = 12; // indicates that the message should not be persisted if the recipient is offline
+  optional bool urgent = 14 [default=true];  // indicates that the content is considered timely by the sender; defaults to true so senders have to opt-out to say something isn't time critical
+  optional string updated_pni = 15;
+  // next: 16
 }
 
 message Content {
@@ -128,6 +132,11 @@ message DataMessage {
   }
 
   message Quote {
+    enum Type {
+      NORMAL = 0;
+      GIFT_BADGE = 1;
+    }
+
     message QuotedAttachment {
       optional string            contentType = 1;
       optional string            fileName    = 2;
@@ -140,6 +149,7 @@ message DataMessage {
     optional string           text        = 3;
     repeated QuotedAttachment attachments = 4;
     repeated BodyRange        bodyRanges  = 6;
+    optional Type             type        = 7;
   }
 
   message Contact {
@@ -269,6 +279,10 @@ message DataMessage {
     CURRENT = 7;
   }
 
+  message GiftBadge {
+    optional bytes receiptCredentialPresentation = 1;
+  }
+
   optional string             body                    = 1;
   repeated AttachmentPointer  attachments             = 2;
   optional GroupContext       group                   = 3;
@@ -289,6 +303,7 @@ message DataMessage {
   optional GroupCallUpdate    groupCallUpdate         = 19;
   reserved /* Payment         payment */                20;
   optional StoryContext       storyContext            = 21;
+  optional GiftBadge          giftBadge               = 22;
 }
 
 message NullMessage {
@@ -324,6 +339,7 @@ message StoryMessage {
     AttachmentPointer fileAttachment = 3;
     TextAttachment textAttachment = 4;
   }
+  optional bool allowsReplies = 5;
 }
 
 message TextAttachment {
@@ -375,6 +391,12 @@ message SyncMessage {
       optional bool   unidentified    = 2;
     }
 
+    message StoryMessageRecipient {
+      optional string destinationUuid = 1;
+      repeated string distributionListIds = 2;
+      optional bool isAllowedToReply = 3;
+    }
+
     optional string                     destination              = 1;
     optional string                     destinationUuid          = 7;
     optional uint64                     timestamp                = 2;
@@ -382,6 +404,8 @@ message SyncMessage {
     optional uint64                     expirationStartTimestamp = 4;
     repeated UnidentifiedDeliveryStatus unidentifiedStatus       = 5;
     optional bool                       isRecipientUpdate        = 6 [default = false];
+    optional StoryMessage storyMessage = 8;
+    repeated StoryMessageRecipient storyMessageRecipients = 9;
   }
 
   message Contacts {
@@ -486,6 +510,12 @@ message SyncMessage {
     optional Type type = 1;
   }
 
+  message PniChangeNumber {
+    optional bytes identityKeyPair = 1; // Serialized libsignal-client IdentityKeyPair
+    optional bytes signedPreKey    = 2; // Serialized libsignal-client SignedPreKeyRecord
+    optional uint32 registrationId = 3;
+  }
+
   optional Sent                   sent                   = 1;
   optional Contacts               contacts               = 2;
   optional Groups                 groups                 = 3;
@@ -503,6 +533,7 @@ message SyncMessage {
   reserved                                                 15; // not yet added
   repeated Viewed                 viewed                 = 16;
   optional PniIdentity            pniIdentity            = 17;
+  optional PniChangeNumber        pniChangeNumber        = 18;
 }
 
 message AttachmentPointer {

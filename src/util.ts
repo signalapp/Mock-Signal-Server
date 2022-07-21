@@ -7,6 +7,7 @@ import { ProtocolAddress } from '@signalapp/libsignal-client';
 import { stringify as stringifyUUID } from 'uuid';
 
 import { DAY_IN_SECONDS } from './constants';
+import type { RegistrationId } from './types';
 
 type PromiseQueueEntry<T> = Readonly<{
   value: T;
@@ -250,4 +251,8 @@ export function getTodayInSeconds(): number {
   const now = Date.now() / 1000;
 
   return now - (now % DAY_IN_SECONDS);
+}
+
+export function generateRegistrationId(): RegistrationId {
+  return Math.max(1, (Math.random() * 0x4000) | 0);
 }
