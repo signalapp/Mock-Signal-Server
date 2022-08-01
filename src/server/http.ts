@@ -129,9 +129,31 @@ export const createHandler = (server: Server): RequestHandler => {
   // CDN
   //
 
-  const getAttachment = get('/attachments/:key/:subkey', async (req) => {
+  const getAttachment = get('/attachments/:key/:subkey', async (req, res) => {
     const { key, subkey } = req.params;
-    return await server.fetchAttachment(`${key}/${subkey}`);
+    const result = await server.fetchAttachment(`${key}/${subkey}`);
+    if (!result) {
+      return send(res, 404, { error: 'Attachment not found' });
+    }
+    return result;
+  });
+
+  const getStickerPack = get('/stickers/:pack/manifest.proto', async (req, res) => {
+    const { pack } = req.params;
+    const result = await server.fetchStickerPack(pack);
+    if (!result) {
+      return send(res, 404, { error: 'Sticker pack not found' });
+    }
+    return result;
+  });
+
+  const getSticker = get('/stickers/:pack/full/:sticker', async (req, res) => {
+    const { pack, sticker } = req.params;
+    const result = await server.fetchSticker(pack, parseInt(sticker, 10));
+    if (!result) {
+      return send(res, 404, { error: 'Sticker not found' });
+    }
+    return result;
   });
 
   const notFound: RouteHandler = async (req, res) => {
@@ -557,6 +579,8 @@ export const createHandler = (server: Server): RequestHandler => {
     getDeviceKeys,
     getAllDeviceKeys,
     getAttachment,
+    getStickerPack,
+    getSticker,
 
     putKeys,
     getKeys,

@@ -112,6 +112,12 @@ export type ModifyGroupOptions = Readonly<{
   pniCiphertext: Uint8Array;
 }>;
 
+export type EncryptedStickerPack = Readonly<{
+  id: Buffer;
+  manifest: Buffer;
+  stickers: ReadonlyArray<Buffer>;
+}>;
+
 export { ModifyGroupResult };
 
 interface WebSocket {
@@ -152,6 +158,7 @@ export abstract class Server {
   private readonly provisioningCodes =
     new Map<string, Map<ProvisioningCode, UUID>>();
   private readonly attachments = new Map<AttachmentId, Buffer>();
+  private readonly stickerPacks = new Map<string, EncryptedStickerPack>();
   private readonly webSockets = new Map<Device, Set<WebSocket>>();
   private readonly messageQueue =
     new WeakMap<Device, Array<MessageQueueEntry>>();
@@ -332,7 +339,10 @@ export abstract class Server {
   // Auth
   //
 
-  async auth(username: string, password: string): Promise<Device | undefined> {
+  public async auth(
+    username: string,
+    password: string,
+  ): Promise<Device | undefined> {
     const entry = this.devicesByAuth.get(username);
     if (!entry) {
       debug('auth failed, username=%j is unknown', username);
@@ -348,15 +358,30 @@ export abstract class Server {
   // CDN
   //
 
-  async storeAttachment(attachment: Buffer): Promise<AttachmentId> {
+  protected async storeAttachment(attachment: Buffer): Promise<AttachmentId> {
     const id = ATTACHMENT_PREFIX +
       crypto.createHash('sha256').update(attachment).digest('hex');
     this.attachments.set(id, attachment);
     return id;
   }
 
-  async fetchAttachment(id: AttachmentId): Promise<Buffer | undefined> {
+  public async fetchAttachment(id: AttachmentId): Promise<Buffer | undefined> {
     return this.attachments.get(id);
+  }
+
+  public async fetchStickerPack(packId: string): Promise<Buffer | undefined> {
+    return this.stickerPacks.get(packId)?.manifest;
+  }
+
+  public async fetchSticker(
+    packId: string,
+    stickerId: number,
+  ): Promise<Buffer | undefined> {
+    return this.stickerPacks.get(packId)?.stickers[stickerId];
+  }
+
+  public async storeStickerPack(pack: EncryptedStickerPack): Promise<void> {
+    this.stickerPacks.set(pack.id.toString('hex'), pack);
   }
 
   //

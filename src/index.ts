@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 export { Group } from './api/group';
-export { StorageState } from './api/storage-state';
+export { StorageState, StorageStateRecord } from './api/storage-state';
 export { Server, Config } from './api/server';
 export {
   EncryptOptions,

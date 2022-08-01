@@ -129,6 +129,13 @@ export type FetchStorageOptions = Readonly<{
   timestamp: number;
 }>;
 
+export type SendStickerPackSyncOptions = Readonly<{
+  type: 'install' | 'remove';
+  packId: Buffer;
+  packKey: Buffer;
+  timestamp?: number;
+}>;
+
 export type SyncReadMessage = Readonly<{
   senderUUID: UUID;
   timestamp: number;
@@ -157,6 +164,11 @@ export type MessageQueueEntry = Readonly<{
   envelopeType: EnvelopeType;
   body: string;
   dataMessage: Proto.IDataMessage;
+}>;
+
+export type SyncMessageQueueEntry = Readonly<{
+  source: Device;
+  syncMessage: Proto.ISyncMessage;
 }>;
 
 export type PrepareChangeNumberEntry = Readonly<{
@@ -333,6 +345,7 @@ export class PrimaryDevice {
   private readonly groupsBlob: Proto.IAttachmentPointer;
   private privSenderCertificate: SenderCertificate | undefined;
   private readonly messageQueue = new PromiseQueue<MessageQueueEntry>();
+  private readonly syncMessageQueue = new PromiseQueue<SyncMessageQueueEntry>();
   private privPniPublicKey = this.pniPrivateKey.getPublicKey();
 
   // Various stores
@@ -692,13 +705,21 @@ export class PrimaryDevice {
   public async waitForStorageState({ after }: {
     after?: StorageState,
   } = {}): Promise<StorageState> {
-    debug('waiting for storage manifest', this.device.debugId);
+    debug(
+      'waiting for storage manifest for device=%s after version=%d',
+      this.device.debugId,
+      after?.version,
+    );
     await this.config.waitForStorageManifest(after?.version);
-
-    debug('got storage manifest', this.device.debugId);
 
     const state = await this.getStorageState();
     assert(state, 'Missing storage state');
+
+    debug(
+      'got storage manifest for device=%s version=%d',
+      this.device.debugId,
+      state.version,
+    );
 
     return state;
   }
@@ -870,18 +891,25 @@ export class PrimaryDevice {
       },
     };
 
-    debug(
-      'sending fetch storage to %d linked devices',
-      this.secondaryDevices.length,
-    );
+    return this.broadcast('fetch storage', content, options);
+  }
 
-    await Promise.all(
-      this.secondaryDevices.map(async (device) => {
-        const envelope = await this.encryptContent(device, content, options);
+  public async sendStickerPackSync(
+    options: SendStickerPackSyncOptions,
+  ): Promise<void> {
+    const Type = Proto.SyncMessage.StickerPackOperation.Type;
 
-        await this.config.send(device, envelope);
-      }),
-    );
+    const content = {
+      syncMessage: {
+        stickerPackOperation: [ {
+          packId: options.packId,
+          packKey: options.packKey,
+          type: options.type === 'install' ? Type.INSTALL : Type.REMOVE,
+        } ],
+      },
+    };
+
+    return this.broadcast('sticker pack sync', content, options);
   }
 
   public async encryptReceipt(
@@ -1045,6 +1073,18 @@ export class PrimaryDevice {
     return this.messageQueue.shift();
   }
 
+  public async waitForSyncMessage(
+    predicate: ((entry: SyncMessageQueueEntry) => boolean) = () => true,
+  ): Promise<SyncMessageQueueEntry> {
+    for (;;) {
+      const entry = await this.syncMessageQueue.shift();
+      if (!predicate(entry)) {
+        continue;
+      }
+      return entry;
+    }
+  }
+
   //
   // Private
   //
@@ -1068,6 +1108,26 @@ export class PrimaryDevice {
     return await this.lock(async () => {
       return await this.encrypt(target, encoded, options);
     });
+  }
+
+  private async broadcast(
+    type: string,
+    content: Proto.IContent,
+    options?: EncryptOptions,
+  ): Promise<void> {
+    debug(
+      'broadcasting %s to %d linked devices',
+      type,
+      this.secondaryDevices.length,
+    );
+
+    await Promise.all(
+      this.secondaryDevices.map(async (device) => {
+        const envelope = await this.encryptContent(device, content, options);
+
+        await this.config.send(device, envelope);
+      }),
+    );
   }
 
   private getSyncState(secondaryDevice: Device): SyncEntry {
@@ -1101,7 +1161,11 @@ export class PrimaryDevice {
   ): Promise<void> {
     const { request } = sync;
     if (!request) {
-      debug('ignoring sync responses');
+      debug('got generic sync message');
+      this.syncMessageQueue.push({
+        source,
+        syncMessage: sync,
+      });
       return;
     }
 
