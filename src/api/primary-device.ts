@@ -158,12 +158,18 @@ export type ReceiptOptions = Readonly<{
   messageTimestamps: ReadonlyArray<number>;
 }>;
 
+export type UnencryptedReceiptOptions = Readonly<{
+  timestamp?: number;
+  messageTimestamp: number;
+}>;
+
 export type MessageQueueEntry = Readonly<{
   source: Device;
   uuidKind: UUIDKind;
   envelopeType: EnvelopeType;
   body: string;
   dataMessage: Proto.IDataMessage;
+  content: Proto.IContent;
 }>;
 
 export type SyncMessageQueueEntry = Readonly<{
@@ -797,7 +803,7 @@ export class PrimaryDevice {
         unsealedSource,
         uuidKind,
         unsealedType,
-        content.dataMessage,
+        content,
       );
     } else {
       handled = false;
@@ -933,6 +939,32 @@ export class PrimaryDevice {
       },
     };
     return await this.encryptContent(target, content, options);
+  }
+
+  public async sendReceipt(
+    target: Device,
+    options: ReceiptOptions,
+  ): Promise<void> {
+    const receipt = await this.encryptReceipt(target, options);
+    return this.config.send(target, receipt);
+  }
+
+  public async sendUnencryptedReceipt(
+    target: Device,
+    { messageTimestamp, timestamp = Date.now() }: UnencryptedReceiptOptions,
+  ): Promise<void> {
+    const envelope: Proto.IEnvelope = {
+      type: Proto.Envelope.Type.RECEIPT,
+      timestamp: Long.fromNumber(messageTimestamp),
+      serverTimestamp: Long.fromNumber(timestamp),
+      sourceUuid: this.device.uuid,
+      sourceDevice: this.device.deviceId,
+      destinationUuid: target.uuid,
+    };
+    return this.config.send(
+      target,
+      Buffer.from(Proto.Envelope.encode(envelope).finish()),
+    );
   }
 
   public async prepareChangeNumber(
@@ -1234,8 +1266,11 @@ export class PrimaryDevice {
     source: Device,
     uuidKind: UUIDKind,
     envelopeType: EnvelopeType,
-    dataMessage: Proto.IDataMessage,
+    content: Proto.IContent,
   ): Promise<void> {
+    const { dataMessage } = content;
+    assert.ok(dataMessage, 'dataMessage must be present');
+
     const { body } = dataMessage;
     this.messageQueue.push({
       source,
@@ -1243,6 +1278,7 @@ export class PrimaryDevice {
       body: body ?? '',
       envelopeType,
       dataMessage,
+      content,
     });
   }
 
