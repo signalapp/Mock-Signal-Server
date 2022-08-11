@@ -84,7 +84,7 @@ class StorageStateItem {
     return group.masterKey.equals(masterKey);
   }
 
-  public isContact(device: Device): boolean {
+  public isContact(device: Device, uuidKind: UUIDKind): boolean {
     if (this.type !== IdentifierType.CONTACT) {
       return false;
     }
@@ -94,7 +94,7 @@ class StorageStateItem {
       return false;
     }
 
-    return serviceUuid === device.uuid || serviceUuid === device.pni;
+    return serviceUuid === device.getUUIDByKind(uuidKind);
   }
 
   public inspect(): string {
@@ -252,9 +252,10 @@ export class StorageState {
   public updateContact(
     { device }: PrimaryDevice,
     diff: Proto.IContactRecord,
+    uuidKind = UUIDKind.ACI,
   ): StorageState {
     return this.updateItem(
-      (item) => item.isContact(device),
+      (item) => item.isContact(device, uuidKind),
       ({ contact }) => ({
         contact: {
           ...contact,
@@ -266,8 +267,9 @@ export class StorageState {
 
   public getContact(
     { device }: PrimaryDevice,
+    uuidKind = UUIDKind.ACI,
   ): Proto.IContactRecord | undefined {
-    const item = this.items.find((item) => item.isContact(device));
+    const item = this.items.find((item) => item.isContact(device, uuidKind));
     if (!item) {
       return undefined;
     }
