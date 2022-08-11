@@ -37,6 +37,7 @@ import {
   ProfileKeyCredentialRequest,
   ServerPublicParams,
 } from '@signalapp/libsignal-client/zkgroup';
+import { parse as parseUUID } from 'uuid';
 
 import { signalservice as Proto } from '../../protos/compiled';
 import { INITIAL_PREKEY_COUNT } from '../constants';
@@ -113,6 +114,7 @@ export type EncryptOptions = Readonly<{
 export type EncryptTextOptions = EncryptOptions & Readonly<{
   group?: Group;
   withProfileKey?: boolean;
+  withPniSignature?: boolean;
 }>;
 
 export type CreateGroupOptions = Readonly<{
@@ -834,7 +836,24 @@ export class PrimaryDevice {
       timestamp: Date.now(),
       ...options,
     };
-    const content = {
+
+    let pniSignatureMessage: Proto.IPniSignatureMessage | undefined;
+    if (options.withPniSignature) {
+      const pniPrivate = this.getPrivateKey(UUIDKind.PNI);
+      const pniPublic = this.getPublicKey(UUIDKind.PNI);
+      const aciPublic = this.getPublicKey(UUIDKind.ACI);
+
+      const pniIdentity = new IdentityKeyPair(pniPublic, pniPrivate);
+
+      const signature = pniIdentity.signAlternateIdentity(aciPublic);
+
+      pniSignatureMessage = {
+        pni: new Uint8Array(parseUUID(this.device.pni)),
+        signature,
+      };
+    }
+
+    const content: Proto.IContent = {
       dataMessage: {
         groupV2: options.group?.toContext(),
         body: text,
@@ -843,6 +862,7 @@ export class PrimaryDevice {
           undefined,
         timestamp: Long.fromNumber(encryptOptions.timestamp),
       },
+      pniSignatureMessage,
     };
     return await this.encryptContent(target, content, encryptOptions);
   }

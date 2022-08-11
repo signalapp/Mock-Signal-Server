@@ -11,6 +11,7 @@ import {
   encryptStorageManifest,
 } from '../crypto';
 import { Device } from '../data/device';
+import { UUIDKind } from '../types';
 import { Group } from './group';
 import { PrimaryDevice } from './primary-device';
 
@@ -93,7 +94,7 @@ class StorageStateItem {
       return false;
     }
 
-    return serviceUuid === device.uuid;
+    return serviceUuid === device.uuid || serviceUuid === device.pni;
   }
 
   public inspect(): string {
@@ -278,12 +279,12 @@ export class StorageState {
 
   }
 
-  public pin(primary: PrimaryDevice): StorageState {
-    return this.changePin(primary, true);
+  public pin(primary: PrimaryDevice, uuidKind = UUIDKind.ACI): StorageState {
+    return this.changePin(primary, uuidKind, true);
   }
 
-  public unpin(primary: PrimaryDevice): StorageState {
-    return this.changePin(primary, false);
+  public unpin(primary: PrimaryDevice, uuidKind = UUIDKind.ACI): StorageState {
+    return this.changePin(primary, uuidKind, false);
   }
 
   public isPinned({ device }: PrimaryDevice): boolean {
@@ -460,8 +461,11 @@ export class StorageState {
 
   private changePin(
     { device }: PrimaryDevice,
+    uuidKind: UUIDKind,
     isPinned: boolean,
   ): StorageState {
+    const deviceUuid = device.getUUIDByKind(uuidKind);
+
     return this.updateItem(
       (item) => item.isAccount(),
       ({ account }) => {
@@ -472,12 +476,12 @@ export class StorageState {
         const newPinnedConversations = pinnedConversations?.slice() || [];
 
         const existingIndex = newPinnedConversations.findIndex((convo) => {
-          return convo?.contact?.uuid === device.uuid;
+          return convo?.contact?.uuid === deviceUuid;
         });
 
         if (isPinned && existingIndex === -1) {
           newPinnedConversations.push({
-            contact: { uuid: device.uuid },
+            contact: { uuid: deviceUuid },
           });
         } else if (!isPinned && existingIndex !== -1) {
           newPinnedConversations.splice(existingIndex, 1);

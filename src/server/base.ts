@@ -220,6 +220,7 @@ export abstract class Server {
     if (isPrimary) {
       assert(!this.devicesByUUID.has(uuid), 'Duplicate primary device');
       this.devicesByUUID.set(uuid, device);
+      this.devicesByUUID.set(pni, device);
     }
     list.push(device);
 
