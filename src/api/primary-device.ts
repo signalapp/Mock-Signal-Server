@@ -1009,6 +1009,8 @@ export class PrimaryDevice {
 
     const allDevices = [ this.device, ...this.secondaryDevices ];
 
+    const oldPni = this.device.pni;
+
     // Update PNI
     await Promise.all(allDevices.map(async (device) => {
       await this.config.changeDeviceNumber(device, {
@@ -1027,7 +1029,7 @@ export class PrimaryDevice {
       this.getPublicKey(UUIDKind.PNI),
     );
 
-    await this.config.releaseUUID(this.device.pni);
+    await this.config.releaseUUID(oldPni);
 
     // Update all keys and prepare sync message
     const results = await Promise.all(
