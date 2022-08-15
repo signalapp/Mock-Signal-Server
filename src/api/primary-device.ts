@@ -57,7 +57,12 @@ import {
   StorageWriteResult,
 } from '../server/base';
 import { ServerGroup } from '../server/group';
-import { ChangeNumberOptions, Device, DeviceKeys, SingleUseKey } from '../data/device';
+import {
+  ChangeNumberOptions,
+  Device,
+  DeviceKeys,
+  SingleUseKey,
+} from '../data/device';
 import { PromiseQueue, addressToString, generateRegistrationId } from '../util';
 import { Group } from './group';
 import { StorageState } from './storage-state';
@@ -696,7 +701,9 @@ export class PrimaryDevice {
       dataMessage: {
         groupV2: {
           ...updatedGroup.toContext(),
-          groupChange: Proto.GroupChange.encode(modifyResult.signedChange).finish(),
+          groupChange: Proto.GroupChange.encode(
+            modifyResult.signedChange,
+          ).finish(),
         },
         timestamp: Long.fromNumber(encryptOptions.timestamp),
       },

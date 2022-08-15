@@ -49,7 +49,11 @@ import {
   ProvisioningResponse,
 } from '../server/base';
 import { Device, DeviceKeys } from '../data/device';
-import { PromiseQueue, generateRandomE164, generateRegistrationId } from '../util';
+import {
+  PromiseQueue,
+  generateRandomE164,
+  generateRegistrationId,
+} from '../util';
 
 import { createHandler as createHTTPHandler } from '../server/http';
 import { Connection as WSConnection } from '../server/ws';

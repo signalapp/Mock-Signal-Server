@@ -61,7 +61,12 @@ export class Router {
 
     let response: AbbreviatedResponse = [ 404, { error: 'Not found' } ];
 
-    debug('got request %s %s %s', this.isAuthenticated ? '(auth)' : '(unauth)', request.verb, request.path);
+    debug(
+      'got request %s %s %s',
+      this.isAuthenticated ? '(auth)' : '(unauth)',
+      request.verb,
+      request.path,
+    );
 
     const {
       pathname,

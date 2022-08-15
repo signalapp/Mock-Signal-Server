@@ -138,14 +138,17 @@ export const createHandler = (server: Server): RequestHandler => {
     return result;
   });
 
-  const getStickerPack = get('/stickers/:pack/manifest.proto', async (req, res) => {
-    const { pack } = req.params;
-    const result = await server.fetchStickerPack(pack);
-    if (!result) {
-      return send(res, 404, { error: 'Sticker pack not found' });
-    }
-    return result;
-  });
+  const getStickerPack = get(
+    '/stickers/:pack/manifest.proto',
+    async (req, res) => {
+      const { pack } = req.params;
+      const result = await server.fetchStickerPack(pack);
+      if (!result) {
+        return send(res, 404, { error: 'Sticker pack not found' });
+      }
+      return result;
+    },
+  );
 
   const getSticker = get('/stickers/:pack/full/:sticker', async (req, res) => {
     const { pack, sticker } = req.params;
@@ -358,24 +361,27 @@ export const createHandler = (server: Server): RequestHandler => {
     return send(res, 200, Proto.Group.encode(group.state).finish());
   });
 
-  const getGroupVersion = get('/v1/groups/joined_at_version', async (req, res) => {
-    const auth = await groupAuthAndFetch(req, res);
-    if (!auth) {
-      return;
-    }
+  const getGroupVersion = get(
+    '/v1/groups/joined_at_version',
+    async (req, res) => {
+      const auth = await groupAuthAndFetch(req, res);
+      if (!auth) {
+        return;
+      }
 
-    const { group, aciCiphertext } = auth;
+      const { group, aciCiphertext } = auth;
 
-    const member = group.getMember(aciCiphertext);
+      const member = group.getMember(aciCiphertext);
 
-    if (!member) {
-      return send(res, 403, { error: 'Not a member of this group' });
-    }
+      if (!member) {
+        return send(res, 403, { error: 'Not a member of this group' });
+      }
 
-    return send(res, 200, Proto.Member.encode({
-      joinedAtVersion: member.joinedAtVersion,
-    }).finish());
-  });
+      return send(res, 200, Proto.Member.encode({
+        joinedAtVersion: member.joinedAtVersion,
+      }).finish());
+    },
+  );
 
   const getGroupLogs = get('/v1/groups/logs/:since', async (req, res) => {
     const auth = await groupAuthAndFetch(req, res);
@@ -414,7 +420,9 @@ export const createHandler = (server: Server): RequestHandler => {
     if (!groupData.title) {
       return send(res, 400, { error: 'Missing group title' });
     }
-    if (!groupData.publicKey || !auth.publicParams.equals(groupData.publicKey)) {
+    if (
+      !groupData.publicKey || !auth.publicParams.equals(groupData.publicKey)
+    ) {
       return send(res, 400, { error: 'Invalid group public key' });
     }
 
@@ -449,7 +457,11 @@ export const createHandler = (server: Server): RequestHandler => {
         return send(res, 409, { error: 'Conflict' });
       }
 
-      return send(res, 200, Proto.GroupChange.encode(modifyResult.signedChange).finish());
+      return send(
+        res,
+        200,
+        Proto.GroupChange.encode(modifyResult.signedChange).finish(),
+      );
     } catch (error) {
       assert(error instanceof Error);
 
