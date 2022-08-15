@@ -49,23 +49,14 @@ export class Connection extends Service {
     ) => {
       const uuid = params.uuid as string;
 
-      const device = await this.server.getDeviceByUUID(uuid);
-      if (!device) {
+      const target = await this.server.getDeviceByUUID(uuid);
+      if (!target) {
         return [ 404, { error: 'Device not found' } ];
       }
 
-      if (this.device) {
-        // Authenticated
-      } else if (!device.accessKey || !headers['unidentified-access-key']) {
-        return [ 401, { error: 'Not authenticated' } ];
-      } else {
-        const accessKey = Buffer.from(
-          headers['unidentified-access-key'],
-          'base64',
-        );
-        if (!timingSafeEqual(accessKey, device.accessKey)) {
-          return [ 401, { error: 'Invalid access key' } ];
-        }
+      const accessError = this.checkAccessKey(target, headers);
+      if (accessError !== undefined) {
+        return [ 401, { error: accessError } ];
       }
 
       let credential: Buffer | undefined;
@@ -76,12 +67,12 @@ export class Connection extends Service {
         );
         if (credentialType === 'expiringProfileKey') {
           credential = await this.server.issueExpiringProfileKeyCredential(
-            device,
+            target,
             request,
           );
         } else if (credentialType === 'pni') {
           pniCredential = await this.server.issuePniCredential(
-            device,
+            target,
             request,
           );
         } else {
@@ -89,15 +80,15 @@ export class Connection extends Service {
         }
       }
 
-      const uuidKind = device.getUUIDKind(uuid);
-      const identityKey = await device.getIdentityKey(uuidKind);
+      const uuidKind = target.getUUIDKind(uuid);
+      const identityKey = await target.getIdentityKey(uuidKind);
 
       return [ 200, {
-        name: device.profileName,
+        name: target.profileName,
         identityKey: identityKey.serialize().toString('base64'),
         unrestrictedUnidentifiedAccess: false,
-        unidentifiedAccess: device.accessKey ?
-          generateAccessKeyVerifier(device.accessKey) : undefined,
+        unidentifiedAccess: target.accessKey ?
+          generateAccessKeyVerifier(target.accessKey) : undefined,
         capabilities: {
           announcementGroup: true,
           'gv2-3': true,
@@ -258,7 +249,7 @@ export class Connection extends Service {
       },
     );
 
-    this.router.put('/v1/messages/:uuid', async (params, body) => {
+    this.router.put('/v1/messages/:uuid', async (params, body, headers) => {
       if (!body) {
         return [ 400, { error: 'Missing body' } ];
       }
@@ -267,7 +258,15 @@ export class Connection extends Service {
         Buffer.from(body).toString(),
       );
 
-      // TODO(indutny): access key or auth!
+      const target = await this.server.getDeviceByUUID(params.uuid as string);
+      if (!target) {
+        return [ 404, { error: 'Device not found' } ];
+      }
+
+      const accessError = this.checkAccessKey(target, headers);
+      if (accessError !== undefined) {
+        return [ 401, { error: accessError } ];
+      }
 
       const prepared = await this.server.prepareMultiDeviceMessage(
         this.device,
@@ -488,11 +487,33 @@ export class Connection extends Service {
     }
 
     this.device = device;
+    this.router.setIsAuthenticated(true);
 
     this.ws.once('close', () => {
       this.server.removeWebSocket(device, this);
     });
 
     await this.server.addWebSocket(device, this);
+  }
+
+  private checkAccessKey(
+    target: Device,
+    headers: Record<string, string>,
+  ): string | undefined {
+    if (this.device) {
+      // Authenticated
+    } else if (!target.accessKey || !headers['unidentified-access-key']) {
+      return 'Not authenticated';
+    } else {
+      const accessKey = Buffer.from(
+        headers['unidentified-access-key'],
+        'base64',
+      );
+      if (!timingSafeEqual(accessKey, target.accessKey)) {
+        return 'Invalid access key';
+      }
+    }
+
+    return undefined;
   }
 }

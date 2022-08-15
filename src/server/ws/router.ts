@@ -33,6 +33,8 @@ type Route = Readonly<{
 export class Router {
   private readonly routes: Array<Route> = [];
 
+  private isAuthenticated = false;
+
   public register(method: string, pattern: string, handler: Handler): void {
     this.routes.push({
       method,
@@ -59,7 +61,7 @@ export class Router {
 
     let response: AbbreviatedResponse = [ 404, { error: 'Not found' } ];
 
-    debug('got request %s %s', request.verb, request.path);
+    debug('got request %s %s %s', this.isAuthenticated ? '(auth)' : '(unauth)', request.verb, request.path);
 
     const {
       pathname,
@@ -102,5 +104,8 @@ export class Router {
       headers: [ 'Content-Type:application/json' ],
       body: Buffer.from(JSON.stringify(json)),
     };
+  }
+  public setIsAuthenticated(value: boolean): void {
+    this.isAuthenticated = value;
   }
 }

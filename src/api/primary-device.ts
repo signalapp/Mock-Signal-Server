@@ -1422,7 +1422,6 @@ export class PrimaryDevice {
         encrypted,
       );
     } else if (envelopeType === EnvelopeType.SealedSender) {
-      assert.strictEqual(uuidKind, UUIDKind.ACI, 'Got sealed message on PNI');
       assert(source === undefined, 'Sealed sender must have no source');
 
       const usmc =
@@ -1453,12 +1452,19 @@ export class PrimaryDevice {
 
       // TODO(indutny): use sealedSenderDecryptMessage once it will support
       // sender key.
-      return this.decrypt(
+      const result = await this.decrypt(
         sender,
         uuidKind,
         subType,
         usmc.contents(),
       );
+
+      if (uuidKind === UUIDKind.PNI) {
+        debug('sealed message on PNI', result);
+        throw new Error('Got sealed message on PNI');
+      }
+
+      return result;
     } else {
       throw new Error(`Unsupported envelope type: ${envelopeType}`);
     }

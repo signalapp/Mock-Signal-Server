@@ -236,12 +236,13 @@ export class StorageState {
   public addContact(
     { device }: PrimaryDevice,
     diff: Proto.IContactRecord = {},
+    uuidKind = UUIDKind.ACI,
   ): StorageState {
     return this.addItem({
       type: IdentifierType.CONTACT,
       record: {
         contact: {
-          serviceUuid: device.uuid,
+          serviceUuid: device.getUUIDByKind(uuidKind),
           serviceE164: device.number,
           ...diff,
         },
