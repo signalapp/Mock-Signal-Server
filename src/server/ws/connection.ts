@@ -126,6 +126,7 @@ export class Connection extends Service {
           { name: 'desktop.storage', enabled: true },
           { name: 'desktop.storageWrite3', enabled: true },
           { name: 'desktop.messageRequests', enabled: true },
+          { name: 'desktop.pnp.storageService', enabled: true },
           {
             name: 'global.groupsv2.maxGroupSize',
             value: '32',
