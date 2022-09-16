@@ -347,6 +347,15 @@ export const createHandler = (server: Server): RequestHandler => {
     return { uuid: device.uuid, pni: device.pni, number: device.number };
   });
 
+  const putChallenge = put('/v1/challenge', async (req, res) => {
+    const device = await auth(req, res);
+    if (!device) {
+      return;
+    }
+
+    return { ok: true };
+  });
+
   //
   // GV2
   //
@@ -598,6 +607,8 @@ export const createHandler = (server: Server): RequestHandler => {
     getKeys,
 
     whoami,
+
+    putChallenge,
 
     // Technically these should live on a separate server, but who cares
     getGroup,

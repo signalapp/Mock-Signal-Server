@@ -5,12 +5,12 @@ import { UUID } from '../types';
 
 import { signalservice as Proto } from '../../protos/compiled';
 
-export interface Contact {
-  readonly uuid: UUID;
-  readonly number: string;
-  readonly profileName: string;
-  readonly profileKey: Buffer;
-}
+export type Contact = Readonly<{
+  uuid: UUID;
+  number: string;
+  profileName: string;
+  profileKey?: Buffer;
+}>;
 
 export function serializeContacts(contacts: ReadonlyArray<Contact>): Buffer {
   const chunks = contacts.map((contact) => {

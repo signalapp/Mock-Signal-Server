@@ -259,7 +259,8 @@ export class Connection extends Service {
         Buffer.from(body).toString(),
       );
 
-      const target = await this.server.getDeviceByUUID(params.uuid as string);
+      const targetUUID = params.uuid as string;
+      const target = await this.server.getDeviceByUUID(targetUUID);
       if (!target) {
         return [ 404, { error: 'Device not found' } ];
       }
@@ -267,6 +268,16 @@ export class Connection extends Service {
       const accessError = this.checkAccessKey(target, headers);
       if (accessError !== undefined) {
         return [ 401, { error: accessError } ];
+      }
+
+      if (
+        this.device &&
+        this.server.isSendRateLimited({
+          source: this.device.uuid,
+          target: targetUUID,
+        })
+      ) {
+        return [ 428, { token: 'token', options: [ 'recaptcha' ] } ];
       }
 
       const prepared = await this.server.prepareMultiDeviceMessage(

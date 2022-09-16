@@ -118,6 +118,11 @@ export type EncryptedStickerPack = Readonly<{
   stickers: ReadonlyArray<Buffer>;
 }>;
 
+export type IsSendRateLimitedOptions = Readonly<{
+  source: UUID;
+  target: UUID;
+}>;
+
 export { ModifyGroupResult };
 
 interface WebSocket {
@@ -929,6 +934,8 @@ export abstract class Server {
       profileKeyCommitment,
     ).serialize();
   }
+
+  public abstract isSendRateLimited(options: IsSendRateLimitedOptions): boolean;
 
   //
   // Private

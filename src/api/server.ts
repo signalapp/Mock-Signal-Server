@@ -44,6 +44,7 @@ import { signalservice as Proto } from '../../protos/compiled';
 import {
   Server as BaseServer,
   EnvelopeType,
+  IsSendRateLimitedOptions,
   ModifyGroupOptions,
   ModifyGroupResult,
   ProvisioningResponse,
@@ -90,6 +91,7 @@ export type CreatePrimaryDeviceOptions = Readonly<{
   profileName: string;
   initialPreKeyCount?: number;
   contacts?: ReadonlyArray<PrimaryDevice>;
+  contactsWithoutProfileKey?: ReadonlyArray<PrimaryDevice>;
 }>
 
 export type PendingProvision = {
@@ -100,6 +102,11 @@ export type PendingProvisionResponse = Readonly<{
   provisionURL: string;
   primaryDevice: PrimaryDevice;
 }>
+
+export type RateLimitOptions = Readonly<{
+  source: UUID;
+  target: UUID;
+}>;
 
 type ProvisionResultQueue = Readonly<{
   seenUuidKinds: Set<UUIDKind>;
@@ -136,6 +143,7 @@ export class Server extends BaseServer {
   private provisionResultQueueByKey = new Map<string, ProvisionResultQueue>();
   private manifestQueueByUuid = new Map<UUID, PromiseQueue<number>>();
   private groupQueueById = new Map<string, PromiseQueue<number>>();
+  private rateLimitCountByPair = new Map<`${UUID}:${UUID}`, number>();
 
   constructor(config: Config = {}) {
     super();
@@ -270,6 +278,7 @@ export class Server extends BaseServer {
     profileName,
     initialPreKeyCount,
     contacts = [],
+    contactsWithoutProfileKey = [],
   }: CreatePrimaryDeviceOptions): Promise<PrimaryDevice> {
     const number = await this.generateNumber();
 
@@ -291,9 +300,13 @@ export class Server extends BaseServer {
     }
 
     const contactsAttachment = encryptAttachment(
-      serializeContacts(contacts.map((device: PrimaryDevice) => {
-        return device.toContact();
-      })));
+      serializeContacts([
+        ...contacts.map((device) => device.toContact()),
+        ...contactsWithoutProfileKey.map((device) => device.toContact({
+          includeProfileKey: false,
+        })),
+      ]),
+    );
     const contactsCDNKey = await this.storeAttachment(contactsAttachment.blob);
     debug('contacts cdn key', contactsCDNKey);
     debug('groups cdn key', this.emptyAttachment.cdnKey);
@@ -354,6 +367,20 @@ export class Server extends BaseServer {
     primary.addSecondaryDevice(device);
 
     return device;
+  }
+
+  public rateLimit({ source, target }: RateLimitOptions): void {
+    this.rateLimitCountByPair.set(`${source}:${target}`, 0);
+  }
+
+  public stopRateLimiting({
+    source,
+    target,
+  }: RateLimitOptions): number | undefined {
+    const key: `${UUID}:${UUID}` = `${source}:${target}`;
+    const existing = this.rateLimitCountByPair.get(key);
+    this.rateLimitCountByPair.delete(key);
+    return existing;
   }
 
   //
@@ -452,6 +479,27 @@ export class Server extends BaseServer {
     }
 
     await primary.handleEnvelope(source, uuidKind, envelopeType, encrypted);
+  }
+
+  public isSendRateLimited({
+    source,
+    target,
+  }: IsSendRateLimitedOptions): boolean {
+    const key: `${UUID}:${UUID}` = `${source}:${target}`;
+    const existing = this.rateLimitCountByPair.get(key);
+    if (existing === undefined) {
+      return false;
+    }
+
+    const newValue = existing + 1;
+    debug(
+      'isSendRateLimited: source=%j target=%j count=%d',
+      source,
+      target,
+      newValue,
+    );
+    this.rateLimitCountByPair.set(key, newValue);
+    return true;
   }
 
   //
