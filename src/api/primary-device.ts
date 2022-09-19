@@ -179,6 +179,14 @@ export type MessageQueueEntry = Readonly<{
   content: Proto.IContent;
 }>;
 
+export type StoryQueueEntry = Readonly<{
+  source: Device;
+  uuidKind: UUIDKind;
+  envelopeType: EnvelopeType;
+  storyMessage: Proto.IStoryMessage;
+  content: Proto.IContent;
+}>;
+
 export type SyncMessageQueueEntry = Readonly<{
   source: Device;
   syncMessage: Proto.ISyncMessage;
@@ -362,6 +370,7 @@ export class PrimaryDevice {
   private readonly groupsBlob: Proto.IAttachmentPointer;
   private privSenderCertificate: SenderCertificate | undefined;
   private readonly messageQueue = new PromiseQueue<MessageQueueEntry>();
+  private readonly storyQueue = new PromiseQueue<StoryQueueEntry>();
   private readonly syncMessageQueue = new PromiseQueue<SyncMessageQueueEntry>();
   private privPniPublicKey = this.pniPrivateKey.getPublicKey();
 
@@ -820,6 +829,13 @@ export class PrimaryDevice {
         unsealedType,
         content,
       );
+    } else if (content.storyMessage) {
+      await this.handleStoryMessage(
+        unsealedSource,
+        uuidKind,
+        unsealedType,
+        content,
+      );
     } else {
       handled = false;
     }
@@ -1140,6 +1156,10 @@ export class PrimaryDevice {
     return this.messageQueue.shift();
   }
 
+  public async waitForStory(): Promise<StoryQueueEntry> {
+    return this.storyQueue.shift();
+  }
+
   public async waitForSyncMessage(
     predicate: ((entry: SyncMessageQueueEntry) => boolean) = () => true,
   ): Promise<SyncMessageQueueEntry> {
@@ -1313,6 +1333,24 @@ export class PrimaryDevice {
       body: body ?? '',
       envelopeType,
       dataMessage,
+      content,
+    });
+  }
+
+  private async handleStoryMessage(
+    source: Device,
+    uuidKind: UUIDKind,
+    envelopeType: EnvelopeType,
+    content: Proto.IContent,
+  ): Promise<void> {
+    const { storyMessage } = content;
+    assert.ok(storyMessage, 'storyMessage must be present');
+
+    this.storyQueue.push({
+      source,
+      uuidKind,
+      envelopeType,
+      storyMessage,
       content,
     });
   }
