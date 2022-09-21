@@ -5,7 +5,6 @@ import assert from 'assert';
 import Long from 'long';
 import {
   GroupPublicParams,
-  PniCredentialPresentation,
   ProfileKeyCredentialPresentation,
   ServerSecretParams,
   ServerZkProfileOperations,
@@ -251,21 +250,21 @@ export class ServerGroup extends Group {
         presentation,
         'Missing presentation in promoteMembersPendingPniAciProfileKey',
       );
-      const presentationFFI = new PniCredentialPresentation(
+      const presentationFFI = new ProfileKeyCredentialPresentation(
         Buffer.from(presentation),
       );
 
-      this.profileOps.verifyPniCredentialPresentation(
+      this.profileOps.verifyProfileKeyCredentialPresentation(
         this.publicParams,
         presentationFFI,
       );
 
-      const aci = presentationFFI.getAciCiphertext();
-      const pni = presentationFFI.getPniCiphertext();
+      const aci = presentationFFI.getUuidCiphertext();
+      const pni = sourcePNI;
       const profileKey = presentationFFI.getProfileKeyCiphertext();
 
       assert.ok(
-        pni.serialize().equals(sourcePNI.serialize()),
+        aci.serialize().equals(sourceACI.serialize()),
         'Not a pending member',
       );
 

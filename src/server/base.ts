@@ -918,23 +918,6 @@ export abstract class Server {
     ).serialize();
   }
 
-  public async issuePniCredential(
-    { uuid, pni, profileKeyCommitment }: Device,
-    request: ProfileKeyCredentialRequest,
-  ): Promise<Buffer | undefined> {
-    if (!profileKeyCommitment) {
-      return undefined;
-    }
-
-    const profile = new ServerZkProfileOperations(this.zkSecret);
-    return profile.issuePniCredential(
-      request,
-      uuid,
-      pni,
-      profileKeyCommitment,
-    ).serialize();
-  }
-
   public abstract isSendRateLimited(options: IsSendRateLimitedOptions): boolean;
 
   //

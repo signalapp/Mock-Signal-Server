@@ -60,18 +60,12 @@ export class Connection extends Service {
       }
 
       let credential: Buffer | undefined;
-      let pniCredential: Buffer | undefined;
       if (params.request) {
         const request = new ProfileKeyCredentialRequest(
           Buffer.from(params.request as string, 'hex'),
         );
         if (credentialType === 'expiringProfileKey') {
           credential = await this.server.issueExpiringProfileKeyCredential(
-            target,
-            request,
-          );
-        } else if (credentialType === 'pni') {
-          pniCredential = await this.server.issuePniCredential(
             target,
             request,
           );
@@ -96,7 +90,6 @@ export class Connection extends Service {
           senderKey: true,
         },
         credential: credential?.toString('base64'),
-        pniCredential: pniCredential?.toString('base64'),
       } ];
     };
     this.router.get('/v1/profile/:uuid', getProfile);
