@@ -70,11 +70,20 @@ export type GroupCredentials = Array<{
 
 export type PreparedMultiDeviceMessage = ReadonlyArray<[ Device, JSONMessage ]>;
 
+export type ProvisionDeviceOptions = Readonly<{
+  number: string;
+  password: string;
+  provisioningCode: ProvisioningCode;
+  registrationId: RegistrationId;
+  pniRegistrationId: RegistrationId;
+}>;
+
 export type RegisterDeviceOptions = Readonly<{
   uuid: UUID;
   pni: UUID;
   number: string;
   registrationId: RegistrationId;
+  pniRegistrationId: RegistrationId;
 }>
 
 export type PrepareMultiDeviceMessageResult = Readonly<{
@@ -201,6 +210,7 @@ export abstract class Server {
     pni,
     number,
     registrationId,
+    pniRegistrationId,
   }: RegisterDeviceOptions): Promise<Device> {
     if (!this.usedUUIDs.has(uuid)) {
       throw new Error('Use generateUUID() to create new UUID');
@@ -220,6 +230,7 @@ export abstract class Server {
       number,
       deviceId,
       registrationId,
+      pniRegistrationId,
     });
 
     if (isPrimary) {
@@ -252,12 +263,13 @@ export abstract class Server {
   }
 
   // Called from secondary device
-  public async provisionDevice(
-    number: string,
-    password: string,
-    provisioningCode: ProvisioningCode,
-    registrationId: RegistrationId,
-  ): Promise<Device> {
+  public async provisionDevice({
+    number,
+    password,
+    provisioningCode,
+    registrationId,
+    pniRegistrationId,
+  }: ProvisionDeviceOptions): Promise<Device> {
     const entry = this.provisioningCodes.get(number);
     if (!entry) {
       throw new Error('Invalid number for provisioning');
@@ -272,12 +284,12 @@ export abstract class Server {
     const [ primary ] = this.devices.get(number) || [];
     assert(primary !== undefined, 'Missing primary device when provisioning');
 
-    // TODO(indutny): different registration id for PNI
     const device = await this.registerDevice({
       uuid: primary.uuid,
       pni: primary.pni,
       number,
       registrationId,
+      pniRegistrationId,
     });
 
     const username = `${number}.${device.deviceId}`;

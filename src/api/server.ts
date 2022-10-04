@@ -25,7 +25,6 @@ import {
 } from '../constants';
 import {
   ProvisioningCode,
-  RegistrationId,
   UUID,
   UUIDKind,
 } from '../types';
@@ -47,6 +46,7 @@ import {
   IsSendRateLimitedOptions,
   ModifyGroupOptions,
   ModifyGroupResult,
+  ProvisionDeviceOptions,
   ProvisioningResponse,
 } from '../server/base';
 import { Device, DeviceKeys } from '../data/device';
@@ -285,11 +285,13 @@ export class Server extends BaseServer {
     const uuid = await this.generateUUID();
     const pni = await this.generateUUID();
     const registrationId = await generateRegistrationId();
+    const pniRegistrationId = await generateRegistrationId();
     const device = await this.registerDevice({
       uuid,
       pni,
       number,
       registrationId,
+      pniRegistrationId,
     });
 
     debug('creating primary device with uuid=%s registrationId=%d',
@@ -348,12 +350,14 @@ export class Server extends BaseServer {
 
   public async createSecondaryDevice(primary: PrimaryDevice): Promise<Device> {
     const registrationId = await generateRegistrationId();
+    const pniRegistrationId = await generateRegistrationId();
 
     const device = await this.registerDevice({
       uuid: primary.device.uuid,
       pni: primary.device.pni,
       number: primary.device.number,
       registrationId,
+      pniRegistrationId,
     });
 
     for (const uuidKind of [ UUIDKind.ACI, UUIDKind.PNI ]) {
@@ -544,22 +548,17 @@ export class Server extends BaseServer {
   }
 
   public override async provisionDevice(
-    number: string,
-    password: string,
-    provisioningCode: ProvisioningCode,
-    registrationId: RegistrationId,
+    options: ProvisionDeviceOptions,
   ): Promise<Device> {
+    const { provisioningCode } = options;
+
     const queue = this.provisionResultQueueByCode.get(provisioningCode);
     assert(
       queue !== undefined,
       `Missing provision result queue for code: ${provisioningCode}`);
     this.provisionResultQueueByCode.delete(provisioningCode);
 
-    const device = await super.provisionDevice(
-      number,
-      password,
-      provisioningCode,
-      registrationId);
+    const device = await super.provisionDevice(options);
 
     for (const uuidKind of [ UUIDKind.ACI, UUIDKind.PNI ]) {
       const key = `${device.uuid}.${device.getRegistrationId(uuidKind)}`;

@@ -347,11 +347,13 @@ export class Connection extends Service {
         return [ 400, { error: 'Invalid registration id' } ];
       }
 
-      const device = await server.provisionDevice(
-        username,
+      const device = await server.provisionDevice({
+        number: username,
         password,
-        params.code as string,
-        json.registrationId as number);
+        provisioningCode: params.code as string,
+        registrationId: json.registrationId as number,
+        pniRegistrationId: json.pniRegistrationId as number,
+      });
 
       return [ 200, {
         deviceId: device.deviceId,

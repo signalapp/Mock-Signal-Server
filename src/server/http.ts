@@ -83,12 +83,17 @@ export const createHandler = (server: Server): RequestHandler => {
     if (typeof body.registrationId !== 'number') {
       return send(res, 400, { error: 'Invalid registration id' });
     }
+    if (typeof body.pniRegistrationId !== 'number') {
+      return send(res, 400, { error: 'Invalid PNI registration id' });
+    }
 
-    const device = await server.provisionDevice(
-      username,
+    const device = await server.provisionDevice({
+      number: username,
       password,
-      req.params.code,
-      body.registrationId);
+      provisioningCode: req.params.code as string,
+      registrationId: body.registrationId as number,
+      pniRegistrationId: body.pniRegistrationId as number,
+    });
 
     return { deviceId: device.deviceId, uuid: device.uuid, pni: device.pni };
   });

@@ -15,6 +15,7 @@ export type DeviceOptions = Readonly<{
   number: string;
   deviceId: DeviceId;
   registrationId: RegistrationId;
+  pniRegistrationId: RegistrationId;
 }>;
 
 export type ChangeNumberOptions = Readonly<{
@@ -76,7 +77,7 @@ export class Device {
 
     this.privPni = options.pni;
     this.privNumber = options.number;
-    this.pniRegistrationId = options.registrationId;
+    this.pniRegistrationId = options.pniRegistrationId;
 
     this.address = ProtocolAddress.new(this.uuid, this.deviceId);
     this.privPniAddress = ProtocolAddress.new(this.pni, this.deviceId);
