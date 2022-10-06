@@ -243,7 +243,9 @@ export class Connection extends Service {
       },
     );
 
-    this.router.put('/v1/messages/:uuid', async (params, body, headers) => {
+    this.router.put('/v1/messages/:uuid', async (
+      params, body, headers, query = {},
+    ) => {
       if (!body) {
         return [ 400, { error: 'Missing body' } ];
       }
@@ -258,9 +260,11 @@ export class Connection extends Service {
         return [ 404, { error: 'Device not found' } ];
       }
 
-      const accessError = this.checkAccessKey(target, headers);
-      if (accessError !== undefined) {
-        return [ 401, { error: accessError } ];
+      if (query.story !== 'true') {
+        const accessError = this.checkAccessKey(target, headers);
+        if (accessError !== undefined) {
+          return [ 401, { error: accessError } ];
+        }
       }
 
       if (
