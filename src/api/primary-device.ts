@@ -34,6 +34,7 @@ import {
   GroupMasterKey,
   GroupSecretParams,
   ProfileKey,
+  ProfileKeyCredentialPresentation,
   ProfileKeyCredentialRequest,
   ServerPublicParams,
 } from '@signalapp/libsignal-client/zkgroup';
@@ -125,6 +126,10 @@ export type EncryptTextOptions = EncryptOptions & Readonly<{
 export type CreateGroupOptions = Readonly<{
   title: string;
   members: ReadonlyArray<PrimaryDevice>;
+}>;
+
+export type InviteToGroupOptions = EncryptOptions & Readonly<{
+  sendInvite?: boolean;
 }>;
 
 export type SyncSentOptions = Readonly<{
@@ -607,40 +612,14 @@ export class PrimaryDevice {
   public async createGroup(
     { title, members: memberDevices }: CreateGroupOptions,
   ): Promise<Group> {
-    const ops = new ClientZkProfileOperations(
-      this.config.serverPublicParams,
-    );
-
     const groupParams = GroupSecretParams.generate();
 
     const members = await Promise.all(memberDevices.map(async (member) => {
-      const { device, profileKey } = member;
-      const ctx = ops.createProfileKeyCredentialRequestContext(
-        device.uuid,
-        profileKey,
-      );
-      const response = await this.config.issueExpiringProfileKeyCredential(
-        member.device,
-        ctx.getRequest(),
-      );
-      assert.ok(
-        response,
-        `Member device ${device.uuid} not initialized`,
-      );
-
-      const credential = ops.receiveExpiringProfileKeyCredential(
-        ctx,
-        new ExpiringProfileKeyCredentialResponse(response),
-      );
-
-      const presentation = ops.createExpiringProfileKeyCredentialPresentation(
-        groupParams,
-        credential,
-      );
+      const presentation = await member.getProfileKeyPresentation(groupParams);
 
       return {
-        uuid: device.uuid,
-        profileKey,
+        uuid: member.device.uuid,
+        profileKey: member.profileKey,
         presentation,
         joinedAtVersion: Long.fromNumber(0),
       };
@@ -674,14 +653,14 @@ export class PrimaryDevice {
   public async inviteToGroup(
     group: Group,
     device: Device,
-    options: EncryptOptions = {},
+    options: InviteToGroupOptions = {},
   ): Promise<Group> {
+    const { uuidKind = UUIDKind.ACI, sendInvite = true } = options;
+
     const serverGroup = await this.config.getGroup(
       group.publicParams.serialize(),
     );
     assert(serverGroup !== undefined, 'Group does not exist on server');
-
-    const { uuidKind = UUIDKind.ACI } = options;
 
     const targetUUID = device.getUUIDByKind(uuidKind);
     const userId = group.encryptUUID(targetUUID);
@@ -698,6 +677,64 @@ export class PrimaryDevice {
       },
       aciCiphertext: group.encryptUUID(this.device.uuid),
       pniCiphertext: group.encryptUUID(this.device.pni),
+    });
+
+    assert(!modifyResult.conflict, 'Group update conflict!');
+
+    const updatedGroup = new Group({
+      secretParams: group.secretParams,
+      groupState: serverGroup.state,
+    });
+
+    if (sendInvite) {
+      // Send the invitation
+      const encryptOptions = {
+        timestamp: Date.now(),
+        ...options,
+      };
+      const envelope = await this.encryptContent(device, {
+        dataMessage: {
+          groupV2: {
+            ...updatedGroup.toContext(),
+            groupChange: Proto.GroupChange.encode(
+              modifyResult.signedChange,
+            ).finish(),
+          },
+          timestamp: Long.fromNumber(encryptOptions.timestamp),
+        },
+      }, encryptOptions);
+      await this.config.send(device, envelope);
+    }
+
+    return updatedGroup;
+  }
+
+  public async acceptPniInvite(
+    group: Group,
+    device: Device,
+    options: EncryptOptions = {},
+  ): Promise<Group> {
+    const serverGroup = await this.config.getGroup(
+      group.publicParams.serialize(),
+    );
+    assert(serverGroup !== undefined, 'Group does not exist on server');
+
+    const aciCiphertext = group.encryptUUID(this.device.uuid);
+    const pniCiphertext = group.encryptUUID(this.device.pni);
+
+    const presentation =
+      await this.getProfileKeyPresentation(group.secretParams);
+
+    const modifyResult = await this.config.modifyGroup({
+      group: serverGroup,
+      actions: {
+        version: group.revision + 1,
+        promoteMembersPendingPniAciProfileKey: [ {
+          presentation: presentation.serialize(),
+        } ],
+      },
+      aciCiphertext,
+      pniCiphertext,
     });
 
     assert(!modifyResult.conflict, 'Group update conflict!');
@@ -1175,6 +1212,37 @@ export class PrimaryDevice {
   //
   // Private
   //
+
+  private async getProfileKeyPresentation(
+    groupParams: GroupSecretParams,
+  ): Promise<ProfileKeyCredentialPresentation> {
+    const ops = new ClientZkProfileOperations(
+      this.config.serverPublicParams,
+    );
+
+    const ctx = ops.createProfileKeyCredentialRequestContext(
+      this.device.uuid,
+      this.profileKey,
+    );
+    const response = await this.config.issueExpiringProfileKeyCredential(
+      this.device,
+      ctx.getRequest(),
+    );
+    assert.ok(
+      response,
+      `Member device ${this.device.uuid} not initialized`,
+    );
+
+    const credential = ops.receiveExpiringProfileKeyCredential(
+      ctx,
+      new ExpiringProfileKeyCredentialResponse(response),
+    );
+
+    return ops.createExpiringProfileKeyCredentialPresentation(
+      groupParams,
+      credential,
+    );
+  }
 
   private getPrivateKey(uuidKind: UUIDKind): PrivateKey {
     switch (uuidKind) {
