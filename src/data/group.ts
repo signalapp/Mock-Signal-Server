@@ -32,10 +32,9 @@ export abstract class Group {
   }
 
   public get id(): string {
-    const { publicKey } = this.state;
-    assert.ok(publicKey, 'Group must have public key');
-
-    return Buffer.from(publicKey).toString('base64');
+    return Buffer.from(
+      this.publicParams.getGroupIdentifier().serialize(),
+    ).toString('base64');
   }
 
   public get revision(): number {
