@@ -144,6 +144,7 @@ export class Server extends BaseServer {
   private manifestQueueByUuid = new Map<UUID, PromiseQueue<number>>();
   private groupQueueById = new Map<string, PromiseQueue<number>>();
   private rateLimitCountByPair = new Map<`${UUID}:${UUID}`, number>();
+  private unregisteredUuids = new Set<UUID>();
 
   constructor(config: Config = {}) {
     super();
@@ -373,6 +374,14 @@ export class Server extends BaseServer {
     return device;
   }
 
+  public unregister(primary: PrimaryDevice, uuidKind = UUIDKind.ACI): void {
+    this.unregisteredUuids.add(primary.device.getUUIDByKind(uuidKind));
+  }
+
+  public register(primary: PrimaryDevice, uuidKind = UUIDKind.ACI): void {
+    this.unregisteredUuids.delete(primary.device.getUUIDByKind(uuidKind));
+  }
+
   public rateLimit({ source, target }: RateLimitOptions): void {
     this.rateLimitCountByPair.set(`${source}:${target}`, 0);
   }
@@ -483,6 +492,10 @@ export class Server extends BaseServer {
     }
 
     await primary.handleEnvelope(source, uuidKind, envelopeType, encrypted);
+  }
+
+  public isUnregistered(uuid: UUID): boolean {
+    return this.unregisteredUuids.has(uuid);
   }
 
   public isSendRateLimited({

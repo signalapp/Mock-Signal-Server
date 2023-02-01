@@ -1,10 +1,16 @@
-// Copyright 2020-2022 Signal Messenger, LLC
+// Copyright 2020 Signal Messenger, LLC
 // SPDX-License-Identifier: AGPL-3.0-only
 
 package signalservice;
 
 option java_package         = "org.whispersystems.signalservice.internal.storage";
 option java_outer_classname = "SignalStorageProtos";
+
+enum OptionalBool {
+  UNSET = 0;
+  ENABLED = 1;
+  DISABLED = 2;
+}
 
 message StorageManifest  {
   optional uint64 version = 1;
@@ -66,27 +72,29 @@ message StorageRecord {
 
 message ContactRecord {
   enum IdentityState {
-    DEFAULT    = 0;
-    VERIFIED   = 1;
+    DEFAULT = 0;
+    VERIFIED = 1;
     UNVERIFIED = 2;
   }
 
-  optional string        serviceUuid         = 1;
-  optional string        serviceE164         = 2;
-  optional string        pni                 = 15;
-  optional bytes         profileKey          = 3;
-  optional bytes         identityKey         = 4;
-  optional IdentityState identityState       = 5;
-  optional string        givenName           = 6;
-  optional string        familyName          = 7;
-  optional string        username            = 8;
-  optional bool          blocked             = 9;
-  optional bool          whitelisted         = 10;
-  optional bool          archived            = 11;
-  optional bool          markedUnread        = 12;
-  optional uint64        mutedUntilTimestamp = 13;
-  optional bool          hideStory           = 14;
-  // Next ID: 16
+  optional string serviceUuid = 1;
+  optional string serviceE164 = 2;
+  optional string pni = 15;
+  optional bytes profileKey = 3;
+  optional bytes identityKey = 4;
+  optional IdentityState identityState = 5;
+  optional string givenName = 6;
+  optional string familyName = 7;
+  optional string username = 8;
+  optional bool blocked = 9;
+  optional bool whitelisted = 10;
+  optional bool archived = 11;
+  optional bool markedUnread = 12;
+  optional uint64 mutedUntilTimestamp = 13;
+  optional bool hideStory = 14;
+  optional uint64 unregisteredAtTimestamp = 16;
+  optional string systemGivenName = 17;
+  optional string systemFamilyName = 18;
 }
 
 message GroupV1Record {
@@ -99,14 +107,22 @@ message GroupV1Record {
 }
 
 message GroupV2Record {
-  optional bytes  masterKey                    = 1;
-  optional bool   blocked                      = 2;
-  optional bool   whitelisted                  = 3;
-  optional bool   archived                     = 4;
-  optional bool   markedUnread                 = 5;
-  optional uint64 mutedUntilTimestamp          = 6;
-  optional bool   dontNotifyForMentionsIfMuted = 7;
-  optional bool   hideStory                    = 8;
+  enum StorySendMode {
+    DEFAULT = 0;
+    DISABLED = 1;
+    ENABLED = 2;
+  }
+
+  optional bytes masterKey = 1;
+  optional bool blocked = 2;
+  optional bool whitelisted = 3;
+  optional bool archived = 4;
+  optional bool markedUnread = 5;
+  optional uint64 mutedUntilTimestamp = 6;
+  optional bool dontNotifyForMentionsIfMuted = 7;
+  optional bool hideStory = 8;
+  reserved /* storySendEnabled */ 9; // removed
+  optional StorySendMode storySendMode = 10;
 }
 
 message AccountRecord {
@@ -129,30 +145,34 @@ message AccountRecord {
     }
   }
 
-  optional bytes                  profileKey                   = 1;
-  optional string                 givenName                    = 2;
-  optional string                 familyName                   = 3;
-  optional string                 avatarUrl                    = 4;
-  optional bool                   noteToSelfArchived           = 5;
-  optional bool                   readReceipts                 = 6;
-  optional bool                   sealedSenderIndicators       = 7;
-  optional bool                   typingIndicators             = 8;
-  optional bool                   proxiedLinkPreviews          = 9;
-  optional bool                   noteToSelfMarkedUnread       = 10;
-  optional bool                   linkPreviews                 = 11;
-  optional PhoneNumberSharingMode phoneNumberSharingMode       = 12;
-  optional bool                   notDiscoverableByPhoneNumber = 13;
-  repeated PinnedConversation     pinnedConversations          = 14;
-  optional bool                   preferContactAvatars         = 15;
-  optional uint32                 universalExpireTimer         = 17;
-  optional bool                   primarySendsSms              = 18;
-  optional string                 e164                         = 19;
-  repeated string                 preferredReactionEmoji       = 20;
-  optional bytes                  subscriberId                 = 21;
-  optional string                 subscriberCurrencyCode       = 22;
-  optional bool                   displayBadgesOnProfile       = 23;
-  optional bool                   keepMutedChatsArchived       = 25;
-  optional bool                   hasSetMyStoriesPrivacy       = 26;
+  optional bytes profileKey = 1;
+  optional string givenName = 2;
+  optional string familyName = 3;
+  optional string avatarUrl = 4;
+  optional bool noteToSelfArchived = 5;
+  optional bool readReceipts = 6;
+  optional bool sealedSenderIndicators = 7;
+  optional bool typingIndicators = 8;
+  optional bool proxiedLinkPreviews = 9;
+  optional bool noteToSelfMarkedUnread = 10;
+  optional bool linkPreviews = 11;
+  optional PhoneNumberSharingMode phoneNumberSharingMode = 12;
+  optional bool notDiscoverableByPhoneNumber = 13;
+  repeated PinnedConversation pinnedConversations = 14;
+  optional bool preferContactAvatars = 15;
+  optional uint32 universalExpireTimer = 17;
+  optional bool primarySendsSms = 18;
+  optional string e164 = 19;
+  repeated string preferredReactionEmoji = 20;
+  optional bytes subscriberId = 21;
+  optional string subscriberCurrencyCode = 22;
+  optional bool displayBadgesOnProfile = 23;
+  optional bool keepMutedChatsArchived = 25;
+  optional bool hasSetMyStoriesPrivacy = 26;
+  optional bool hasViewedOnboardingStory = 27;
+  reserved 28; // deprecatedStoriesDisabled
+  optional bool storiesDisabled = 29;
+  optional OptionalBool storyViewReceiptsEnabled = 30;
 }
 
 message StoryDistributionListRecord {

@@ -279,7 +279,28 @@ export class StorageState {
     assert(contact, 'consistency check');
 
     return contact;
+  }
 
+  public removeContact(
+    { device }: PrimaryDevice,
+    uuidKind = UUIDKind.ACI,
+  ): StorageState {
+    return this.removeItem(item => item.isContact(device, uuidKind));
+  }
+
+  public mergeContact(
+    primary: PrimaryDevice,
+    diff: Proto.IContactRecord,
+  ): StorageState {
+    const { device } = primary;
+    return this
+      .removeItem(item => item.isContact(device, UUIDKind.ACI))
+      .removeItem(item => item.isContact(device, UUIDKind.PNI))
+      .addContact(primary, {
+        pni: device.getUUIDByKind(UUIDKind.PNI),
+        ...diff,
+      })
+      .unpin(primary, UUIDKind.PNI);
   }
 
   public pin(primary: PrimaryDevice, uuidKind = UUIDKind.ACI): StorageState {
@@ -334,17 +355,7 @@ export class StorageState {
   public removeRecord(
     find: (item: StorageStateRecord) => boolean,
   ): StorageState {
-    const itemIndex = this.items.findIndex((item) => find(item.toRecord()));
-    if (itemIndex === -1) {
-      throw new Error('Record not found');
-    }
-
-    const newItems = [
-      ...this.items.slice(0, itemIndex),
-      ...this.items.slice(itemIndex + 1),
-    ];
-
-    return new StorageState(this.version, newItems);
+    return this.removeItem((item) => find(item.toRecord()));
   }
 
   public getAllGroupRecords(
@@ -457,6 +468,22 @@ export class StorageState {
       ...this.items.slice(0, index),
       new StorageStateItem({ type, key, record }),
       ...this.items.slice(index + 1),
+    ];
+
+    return new StorageState(this.version, newItems);
+  }
+
+  private removeItem(
+    find: (item: StorageStateItem) => boolean,
+  ): StorageState {
+    const itemIndex = this.items.findIndex((item) => find(item));
+    if (itemIndex === -1) {
+      throw new Error('Record not found');
+    }
+
+    const newItems = [
+      ...this.items.slice(0, itemIndex),
+      ...this.items.slice(itemIndex + 1),
     ];
 
     return new StorageState(this.version, newItems);

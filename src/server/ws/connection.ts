@@ -54,6 +54,10 @@ export class Connection extends Service {
         return [ 404, { error: 'Device not found' } ];
       }
 
+      if (this.server.isUnregistered(uuid)) {
+        return [ 404, { error: 'Unregistered' } ];
+      }
+
       const accessError = this.checkAccessKey(target, headers);
       if (accessError !== undefined) {
         return [ 401, { error: accessError } ];
@@ -265,6 +269,10 @@ export class Connection extends Service {
         if (accessError !== undefined) {
           return [ 401, { error: accessError } ];
         }
+      }
+
+      if (this.server.isUnregistered(targetUUID)) {
+        return [ 404, { error: 'Unregistered' } ];
       }
 
       if (

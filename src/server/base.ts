@@ -411,6 +411,10 @@ export abstract class Server {
     targetUUID: UUID,
     messages: ReadonlyArray<JSONMessage>,
   ): Promise<PrepareMultiDeviceMessageResult> {
+    if (this.isUnregistered(targetUUID)) {
+      return { status: 'unknown' };
+    }
+
     const devices = await this.getAllDevicesByUUID(targetUUID);
     if (devices.length === 0) {
       return { status: 'unknown' };
@@ -929,6 +933,8 @@ export abstract class Server {
       today + PROFILE_KEY_CREDENTIAL_EXPIRATION,
     ).serialize();
   }
+
+  public abstract isUnregistered(uuid: UUID): boolean;
 
   public abstract isSendRateLimited(options: IsSendRateLimitedOptions): boolean;
 
