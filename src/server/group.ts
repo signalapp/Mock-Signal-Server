@@ -13,6 +13,7 @@ import {
 
 import { signalservice as Proto } from '../../protos/compiled';
 import { Group } from '../data/group';
+import { GroupStateSchema } from '../data/schemas';
 
 export type ServerGroupOptions = Readonly<{
   profileOps: ServerZkProfileOperations;
@@ -38,28 +39,17 @@ export class ServerGroup extends Group {
   constructor({ profileOps, zkSecret, state }: ServerGroupOptions) {
     super();
 
-    // TODO(indutny): use zod or something
-    assert.ok(state.publicKey, 'Group public key must be present');
-    assert.strictEqual(state.version, 0, 'Initial group version must be zero');
-    assert.ok(state.accessControl, 'Group access control must be present');
-    assert.ok(
-      typeof state.accessControl.attributes === 'number' &&
-        typeof state.accessControl.members === 'number' &&
-        typeof state.accessControl.addFromInviteLink === 'number',
-      'Group access control must be configured',
-    );
-    assert.ok(
-      state.members && state.members.length > 0,
-      'Group members must be present',
-    );
+    const parsedState = GroupStateSchema.parse(state);
 
-    this.privPublicParams = new GroupPublicParams(Buffer.from(state.publicKey));
+    this.privPublicParams = new GroupPublicParams(
+      Buffer.from(parsedState.publicKey),
+    );
     this.profileOps = profileOps;
     this.zkSecret = zkSecret;
 
     const unrolledState = { ...state };
 
-    unrolledState.members = state.members.map(
+    unrolledState.members = (state.members ?? []).map(
       (member) => this.unrollMember(member),
     );
 

@@ -15,7 +15,11 @@ import WebSocket from 'ws';
 
 import { signalservice as Proto } from '../../../protos/compiled';
 import { Device } from '../../data/device';
-import { JSONMessage, JSONMessageList } from '../../data/json.d';
+import {
+  Message,
+  MessageListSchema,
+  RegistrationDataSchema,
+} from '../../data/schemas';
 import { UUID } from '../../types';
 import { generateAccessKeyVerifier } from '../../crypto';
 import { Server } from '../base';
@@ -150,7 +154,7 @@ export class Connection extends Service {
           commonMaterial,
         } = parseMultiRecipientMessage(Buffer.from(body));
 
-        const listByUUID = new Map<UUID, Array<JSONMessage>>();
+        const listByUUID = new Map<UUID, Array<Message>>();
 
         for (const recipient of recipients) {
           const {
@@ -160,7 +164,7 @@ export class Connection extends Service {
             material,
           } = recipient;
 
-          let list: Array<JSONMessage> | undefined = listByUUID.get(uuid);
+          let list: Array<Message> | undefined = listByUUID.get(uuid);
           if (!list) {
             list = [];
             listByUUID.set(uuid, list);
@@ -254,9 +258,9 @@ export class Connection extends Service {
         return [ 400, { error: 'Missing body' } ];
       }
 
-      const { messages }: JSONMessageList = JSON.parse(
+      const { messages } = MessageListSchema.parse(JSON.parse(
         Buffer.from(body).toString(),
-      );
+      ));
 
       const targetUUID = params.uuid as string;
       const target = await this.server.getDeviceByUUID(targetUUID);
@@ -353,18 +357,19 @@ export class Connection extends Service {
         return [ 400, { error: 'Missing body' } ];
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const json = JSON.parse(Buffer.from(body).toString());
-      if (typeof json.registrationId !== 'number') {
-        return [ 400, { error: 'Invalid registration id' } ];
-      }
+      const {
+        registrationId,
+        pniRegistrationId,
+      } = RegistrationDataSchema.parse(
+        JSON.parse(Buffer.from(body).toString()),
+      );
 
       const device = await server.provisionDevice({
         number: username,
         password,
         provisioningCode: params.code as string,
-        registrationId: json.registrationId as number,
-        pniRegistrationId: json.pniRegistrationId as number,
+        registrationId,
+        pniRegistrationId,
       });
 
       return [ 200, {

@@ -22,7 +22,7 @@ import { Server } from './base';
 import { ServerGroup } from './group';
 import { Device } from '../data/device';
 import { ParseAuthHeaderResult, parseAuthHeader } from '../util';
-import { JSONDeviceKeys } from '../data/json.d';
+import { DeviceKeysSchema, RegistrationDataSchema } from '../data/schemas';
 import { UUIDKind } from '../types';
 import { signalservice as Proto } from '../../protos/compiled';
 
@@ -78,14 +78,7 @@ export const createHandler = (server: Server): RequestHandler => {
       return send(res, 400, { error: 'Invalid authorization header' });
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const body = await json(req) as any;
-    if (typeof body.registrationId !== 'number') {
-      return send(res, 400, { error: 'Invalid registration id' });
-    }
-    if (typeof body.pniRegistrationId !== 'number') {
-      return send(res, 400, { error: 'Invalid PNI registration id' });
-    }
+    const body = RegistrationDataSchema.parse(await json(req));
 
     const device = await server.provisionDevice({
       number: username,
@@ -302,8 +295,7 @@ export const createHandler = (server: Server): RequestHandler => {
 
     const uuidKind = uuidKindFromQuery(req);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const body: JSONDeviceKeys = await json(req) as any;
+    const body = DeviceKeysSchema.parse(await json(req));
     try {
       const parseKey = (base64: string): PublicKey => {
         return PublicKey.deserialize(Buffer.from(base64, 'base64'));

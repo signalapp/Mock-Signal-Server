@@ -39,7 +39,7 @@ import {
   UUIDKind,
 } from '../types';
 import { getTodayInSeconds } from '../util';
-import { JSONMessage } from '../data/json.d';
+import { Message } from '../data/schemas';
 import { ModifyGroupResult, ServerGroup } from './group';
 
 export enum EnvelopeType {
@@ -68,7 +68,7 @@ export type GroupCredentials = Array<{
   redemptionTime: number;
 }>;
 
-export type PreparedMultiDeviceMessage = ReadonlyArray<[ Device, JSONMessage ]>;
+export type PreparedMultiDeviceMessage = ReadonlyArray<[ Device, Message ]>;
 
 export type ProvisionDeviceOptions = Readonly<{
   number: string;
@@ -409,7 +409,7 @@ export abstract class Server {
   public async prepareMultiDeviceMessage(
     source: Device | undefined,
     targetUUID: UUID,
-    messages: ReadonlyArray<JSONMessage>,
+    messages: ReadonlyArray<Message>,
   ): Promise<PrepareMultiDeviceMessageResult> {
     if (this.isUnregistered(targetUUID)) {
       return { status: 'unknown' };
@@ -425,7 +425,7 @@ export abstract class Server {
       deviceById.set(device.deviceId, device);
     }
 
-    const result = new Array<[ Device, JSONMessage ]>();
+    const result = new Array<[ Device, Message ]>();
 
     const extraDevices = new Set<DeviceId>();
     const staleDevices = new Set<DeviceId>();
