@@ -6,7 +6,7 @@ import crypto from 'crypto';
 import Long from 'long';
 import { v4 as uuidv4 } from 'uuid';
 import createDebug from 'debug';
-import { SenderCertificate } from '@signalapp/libsignal-client';
+import { SenderCertificate, usernames } from '@signalapp/libsignal-client';
 import {
   AuthCredentialPresentation,
   GroupPublicParams,
@@ -39,7 +39,11 @@ import {
   UUIDKind,
 } from '../types';
 import { getTodayInSeconds } from '../util';
-import { Message } from '../data/schemas';
+import {
+  Message,
+  UsernameConfirmation,
+  UsernameReservation,
+} from '../data/schemas';
 import { ModifyGroupResult, ServerGroup } from './group';
 
 export enum EnvelopeType {
@@ -161,8 +165,8 @@ const debug = createDebug('mock:server:base');
 export abstract class Server {
   private readonly devices = new Map<string, Array<Device>>();
   private readonly devicesByUUID = new Map<UUID, Device>();
-  private readonly usedUUIDs = new Set<string>();
   private readonly devicesByAuth = new Map<string, AuthEntry>();
+  private readonly usedUUIDs = new Set<string>();
   private readonly storageAuthByUsername = new Map<string, StorageAuthEntry>();
   private readonly storageAuthByDevice = new Map<Device, StorageAuthEntry>();
   private readonly storageManifestByUuid =
@@ -177,6 +181,10 @@ export abstract class Server {
   private readonly messageQueue =
     new WeakMap<Device, Array<MessageQueueEntry>>();
   private readonly groups = new Map<string, ServerGroup>();
+  private readonly uuidByUsername = new Map<string, UUID>();
+  private readonly uuidByReservedUsername = new Map<string, UUID>();
+  private readonly usernameByUUID = new Map<UUID, string>();
+  private readonly reservedUsernameByUUID = new Map<UUID, string>();
   protected privCertificate: ServerCertificate | undefined;
   protected privZKSecret: ServerSecretParams | undefined;
 
@@ -813,6 +821,98 @@ export abstract class Server {
     device: Device,
     version: Long,
   ): Promise<void>;
+
+  //
+  // Usernames
+  //
+
+  public async reserveUsername(
+    uuid: UUID,
+    { usernameHashes }: UsernameReservation,
+  ): Promise<Buffer | undefined> {
+    // Clear previously reserved usernames
+    const reserved = this.reservedUsernameByUUID.get(uuid);
+    if (reserved !== undefined) {
+      this.reservedUsernameByUUID.delete(uuid);
+      this.uuidByReservedUsername.delete(reserved);
+    }
+
+    for (const hash of usernameHashes) {
+      const hashHex = hash.toString('hex');
+      if (this.uuidByReservedUsername.has(hashHex)) {
+        continue;
+      }
+      if (this.uuidByUsername.has(hashHex)) {
+        continue;
+      }
+
+      this.reservedUsernameByUUID.set(uuid, hashHex);
+      this.uuidByReservedUsername.set(hashHex, uuid);
+      return hash;
+    }
+
+    return undefined;
+  }
+
+  public async confirmUsername(
+    uuid: UUID,
+    {
+      usernameHash,
+      zkProof,
+    }: UsernameConfirmation,
+  ): Promise<boolean> {
+    // Clear previously reserved usernames
+    const reserved = this.reservedUsernameByUUID.get(uuid);
+    if (reserved !== usernameHash.toString('hex')) {
+      return false;
+    }
+
+    try {
+      usernames.verifyProof(zkProof, usernameHash);
+    } catch (error) {
+      debug('failed to verify username proof of %s: %O', uuid, error);
+      return false;
+    }
+
+    this.reservedUsernameByUUID.delete(uuid);
+    this.uuidByReservedUsername.delete(reserved);
+
+    this.uuidByUsername.set(reserved, uuid);
+    this.usernameByUUID.set(uuid, reserved);
+    return true;
+  }
+
+  public async deleteUsername(
+    uuid: UUID,
+  ): Promise<void> {
+    const hash = this.usernameByUUID.get(uuid);
+    if (!hash) {
+      return;
+    }
+
+    this.uuidByUsername.delete(hash);
+    this.usernameByUUID.delete(uuid);
+  }
+
+  public async lookupByUsernameHash(
+    usernameHash: Buffer,
+  ): Promise<UUID | undefined> {
+    return this.uuidByUsername.get(usernameHash.toString('hex'));
+  }
+
+  // For easier testing
+  public async lookupByUsername(
+    username: string,
+  ): Promise<UUID | undefined> {
+    return this.uuidByUsername.get(usernames.hash(username).toString('hex'));
+  }
+
+  // For easier testing
+  public async setUsername(uuid: UUID, username: string): Promise<void> {
+    const hash = usernames.hash(username).toString('hex');
+    this.usernameByUUID.set(uuid, hash);
+    this.uuidByUsername.set(hash, uuid);
+  }
 
   //
   // Utils

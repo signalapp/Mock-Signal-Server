@@ -3,6 +3,8 @@
 
 import z from 'zod';
 
+import { fromURLSafeBase64 } from '../util';
+
 export const DeviceKeysSchema = z.object({
   identityKey: z.string(),
   signedPreKey: z.object({
@@ -50,3 +52,18 @@ export const GroupStateSchema = z.object({
   }),
   members: z.unknown().array().min(1),
 });
+
+export const UsernameReservationSchema = z.object({
+  usernameHashes: z.string().transform(
+    fromURLSafeBase64,
+  ).array().min(1).max(20),
+});
+
+export type UsernameReservation = z.infer<typeof UsernameReservationSchema>;
+
+export const UsernameConfirmationSchema = z.object({
+  usernameHash: z.string().transform(fromURLSafeBase64),
+  zkProof: z.string().transform(fromURLSafeBase64),
+});
+
+export type UsernameConfirmation = z.infer<typeof UsernameConfirmationSchema>;

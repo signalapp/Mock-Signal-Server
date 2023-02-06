@@ -256,3 +256,19 @@ export function getTodayInSeconds(): number {
 export function generateRegistrationId(): RegistrationId {
   return Math.max(1, (Math.random() * 0x4000) | 0);
 }
+
+export function toURLSafeBase64(buf: Uint8Array): string {
+  return Buffer.from(buf)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
+}
+
+export function fromURLSafeBase64(base64: string): Buffer {
+  const source = base64.replace(/-/g, '+').replace(/_/g, '/');
+
+  // Note that `Buffer.from()` ignores padding anyway so we don't need to
+  // restore it.
+  return Buffer.from(source, 'base64');
+}

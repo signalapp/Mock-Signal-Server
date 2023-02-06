@@ -9,6 +9,7 @@ import {
   AugmentedRequestHandler as RouteHandler,
   ServerRequest,
   ServerResponse,
+  del,
   get,
   patch,
   put,
@@ -21,8 +22,18 @@ import createDebug from 'debug';
 import { Server } from './base';
 import { ServerGroup } from './group';
 import { Device } from '../data/device';
-import { ParseAuthHeaderResult, parseAuthHeader } from '../util';
-import { DeviceKeysSchema, RegistrationDataSchema } from '../data/schemas';
+import {
+  ParseAuthHeaderResult,
+  fromURLSafeBase64,
+  parseAuthHeader,
+  toURLSafeBase64,
+} from '../util';
+import {
+  DeviceKeysSchema,
+  RegistrationDataSchema,
+  UsernameConfirmationSchema,
+  UsernameReservationSchema,
+} from '../data/schemas';
 import { UUIDKind } from '../types';
 import { signalservice as Proto } from '../../protos/compiled';
 
@@ -344,6 +355,73 @@ export const createHandler = (server: Server): RequestHandler => {
     return { uuid: device.uuid, pni: device.pni, number: device.number };
   });
 
+  const reserveUsername = put(
+    '/v1/accounts/username_hash/reserve',
+    async (req, res) => {
+      const device = await auth(req, res);
+      if (!device) {
+        return;
+      }
+
+      const body = UsernameReservationSchema.parse(await json(req));
+
+      const usernameHash = await server.reserveUsername(device.uuid, body);
+
+      if (!usernameHash) {
+        return send(res, 409);
+      }
+
+      return { usernameHash: toURLSafeBase64(usernameHash) };
+    },
+  );
+
+  const confirmUsername = put(
+    '/v1/accounts/username_hash/confirm',
+    async (req, res) => {
+      const device = await auth(req, res);
+      if (!device) {
+        return;
+      }
+
+      const body = UsernameConfirmationSchema.parse(await json(req));
+
+      const result = await server.confirmUsername(device.uuid, body);
+
+      if (!result) {
+        return send(res, 409);
+      }
+
+      return send(res, 200);
+    },
+  );
+
+  const deleteUsername = del('/v1/accounts/username_hash', async (req, res) => {
+    const device = await auth(req, res);
+    if (!device) {
+      return;
+    }
+
+    await server.deleteUsername(device.uuid);
+
+    return send(res, 204);
+  },
+  );
+
+  const lookupByUsernameHash = get(
+    '/v1/accounts/username_hash/:hash',
+    async (req, res) => {
+      const { hash = '' } = req.params;
+
+      const uuid = await server.lookupByUsernameHash(fromURLSafeBase64(hash));
+
+      if (!uuid) {
+        return send(res, 404);
+      }
+
+      return { uuid };
+    },
+  );
+
   const putChallenge = put('/v1/challenge', async (req, res) => {
     const device = await auth(req, res);
     if (!device) {
@@ -604,6 +682,10 @@ export const createHandler = (server: Server): RequestHandler => {
     getKeys,
 
     whoami,
+    reserveUsername,
+    confirmUsername,
+    deleteUsername,
+    lookupByUsernameHash,
 
     putChallenge,
 
