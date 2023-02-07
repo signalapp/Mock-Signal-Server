@@ -41,8 +41,7 @@ import {
 import { parse as parseUUID } from 'uuid';
 
 import { signalservice as Proto } from '../../protos/compiled';
-import { INITIAL_PREKEY_COUNT } from '../constants';
-import { DeviceId, UUID, UUIDKind } from '../types';
+import { DeviceId, PreKey, UUID, UUIDKind } from '../types';
 import { Contact } from '../data/contacts';
 import { Group as GroupData } from '../data/group';
 import {
@@ -251,6 +250,7 @@ class SignedPreKeyStore extends SignedPreKeyStoreBase {
 }
 
 class PreKeyStore extends PreKeyStoreBase {
+  private lastId = 0;
   private readonly records = new Map<number, PreKeyRecord>();
 
   async savePreKey(id: number, record: PreKeyRecord): Promise<void> {
@@ -267,6 +267,13 @@ class PreKeyStore extends PreKeyStoreBase {
 
   async removePreKey(id: number): Promise<void> {
     this.records.delete(id);
+  }
+
+  public getNextId(): number {
+    this.lastId += 1;
+
+    // Note: intentionally starting from 1
+    return this.lastId;
   }
 }
 
@@ -422,7 +429,7 @@ export class PrimaryDevice {
     );
   }
 
-  public async init(preKeyCount?: number): Promise<void> {
+  public async init(): Promise<void> {
     if (this.isInitialized) {
       throw new Error('Already initialized');
     }
@@ -436,7 +443,7 @@ export class PrimaryDevice {
       );
       await this.device.setKeys(
         uuidKind,
-        await this.generateKeys(this.device, uuidKind, preKeyCount),
+        await this.generateKeys(this.device, uuidKind),
       );
     }
 
@@ -476,7 +483,6 @@ export class PrimaryDevice {
   public async generateKeys(
     device: Device,
     uuidKind: UUIDKind,
-    preKeyCount = INITIAL_PREKEY_COUNT,
   ): Promise<DeviceKeys & { signedPreKeyRecord: SignedPreKeyRecord }> {
     const signedPreKey = PrivateKey.generate();
     const signedPreKeySig = this.getPrivateKey(uuidKind).sign(
@@ -497,20 +503,6 @@ export class PrimaryDevice {
         signedPreKeyRecord);
     }
 
-    // NOTE: it is important to start with `1` here
-    const preKeys: Array<{ keyId: number, publicKey: PublicKey }> = [];
-    for (let i = 1; i <= preKeyCount; i++) {
-      const preKey = PrivateKey.generate();
-      const publicKey = preKey.getPublicKey();
-
-      const record = PreKeyRecord.new(i, publicKey, preKey);
-      if (shouldSave) {
-        await this.preKeys.get(uuidKind)?.savePreKey(i, record);
-      }
-
-      preKeys.push({ keyId: i, publicKey });
-    }
-
     return {
       identityKey: this.getPublicKey(uuidKind),
       signedPreKey: {
@@ -518,10 +510,33 @@ export class PrimaryDevice {
         publicKey: signedPreKey.getPublicKey(),
         signature: signedPreKeySig,
       },
-      preKeys,
+      preKeyIterator: this.getPreKeyIterator(device, uuidKind),
 
       signedPreKeyRecord: signedPreKeyRecord,
     };
+  }
+
+  private async *getPreKeyIterator(
+    device: Device,
+    uuidKind: UUIDKind,
+  ): AsyncIterator<PreKey> {
+    const preKeyStore = this.preKeys.get(uuidKind);
+    assert.ok(preKeyStore, 'Missing preKey store');
+
+    const shouldSave = device === this.device;
+
+    while (true) {
+      const preKey = PrivateKey.generate();
+      const publicKey = preKey.getPublicKey();
+      const keyId = preKeyStore.getNextId();
+
+      if (shouldSave) {
+        const record = PreKeyRecord.new(keyId, publicKey, preKey);
+        await preKeyStore.savePreKey(keyId, record);
+      }
+
+      yield { keyId, publicKey };
+    }
   }
 
   public async getIdentityKey(uuidKind: UUIDKind): Promise<PrivateKey> {
@@ -1101,8 +1116,7 @@ export class PrimaryDevice {
     const results = await Promise.all(
       allDevices.map(async (device) => {
         const isPrimary = device === this.device;
-        const preKeyCount = isPrimary ? undefined : 0;
-        const keys = await this.generateKeys(device, UUIDKind.PNI, preKeyCount);
+        const keys = await this.generateKeys(device, UUIDKind.PNI);
         await device.setKeys(UUIDKind.PNI, keys);
 
         if (isPrimary) {

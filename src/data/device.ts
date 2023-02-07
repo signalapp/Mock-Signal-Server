@@ -5,7 +5,9 @@ import createDebug from 'debug';
 import { ProtocolAddress, PublicKey } from '@signalapp/libsignal-client';
 import { ProfileKeyCommitment } from '@signalapp/libsignal-client/zkgroup';
 
-import { DeviceId, RegistrationId, UUID, UUIDKind } from '../types';
+import {
+  DeviceId, PreKey, RegistrationId, SignedPreKey, UUID, UUIDKind,
+} from '../types';
 
 const debug = createDebug('mock:device');
 
@@ -24,21 +26,11 @@ export type ChangeNumberOptions = Readonly<{
   pniRegistrationId: RegistrationId;
 }>;
 
-export type SignedPreKey = Readonly<{
-  keyId: number;
-  publicKey: PublicKey;
-  signature: Buffer;
-}>;
-
-export type PreKey = Readonly<{
-  keyId: number;
-  publicKey: PublicKey;
-}>;
-
 export type DeviceKeys = Readonly<{
   identityKey: PublicKey;
   signedPreKey: SignedPreKey;
-  preKeys: ReadonlyArray<PreKey>;
+  preKeys?: ReadonlyArray<PreKey>;
+  preKeyIterator?: AsyncIterator<PreKey>;
 }>;
 
 export type SingleUseKey = Readonly<{
@@ -51,7 +43,11 @@ type InternalDeviceKeys = Readonly<{
   identityKey: PublicKey;
   signedPreKey: SignedPreKey;
   preKeys: Array<PreKey>;
+  preKeyIterator?: AsyncIterator<PreKey>;
 }>;
+
+// Techinically, it is infinite.
+const PRE_KEY_ITERATOR_COUNT = 100;
 
 export class Device {
   public readonly uuid: UUID;
@@ -125,7 +121,8 @@ export class Device {
     this.keys.set(uuidKind, {
       identityKey: keys.identityKey,
       signedPreKey: keys.signedPreKey,
-      preKeys: keys.preKeys.slice(),
+      preKeys: keys.preKeys?.slice() ?? [],
+      preKeyIterator: keys.preKeyIterator,
     });
   }
 
@@ -145,7 +142,14 @@ export class Device {
 
     debug('popping single use key for %s', this.debugId);
 
-    const preKey = keys.preKeys.shift();
+    let preKey: PreKey | undefined;
+    if (keys.preKeyIterator) {
+      const { value } = await keys.preKeyIterator.next();
+      preKey = value;
+    }
+    if (!preKey) {
+      preKey = keys.preKeys.shift();
+    }
 
     return {
       identityKey: keys.identityKey,
@@ -158,6 +162,9 @@ export class Device {
     const keys = this.keys.get(uuidKind);
     if (!keys) {
       throw new Error('No keys available for device');
+    }
+    if (keys.preKeyIterator) {
+      return PRE_KEY_ITERATOR_COUNT;
     }
     return keys.preKeys.length;
   }

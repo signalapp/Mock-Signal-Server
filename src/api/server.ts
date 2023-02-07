@@ -89,7 +89,6 @@ export type Config = Readonly<{
 
 export type CreatePrimaryDeviceOptions = Readonly<{
   profileName: string;
-  initialPreKeyCount?: number;
   contacts?: ReadonlyArray<PrimaryDevice>;
   contactsWithoutProfileKey?: ReadonlyArray<PrimaryDevice>;
 }>
@@ -277,7 +276,6 @@ export class Server extends BaseServer {
 
   public async createPrimaryDevice({
     profileName,
-    initialPreKeyCount,
     contacts = [],
     contactsWithoutProfileKey = [],
   }: CreatePrimaryDeviceOptions): Promise<PrimaryDevice> {
@@ -339,7 +337,7 @@ export class Server extends BaseServer {
       waitForStorageManifest: this.waitForStorageManifest.bind(this, device),
       applyStorageWrite: this.applyStorageWrite.bind(this, device),
     });
-    await primary.init(initialPreKeyCount);
+    await primary.init();
 
     this.primaryDevices.set(number, primary);
     this.primaryDevices.set(uuid, primary);
