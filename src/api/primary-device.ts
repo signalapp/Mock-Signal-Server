@@ -875,14 +875,14 @@ export class PrimaryDevice {
       assert.strictEqual(uuidKind, UUIDKind.ACI, 'Got sync message on PNI');
       await this.handleSync(unsealedSource, content.syncMessage);
     } else if (content.dataMessage) {
-      await this.handleDataMessage(
+      this.handleDataMessage(
         unsealedSource,
         uuidKind,
         unsealedType,
         content,
       );
     } else if (content.storyMessage) {
-      await this.handleStoryMessage(
+      this.handleStoryMessage(
         unsealedSource,
         uuidKind,
         unsealedType,
@@ -1388,7 +1388,10 @@ export class PrimaryDevice {
     const encrypted = await this.encryptContent(source, {
       syncMessage: response,
     });
-    await this.config.send(source, encrypted);
+
+    // Intentionally not awaiting since the device might be offline or
+    // not responding.
+    void this.config.send(source, encrypted);
 
     const syncEntry = this.getSyncState(source);
     syncEntry.state |= stateChange;
@@ -1399,12 +1402,12 @@ export class PrimaryDevice {
     }
   }
 
-  private async handleDataMessage(
+  private handleDataMessage(
     source: Device,
     uuidKind: UUIDKind,
     envelopeType: EnvelopeType,
     content: Proto.IContent,
-  ): Promise<void> {
+  ): void {
     const { dataMessage } = content;
     assert.ok(dataMessage, 'dataMessage must be present');
 
@@ -1419,12 +1422,12 @@ export class PrimaryDevice {
     });
   }
 
-  private async handleStoryMessage(
+  private handleStoryMessage(
     source: Device,
     uuidKind: UUIDKind,
     envelopeType: EnvelopeType,
     content: Proto.IContent,
-  ): Promise<void> {
+  ): void {
     const { storyMessage } = content;
     assert.ok(storyMessage, 'storyMessage must be present');
 
