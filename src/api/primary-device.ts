@@ -1176,6 +1176,16 @@ export class PrimaryDevice {
       await this.encryptText(target, text, options));
   }
 
+  public async sendRaw(
+    target: Device,
+    content: Proto.IContent,
+    options?: EncryptOptions,
+  ): Promise<void> {
+    await this.config.send(
+      target,
+      await this.encryptContent(target, content, options));
+  }
+
   public async receive(source: Device, encrypted: Buffer): Promise<void> {
     const envelope = Proto.Envelope.decode(encrypted);
 
