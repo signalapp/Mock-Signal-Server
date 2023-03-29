@@ -183,6 +183,14 @@ export type MessageQueueEntry = Readonly<{
   content: Proto.IContent;
 }>;
 
+export type ReceiptQueueEntry = Readonly<{
+  source: Device;
+  uuidKind: UUIDKind;
+  envelopeType: EnvelopeType;
+  receiptMessage: Proto.IReceiptMessage;
+  content: Proto.IContent;
+}>;
+
 export type StoryQueueEntry = Readonly<{
   source: Device;
   uuidKind: UUIDKind;
@@ -382,6 +390,7 @@ export class PrimaryDevice {
   private readonly groupsBlob: Proto.IAttachmentPointer;
   private privSenderCertificate: SenderCertificate | undefined;
   private readonly messageQueue = new PromiseQueue<MessageQueueEntry>();
+  private readonly receiptQueue = new PromiseQueue<ReceiptQueueEntry>();
   private readonly storyQueue = new PromiseQueue<StoryQueueEntry>();
   private readonly syncMessageQueue = new PromiseQueue<SyncMessageQueueEntry>();
   private privPniPublicKey = this.pniPrivateKey.getPublicKey();
@@ -888,6 +897,13 @@ export class PrimaryDevice {
         unsealedType,
         content,
       );
+    } else if (content.receiptMessage) {
+      this.handleReceiptMessage(
+        unsealedSource,
+        uuidKind,
+        unsealedType,
+        content,
+      );
     } else {
       handled = false;
     }
@@ -1217,6 +1233,10 @@ export class PrimaryDevice {
     return this.messageQueue.shift();
   }
 
+  public async waitForReceipt(): Promise<ReceiptQueueEntry> {
+    return this.receiptQueue.shift();
+  }
+
   public async waitForStory(): Promise<StoryQueueEntry> {
     return this.storyQueue.shift();
   }
@@ -1428,6 +1448,24 @@ export class PrimaryDevice {
       body: body ?? '',
       envelopeType,
       dataMessage,
+      content,
+    });
+  }
+
+  private handleReceiptMessage(
+    source: Device,
+    uuidKind: UUIDKind,
+    envelopeType: EnvelopeType,
+    content: Proto.IContent,
+  ): void {
+    const { receiptMessage } = content;
+    assert.ok(receiptMessage, 'receiptMessage must be present');
+
+    this.receiptQueue.push({
+      source,
+      uuidKind,
+      envelopeType,
+      receiptMessage,
       content,
     });
   }
