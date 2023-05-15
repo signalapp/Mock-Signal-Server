@@ -176,29 +176,28 @@ export type UnencryptedReceiptOptions = Readonly<{
   messageTimestamp: number;
 }>;
 
-export type MessageQueueEntry = Readonly<{
+export type ContentQueueEntry = Readonly<{
   source: Device;
   uuidKind: UUIDKind;
   envelopeType: EnvelopeType;
+  content: Proto.IContent;
+}>;
+
+export type MessageQueueEntry = ContentQueueEntry & Readonly<{
   body: string;
   dataMessage: Proto.IDataMessage;
-  content: Proto.IContent;
 }>;
 
-export type ReceiptQueueEntry = Readonly<{
-  source: Device;
-  uuidKind: UUIDKind;
-  envelopeType: EnvelopeType;
+export type ReceiptQueueEntry = ContentQueueEntry & Readonly<{
   receiptMessage: Proto.IReceiptMessage;
-  content: Proto.IContent;
 }>;
 
-export type StoryQueueEntry = Readonly<{
-  source: Device;
-  uuidKind: UUIDKind;
-  envelopeType: EnvelopeType;
+export type StoryQueueEntry = ContentQueueEntry & Readonly<{
   storyMessage: Proto.IStoryMessage;
-  content: Proto.IContent;
+}>;
+
+export type EditMessageQueueEntry = ContentQueueEntry & Readonly<{
+  editMessage: Proto.IEditMessage;
 }>;
 
 export type SyncMessageQueueEntry = Readonly<{
@@ -394,6 +393,7 @@ export class PrimaryDevice {
   private readonly messageQueue = new PromiseQueue<MessageQueueEntry>();
   private readonly receiptQueue = new PromiseQueue<ReceiptQueueEntry>();
   private readonly storyQueue = new PromiseQueue<StoryQueueEntry>();
+  private readonly editMessageQueue = new PromiseQueue<EditMessageQueueEntry>();
   private readonly syncMessageQueue = new PromiseQueue<SyncMessageQueueEntry>();
   private privPniPublicKey = this.pniPrivateKey.getPublicKey();
 
@@ -899,6 +899,13 @@ export class PrimaryDevice {
         unsealedType,
         content,
       );
+    } else if (content.editMessage) {
+      this.handleEditMessage(
+        unsealedSource,
+        uuidKind,
+        unsealedType,
+        content,
+      );
     } else if (content.receiptMessage) {
       this.handleReceiptMessage(
         unsealedSource,
@@ -1265,6 +1272,10 @@ export class PrimaryDevice {
     return this.storyQueue.shift();
   }
 
+  public async waitForEditMessage(): Promise<EditMessageQueueEntry> {
+    return this.editMessageQueue.shift();
+  }
+
   public async waitForSyncMessage(
     predicate: ((entry: SyncMessageQueueEntry) => boolean) = () => true,
   ): Promise<SyncMessageQueueEntry> {
@@ -1508,6 +1519,24 @@ export class PrimaryDevice {
       uuidKind,
       envelopeType,
       storyMessage,
+      content,
+    });
+  }
+
+  private handleEditMessage(
+    source: Device,
+    uuidKind: UUIDKind,
+    envelopeType: EnvelopeType,
+    content: Proto.IContent,
+  ): void {
+    const { editMessage } = content;
+    assert.ok(editMessage, 'editMessage must be present');
+
+    this.editMessageQueue.push({
+      source,
+      uuidKind,
+      envelopeType,
+      editMessage,
       content,
     });
   }
