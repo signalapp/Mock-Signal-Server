@@ -114,10 +114,12 @@ export type EncryptOptions = Readonly<{
   sealed?: boolean;
   uuidKind?: UUIDKind;
   updatedPni?: UUID;
+  // Sender Key
+  distributionId?: UUID;
+  group?: Group;
 }>;
 
 export type EncryptTextOptions = EncryptOptions & Readonly<{
-  group?: Group;
   withProfileKey?: boolean;
   withPniSignature?: boolean;
 }>;
@@ -918,7 +920,6 @@ export class PrimaryDevice {
       );
     }
 
-
     if (!handled) {
       debug('unsupported message', content);
     }
@@ -1201,6 +1202,29 @@ export class PrimaryDevice {
       target,
       await this.encryptContent(target, content, options));
   }
+
+  public async sendSenderKey(
+    target: Device,
+    options?: EncryptOptions,
+  ): Promise<UUID> {
+    const distributionId = crypto.randomUUID();
+
+    const senderKeys = this.senderKeys.get(UUIDKind.ACI);
+    assert(senderKeys, 'Should have a sender key store');
+
+    const skdm = await SenderKeyDistributionMessage.create(
+      target.address,
+      distributionId,
+      senderKeys,
+    );
+
+    this.sendRaw(target, {
+      senderKeyDistributionMessage: skdm.serialize(),
+    }, options);
+
+    return distributionId;
+  }
+
 
   public async receive(source: Device, encrypted: Buffer): Promise<void> {
     const envelope = Proto.Envelope.decode(encrypted);
@@ -1496,6 +1520,8 @@ export class PrimaryDevice {
       sealed = false,
       uuidKind = UUIDKind.ACI,
       updatedPni,
+      distributionId,
+      group,
     }: EncryptOptions = {},
   ): Promise<Buffer> {
     assert.ok(this.isInitialized, 'Not initialized');
@@ -1516,12 +1542,45 @@ export class PrimaryDevice {
     if (sealed) {
       assert(uuidKind === UUIDKind.ACI, 'Can\'t send sealed sender to PNI');
 
-      content = await SignalClient.sealedSenderEncryptMessage(
-        paddedMessage,
-        target.getAddressByKind(uuidKind),
-        this.senderCertificate,
-        this.sessions,
-        identity);
+      if (distributionId) {
+        assert(group, 'Should have a Group along with distributionId');
+
+        const senderKey = this.senderKeys.get(UUIDKind.ACI);
+        assert(senderKey, 'Should have an ACI sender keys');
+
+        const ciphertext = await SignalClient.groupEncrypt(
+          this.device.address,
+          distributionId,
+          senderKey,
+          paddedMessage,
+        );
+
+        const usmc = SignalClient.UnidentifiedSenderMessageContent.new(
+          ciphertext,
+          this.senderCertificate,
+          SignalClient.ContentHint.Implicit,
+          group.publicParams.getGroupIdentifier().serialize(),
+        );
+        const multiRecipient =
+          await SignalClient.sealedSenderMultiRecipientEncrypt(
+            usmc,
+            [ target.getAddressByKind(uuidKind) ],
+            identity,
+            this.sessions,
+          );
+
+        content =
+          SignalClient.sealedSenderMultiRecipientMessageForSingleRecipient(
+            multiRecipient,
+          );
+      } else {
+        content = await SignalClient.sealedSenderEncryptMessage(
+          paddedMessage,
+          target.getAddressByKind(uuidKind),
+          this.senderCertificate,
+          this.sessions,
+          identity);
+      }
 
       envelopeType = Proto.Envelope.Type.UNIDENTIFIED_SENDER;
     } else {
