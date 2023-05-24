@@ -851,7 +851,7 @@ export class PrimaryDevice {
     return this.convertManifestToStorageState(writeOperation.manifest);
   }
 
-  public async getOrhpanedStorageKeys(): Promise<Array<Buffer>> {
+  public async getOrphanedStorageKeys(): Promise<Array<Buffer>> {
     const manifest = await this.config.getStorageManifest();
     if (!manifest) {
       return [];
