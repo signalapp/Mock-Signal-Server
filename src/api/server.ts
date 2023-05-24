@@ -334,6 +334,7 @@ export class Server extends BaseServer {
       waitForGroupUpdate: this.waitForGroupUpdate.bind(this),
       getStorageManifest: this.getStorageManifest.bind(this, device),
       getStorageItem: this.getStorageItem.bind(this, device),
+      getAllStorageKeys: this.getAllStorageKeys.bind(this, device),
       waitForStorageManifest: this.waitForStorageManifest.bind(this, device),
       applyStorageWrite: this.applyStorageWrite.bind(this, device),
     });

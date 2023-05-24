@@ -365,6 +365,10 @@ export class StorageState {
       .map((item) => item.toRecord());
   }
 
+  public hasKey(storageKey: Buffer): boolean {
+    return this.hasRecord(({ key }) => key?.equals(storageKey));
+  }
+
   //
   // General
   //

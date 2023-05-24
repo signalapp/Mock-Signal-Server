@@ -86,6 +86,9 @@ async function createPrimaryDevice(name: string): Promise<PrimaryDevice> {
     async getStorageItem() {
       throw new Error('Not implemented');
     },
+    async getAllStorageKeys() {
+      throw new Error('Not implemented');
+    },
     async waitForStorageManifest() {
       throw new Error('Not implemented');
     },

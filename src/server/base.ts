@@ -789,6 +789,17 @@ export abstract class Server {
     return map.get(key.toString('hex'));
   }
 
+  public async getAllStorageKeys(
+    device: Device,
+  ): Promise<Array<Buffer>> {
+    const map = this.storageItemsByUuid.get(device.uuid);
+    if (!map) {
+      return [];
+    }
+
+    return Array.from(map.keys()).map(hex => Buffer.from(hex, 'hex'));
+  }
+
   public async getStorageItems(
     device: Device,
     keys: ReadonlyArray<Buffer>,

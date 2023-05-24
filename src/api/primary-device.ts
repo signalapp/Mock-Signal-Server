@@ -102,6 +102,7 @@ export type Config = Readonly<{
 
   getStorageManifest(): Promise<Proto.IStorageManifest | undefined>;
   getStorageItem(key: Buffer): Promise<Buffer | undefined>;
+  getAllStorageKeys(): Promise<Array<Buffer>>;
   waitForStorageManifest(afterVersion?: number): Promise<void>;
   applyStorageWrite(
     operation: Proto.IWriteOperation,
@@ -848,6 +849,18 @@ export class PrimaryDevice {
     }
 
     return this.convertManifestToStorageState(writeOperation.manifest);
+  }
+
+  public async getOrhpanedStorageKeys(): Promise<Array<Buffer>> {
+    const manifest = await this.config.getStorageManifest();
+    if (!manifest) {
+      return [];
+    }
+
+    const state = await this.convertManifestToStorageState(manifest);
+    const keys = await this.config.getAllStorageKeys();
+
+    return keys.filter(key => !state.hasKey(key));
   }
 
   //
