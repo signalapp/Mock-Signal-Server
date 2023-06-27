@@ -998,7 +998,7 @@ export class PrimaryDevice {
     const content = {
       syncMessage: {
         sent: {
-          destinationUuid: options.destinationUUID,
+          destinationAci: options.destinationUUID,
           timestamp: Long.fromNumber(options.timestamp),
           message: dataMessage,
         },
