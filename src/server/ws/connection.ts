@@ -140,6 +140,7 @@ export class Connection extends Service {
             enabled: true,
           },
         ],
+        serverEpochTime: Date.now() / 1000,
       } ];
     }));
 
