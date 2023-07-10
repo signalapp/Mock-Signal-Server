@@ -457,27 +457,20 @@ message SyncMessage {
   message Sent {
     message UnidentifiedDeliveryStatus {
       optional string destination     = 1;
-      oneof destinationServiceId {
-        string destinationAci = 3;
-        string destinationPni = 4;
-      }
+      optional string destinationServiceId = 3;
       optional bool   unidentified    = 2;
+      reserved /* destinationPni */ 4;
     }
 
     message StoryMessageRecipient {
-      oneof destinationServiceId {
-        string destinationAci = 1;
-        string destinationPni = 4;
-      }
+      optional string destinationServiceId = 1;
       repeated string distributionListIds = 2;
       optional bool isAllowedToReply = 3;
+      reserved /* destinationPni */ 4;
     }
 
     optional string                     destination              = 1;
-    oneof destinationServiceId {
-      string destinationAci = 7;
-      string destinationPni = 11;
-    }
+    optional string destinationServiceId = 7;
     optional uint64                     timestamp                = 2;
     optional DataMessage                message                  = 3;
     optional uint64                     expirationStartTimestamp = 4;
@@ -486,6 +479,7 @@ message SyncMessage {
     optional StoryMessage storyMessage = 8;
     repeated StoryMessageRecipient storyMessageRecipients = 9;
     optional EditMessage editMessage = 10;
+    reserved /* destinationPni */ 11;
   }
 
   message Contacts {
