@@ -15,7 +15,7 @@ import {
   put,
   router,
 } from 'microrouter';
-import { PublicKey } from '@signalapp/libsignal-client';
+import { KEMPublicKey, PublicKey } from '@signalapp/libsignal-client';
 import type { UuidCiphertext } from '@signalapp/libsignal-client/zkgroup';
 import createDebug from 'debug';
 
@@ -31,10 +31,11 @@ import {
 import {
   DeviceKeysSchema,
   RegistrationDataSchema,
+  ServerSignedPreKey,
   UsernameConfirmationSchema,
   UsernameReservationSchema,
 } from '../data/schemas';
-import { UUIDKind } from '../types';
+import { KyberPreKey, UUIDKind } from '../types';
 import { signalservice as Proto } from '../../protos/compiled';
 
 const debug = createDebug('mock:http');
@@ -298,6 +299,24 @@ export const createHandler = (server: Server): RequestHandler => {
     return UUIDKind.ACI;
   }
 
+  function parseEllipticKey(base64: string): PublicKey {
+    return PublicKey.deserialize(Buffer.from(base64, 'base64'));
+  }
+
+  function parseKyberKey(base64: string): KEMPublicKey {
+    return KEMPublicKey.deserialize(Buffer.from(base64, 'base64'));
+  }
+
+  function decodeKyberPreKey(
+    key: ServerSignedPreKey,
+  ): KyberPreKey {
+    return {
+      keyId: key.keyId,
+      publicKey: parseKyberKey(key.publicKey),
+      signature: Buffer.from(key.signature, 'base64'),
+    };
+  }
+
   const putKeys = put('/v2/keys', async (req, res) => {
     const device = await auth(req, res);
     if (!device) {
@@ -308,23 +327,29 @@ export const createHandler = (server: Server): RequestHandler => {
 
     const body = DeviceKeysSchema.parse(await json(req));
     try {
-      const parseKey = (base64: string): PublicKey => {
-        return PublicKey.deserialize(Buffer.from(base64, 'base64'));
-      };
-
       await server.updateDeviceKeys(device, uuidKind, {
-        identityKey: parseKey(body.identityKey),
-        signedPreKey: {
-          keyId: body.signedPreKey.keyId,
-          publicKey: parseKey(body.signedPreKey.publicKey),
-          signature: Buffer.from(body.signedPreKey.signature, 'base64'),
-        },
-        preKeys: body.preKeys.map((preKey) => {
-          return {
-            keyId: preKey.keyId,
-            publicKey: parseKey(preKey.publicKey),
-          };
-        }),
+        identityKey: parseEllipticKey(body.identityKey),
+        preKeys: body.preKeys
+          ? body.preKeys.map((preKey) => {
+            return {
+              keyId: preKey.keyId,
+              publicKey: parseEllipticKey(preKey.publicKey),
+            };
+          })
+          : undefined,
+        kyberPreKeys: body.pqPreKeys
+          ? body.pqPreKeys.map(decodeKyberPreKey)
+          : undefined,
+        lastResortKey: body.pqLastResortPreKey
+          ? decodeKyberPreKey(body.pqLastResortPreKey)
+          : undefined,
+        signedPreKey: body.signedPreKey
+          ? {
+            keyId: body.signedPreKey.keyId,
+            publicKey: parseEllipticKey(body.signedPreKey.publicKey),
+            signature: Buffer.from(body.signedPreKey.signature, 'base64'),
+          }
+          : undefined,
       });
     } catch (error) {
       assert(error instanceof Error);
@@ -335,16 +360,27 @@ export const createHandler = (server: Server): RequestHandler => {
     return { ok: true };
   });
 
-  const getKeys = get('/v2/keys', async (req, res) => {
-    const device = await auth(req, res);
-    if (!device) {
-      return;
-    }
+  type ServerKeyCountType = {
+    count: number;
+    pqCount: number;
+  };
 
-    const uuidKind = uuidKindFromQuery(req);
+  const getKeys = get(
+    '/v2/keys',
+    async (req, res): Promise<ServerKeyCountType | undefined> => {
+      const device = await auth(req, res);
+      if (!device) {
+        return;
+      }
 
-    return { count: await device.getSingleUseKeyCount(uuidKind) };
-  });
+      const uuidKind = uuidKindFromQuery(req);
+
+      return {
+        count: await device.getPreKeyCount(uuidKind),
+        pqCount: await device.getKyberPreKeyCount(uuidKind),
+      };
+    },
+  );
 
   const whoami = get('/v1/accounts/whoami', async (req, res) => {
     const device = await auth(req, res);

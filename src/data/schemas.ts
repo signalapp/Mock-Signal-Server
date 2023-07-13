@@ -5,17 +5,22 @@ import z from 'zod';
 
 import { fromURLSafeBase64 } from '../util';
 
+const SignedPreKeySchema = z.object({
+  keyId: z.number(),
+  publicKey: z.string(),
+  signature: z.string(),
+});
+export type ServerSignedPreKey = z.infer<typeof SignedPreKeySchema>;
+
 export const DeviceKeysSchema = z.object({
   identityKey: z.string(),
-  signedPreKey: z.object({
-    keyId: z.number(),
-    publicKey: z.string(),
-    signature: z.string(),
-  }),
   preKeys: z.object({
     keyId: z.number(),
     publicKey: z.string(),
   }).array(),
+  pqPreKeys: SignedPreKeySchema.array().optional(),
+  pqLastResortPreKey: SignedPreKeySchema.optional(),
+  signedPreKey: SignedPreKeySchema.optional(),
 });
 
 export type DeviceKeys = z.infer<typeof DeviceKeysSchema>;

@@ -6,7 +6,7 @@ import { ProtocolAddress, PublicKey } from '@signalapp/libsignal-client';
 import { ProfileKeyCommitment } from '@signalapp/libsignal-client/zkgroup';
 
 import {
-  DeviceId, PreKey, RegistrationId, SignedPreKey, UUID, UUIDKind,
+  DeviceId, KyberPreKey, PreKey, RegistrationId, SignedPreKey, UUID, UUIDKind,
 } from '../types';
 
 const debug = createDebug('mock:device');
@@ -28,25 +28,34 @@ export type ChangeNumberOptions = Readonly<{
 
 export type DeviceKeys = Readonly<{
   identityKey: PublicKey;
-  signedPreKey: SignedPreKey;
   preKeys?: ReadonlyArray<PreKey>;
+  kyberPreKeys?: ReadonlyArray<KyberPreKey>;
+  lastResortKey?: KyberPreKey;
+  signedPreKey?: SignedPreKey;
+
   preKeyIterator?: AsyncIterator<PreKey>;
+  kyberPreKeyIterator?: AsyncIterator<KyberPreKey>;
 }>;
 
 export type SingleUseKey = Readonly<{
   identityKey: PublicKey;
+
   signedPreKey: SignedPreKey;
   preKey: PreKey | undefined;
+  pqPreKey: KyberPreKey;
 }>;
 
 type InternalDeviceKeys = Readonly<{
   identityKey: PublicKey;
   signedPreKey: SignedPreKey;
+  lastResortKey: KyberPreKey;
   preKeys: Array<PreKey>;
+  kyberPreKeys: Array<KyberPreKey>;
   preKeyIterator?: AsyncIterator<PreKey>;
+  kyberPreKeyIterator?: AsyncIterator<KyberPreKey>;
 }>;
 
-// Techinically, it is infinite.
+// Technically, it is infinite.
 const PRE_KEY_ITERATOR_COUNT = 100;
 
 export class Device {
@@ -117,12 +126,25 @@ export class Device {
 
   public async setKeys(uuidKind: UUIDKind, keys: DeviceKeys): Promise<void> {
     debug('setting %s keys for %s', uuidKind, this.debugId);
+    const { signedPreKey, lastResortKey } = keys;
+
+    if (!signedPreKey) {
+      throw new Error('setKeys: Missing signedPreKey');
+    }
+    if (!lastResortKey) {
+      throw new Error('setKeys: Missing lastResortKey');
+    }
 
     this.keys.set(uuidKind, {
       identityKey: keys.identityKey,
-      signedPreKey: keys.signedPreKey,
+
+      signedPreKey,
       preKeys: keys.preKeys?.slice() ?? [],
+      kyberPreKeys: keys.kyberPreKeys?.slice() ?? [],
+      lastResortKey,
+
       preKeyIterator: keys.preKeyIterator,
+      kyberPreKeyIterator: keys.kyberPreKeyIterator,
     });
   }
 
@@ -151,14 +173,32 @@ export class Device {
       preKey = keys.preKeys.shift();
     }
 
+    let pqPreKey: KyberPreKey | undefined;
+    if (keys.kyberPreKeyIterator) {
+      const { value } = await keys.kyberPreKeyIterator.next();
+      pqPreKey = value;
+    }
+    if (!pqPreKey) {
+      pqPreKey = keys.kyberPreKeys.shift();
+    }
+    if (!pqPreKey) {
+      pqPreKey = keys.lastResortKey;
+    }
+    if (!pqPreKey) {
+      throw new Error(
+        'popSingleUseKey: Missing pqPreKey; checked iterator/array/lastResort',
+      );
+    }
+
     return {
       identityKey: keys.identityKey,
       signedPreKey: keys.signedPreKey,
       preKey,
+      pqPreKey,
     };
   }
 
-  public async getSingleUseKeyCount(uuidKind = UUIDKind.ACI): Promise<number> {
+  public async getPreKeyCount(uuidKind = UUIDKind.ACI): Promise<number> {
     const keys = this.keys.get(uuidKind);
     if (!keys) {
       throw new Error('No keys available for device');
@@ -168,6 +208,18 @@ export class Device {
     }
     return keys.preKeys.length;
   }
+
+  public async getKyberPreKeyCount(uuidKind = UUIDKind.ACI): Promise<number> {
+    const keys = this.keys.get(uuidKind);
+    if (!keys) {
+      throw new Error('No keys available for device');
+    }
+    if (keys.kyberPreKeyIterator) {
+      return PRE_KEY_ITERATOR_COUNT;
+    }
+    return keys.kyberPreKeys.length;
+  }
+
 
   public getUUIDByKind(uuidKind: UUIDKind): UUID {
     switch (uuidKind) {

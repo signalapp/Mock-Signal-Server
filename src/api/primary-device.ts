@@ -8,6 +8,9 @@ import {
   CiphertextMessageType,
   IdentityKeyPair,
   IdentityKeyStore,
+  KEMKeyPair,
+  KyberPreKeyRecord,
+  KyberPreKeyStore as KyberPreKeyStoreBase,
   PreKeyBundle,
   PreKeyRecord,
   PreKeySignalMessage,
@@ -41,7 +44,7 @@ import {
 import { parse as parseUUID } from 'uuid';
 
 import { signalservice as Proto } from '../../protos/compiled';
-import { DeviceId, PreKey, UUID, UUIDKind } from '../types';
+import { DeviceId, KyberPreKey, PreKey, UUID, UUIDKind } from '../types';
 import { Contact } from '../data/contacts';
 import { Group as GroupData } from '../data/group';
 import {
@@ -287,6 +290,54 @@ class PreKeyStore extends PreKeyStoreBase {
   }
 }
 
+class KyberPreKeyStore extends KyberPreKeyStoreBase {
+  private lastId = 0;
+  private readonly records = new Map<number, {
+    isLastResort: boolean,
+    record: KyberPreKeyRecord
+  }>();
+
+  async saveKyberPreKey(id: number, record: KyberPreKeyRecord): Promise<void> {
+    if (this.records.get(id)) {
+      throw new Error(`saveKyberPreKey: id ${id} has already been used`);
+    }
+    this.records.set(id, { isLastResort: false, record });
+  }
+
+  async getKyberPreKey(id: number): Promise<KyberPreKeyRecord> {
+    const item = this.records.get(id);
+    if (!item?.record) {
+      throw new Error(`Kyber pre key not found: ${id}`);
+    }
+    return item.record;
+  }
+
+  async markKyberPreKeyUsed(id: number): Promise<void> {
+    const item = this.records.get(id);
+    if (!item || item.isLastResort) {
+      return;
+    }
+    this.records.delete(id);
+  }
+
+  async saveLastResortKey(
+    id: number,
+    record: KyberPreKeyRecord,
+  ): Promise<void> {
+    if (this.records.get(id)) {
+      throw new Error(`saveLastResortKey: id ${id} has already been used`);
+    }
+    this.records.set(id, { isLastResort: true, record });
+  }
+
+  public getNextId(): number {
+    this.lastId += 1;
+
+    // Note: intentionally starting from 1
+    return this.lastId;
+  }
+}
+
 class IdentityStore extends IdentityKeyStore {
   private knownIdentities = new Map<string, PublicKey>();
 
@@ -401,6 +452,7 @@ export class PrimaryDevice {
   // Various stores
   private readonly signedPreKeys = new Map<UUIDKind, SignedPreKeyStore>();
   private readonly preKeys = new Map<UUIDKind, PreKeyStore>();
+  private readonly kyberPreKeys = new Map<UUIDKind, KyberPreKeyStore>();
   private readonly sessions = new SessionStore();
   private readonly senderKeys = new Map<UUIDKind, SenderKeyStore>();
   private readonly identity = new Map<UUIDKind, IdentityStore>();
@@ -410,6 +462,8 @@ export class PrimaryDevice {
   public readonly profileKey: ProfileKey;
   public readonly profileName: string;
   public readonly secondaryDevices = new Array<Device>();
+
+  public lastResortKeyId = 1;
 
   // TODO(indutny): make primary device type configurable
   public readonly userAgent = 'OWI';
@@ -425,6 +479,7 @@ export class PrimaryDevice {
       ));
 
       this.preKeys.set(uuidKind, new PreKeyStore());
+      this.kyberPreKeys.set(uuidKind, new KyberPreKeyStore());
       this.signedPreKeys.set(uuidKind, new SignedPreKeyStore());
       this.senderKeys.set(uuidKind, new SenderKeyStore());
     }
@@ -495,24 +550,37 @@ export class PrimaryDevice {
   public async generateKeys(
     device: Device,
     uuidKind: UUIDKind,
-  ): Promise<DeviceKeys & { signedPreKeyRecord: SignedPreKeyRecord }> {
+  ): Promise<DeviceKeys & {
+    // Note: these records are only used in the PNP change number scenario
+    signedPreKeyRecord: SignedPreKeyRecord,
+    lastResortKeyRecord: KyberPreKeyRecord
+  }> {
+    const shouldSave = device === this.device;
+
     const signedPreKey = PrivateKey.generate();
     const signedPreKeySig = this.getPrivateKey(uuidKind).sign(
       signedPreKey.getPublicKey().serialize());
-
-    const shouldSave = device === this.device;
-
     const signedPreKeyRecord = SignedPreKeyRecord.new(
       this.signedPreKeyId,
       Date.now(),
       signedPreKey.getPublicKey(),
       signedPreKey,
       signedPreKeySig);
-
     if (shouldSave) {
       await this.signedPreKeys.get(uuidKind)?.saveSignedPreKey(
         this.signedPreKeyId,
         signedPreKeyRecord);
+    }
+
+    this.lastResortKeyId = this.kyberPreKeys.get(uuidKind)?.getNextId() || 1;
+    const lastResortKeyRecord = this.generateKyberPreKey(
+      this.lastResortKeyId,
+      uuidKind,
+    );
+    if (shouldSave) {
+      await this.kyberPreKeys.get(uuidKind)?.saveLastResortKey(
+        this.lastResortKeyId,
+        lastResortKeyRecord);
     }
 
     return {
@@ -522,9 +590,16 @@ export class PrimaryDevice {
         publicKey: signedPreKey.getPublicKey(),
         signature: signedPreKeySig,
       },
+      lastResortKey: {
+        keyId: this.lastResortKeyId,
+        publicKey: lastResortKeyRecord.publicKey(),
+        signature: lastResortKeyRecord.signature(),
+      },
       preKeyIterator: this.getPreKeyIterator(device, uuidKind),
+      kyberPreKeyIterator: this.getKyberPreKeyIterator(device, uuidKind),
 
-      signedPreKeyRecord: signedPreKeyRecord,
+      signedPreKeyRecord,
+      lastResortKeyRecord,
     };
   }
 
@@ -548,6 +623,48 @@ export class PrimaryDevice {
       }
 
       yield { keyId, publicKey };
+    }
+  }
+
+  private generateKyberPreKey(
+    keyId: number,
+    uuidKind: UUIDKind,
+  ): KyberPreKeyRecord {
+    const kyberPreKey = KEMKeyPair.generate();
+    const kyberPreKeySig = this.getPrivateKey(uuidKind).sign(
+      kyberPreKey.getPublicKey().serialize());
+    const kyberPreKeyRecord = KyberPreKeyRecord.new(
+      keyId,
+      Date.now(),
+      kyberPreKey,
+      kyberPreKeySig,
+    );
+
+    return kyberPreKeyRecord;
+  }
+
+  private async *getKyberPreKeyIterator(
+    device: Device,
+    uuidKind: UUIDKind,
+  ): AsyncIterator<KyberPreKey> {
+    const kyberPreKeyStore = this.kyberPreKeys.get(uuidKind);
+    assert.ok(kyberPreKeyStore, 'Missing kyberPreKeyStore store');
+
+    const shouldSave = device === this.device;
+
+    while (true) {
+      const keyId = kyberPreKeyStore.getNextId();
+      const record = this.generateKyberPreKey(keyId, uuidKind);
+
+      if (shouldSave) {
+        await kyberPreKeyStore.saveKyberPreKey(keyId, record);
+      }
+
+      yield {
+        keyId,
+        publicKey: record.publicKey(),
+        signature: record.signature(),
+      };
     }
   }
 
@@ -592,6 +709,9 @@ export class PrimaryDevice {
       key.signedPreKey.publicKey,
       key.signedPreKey.signature,
       key.identityKey,
+      key.pqPreKey.keyId,
+      key.pqPreKey.publicKey,
+      key.pqPreKey.signature,
     );
     await SignalClient.processPreKeyBundle(
       bundle,
@@ -1161,14 +1281,16 @@ export class PrimaryDevice {
         }
 
         // Send sync message
-        const { signedPreKeyRecord } = keys;
+        const { signedPreKeyRecord, lastResortKeyRecord } = keys;
 
-        const content = {
+        const content: Proto.IContent = {
           syncMessage: {
             pniChangeNumber: {
               identityKeyPair: newPniIdentity.serialize(),
+              lastResortKyberPreKey: lastResortKeyRecord.serialize(),
               signedPreKey: signedPreKeyRecord.serialize(),
               registrationId: newPniRegistrationId,
+              newE164: newNumber,
             },
           },
         };
@@ -1674,11 +1796,12 @@ export class PrimaryDevice {
 
     const identity = this.identity.get(uuidKind);
     const preKeys = this.preKeys.get(uuidKind);
+    const kyberPreKeys = this.kyberPreKeys.get(uuidKind);
     const signedPreKeys = this.signedPreKeys.get(uuidKind);
     const senderKeys = this.senderKeys.get(uuidKind);
     assert(
-      identity && preKeys && signedPreKeys && senderKeys,
-      'Should have identity, prekey/signed prekey/senderkey stores',
+      identity && preKeys && signedPreKeys && kyberPreKeys && senderKeys,
+      'Should have identity, prekey/kyber/signed/senderkey stores',
     );
 
     let decrypted: Buffer;
@@ -1699,7 +1822,8 @@ export class PrimaryDevice {
         this.sessions,
         identity,
         preKeys,
-        signedPreKeys);
+        signedPreKeys,
+        kyberPreKeys);
     } else if (envelopeType === EnvelopeType.SenderKey) {
       assert(source !== undefined, 'SenderKey must have source');
 

@@ -1,7 +1,7 @@
 // Copyright 2022 Signal Messenger, LLC
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { PublicKey } from '@signalapp/libsignal-client';
+import { KEMPublicKey, PublicKey } from '@signalapp/libsignal-client';
 
 export type UUID = string;
 export type ProvisioningCode = string;
@@ -17,6 +17,12 @@ export enum UUIDKind {
 export type SignedPreKey = Readonly<{
   keyId: number;
   publicKey: PublicKey;
+  signature: Buffer;
+}>;
+
+export type KyberPreKey = Readonly<{
+  keyId: number;
+  publicKey: KEMPublicKey;
   signature: Buffer;
 }>;
 
