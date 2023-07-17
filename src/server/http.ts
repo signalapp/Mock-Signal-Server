@@ -30,6 +30,7 @@ import {
 } from '../util';
 import {
   DeviceKeysSchema,
+  PutUsernameLinkSchema,
   RegistrationDataSchema,
   ServerSignedPreKey,
   UsernameConfirmationSchema,
@@ -382,6 +383,10 @@ export const createHandler = (server: Server): RequestHandler => {
     },
   );
 
+  //
+  // Accounts
+  //
+
   const whoami = get('/v1/accounts/whoami', async (req, res) => {
     const device = await auth(req, res);
     if (!device) {
@@ -440,8 +445,7 @@ export const createHandler = (server: Server): RequestHandler => {
     await server.deleteUsername(device.uuid);
 
     return send(res, 204);
-  },
-  );
+  });
 
   const lookupByUsernameHash = get(
     '/v1/accounts/username_hash/:hash',
@@ -457,6 +461,47 @@ export const createHandler = (server: Server): RequestHandler => {
       return { uuid };
     },
   );
+
+  const lookupByUsernameLink = get(
+    '/v1/accounts/username_link/:uuid',
+    async (req, res) => {
+      const { uuid: linkUuid = '' } = req.params;
+
+      const usernameLinkEncryptedValue =
+        await server.lookupByUsernameLink(linkUuid);
+
+      if (!usernameLinkEncryptedValue) {
+        return send(res, 404);
+      }
+
+      return { usernameLinkEncryptedValue };
+    },
+  );
+
+  const replaceUsernameLink = put(
+    '/v1/accounts/username_link',
+    async (req, res) => {
+      const device = await auth(req, res);
+      if (!device) {
+        return;
+      }
+
+      const {
+        usernameLinkEncryptedValue,
+      } = PutUsernameLinkSchema.parse(await json(req));
+
+      const usernameLinkHandle = await server.replaceUsernameLink(
+        device.uuid,
+        usernameLinkEncryptedValue,
+      );
+
+      return { usernameLinkHandle };
+    },
+  );
+
+  //
+  // Captcha
+  //
 
   const putChallenge = put('/v1/challenge', async (req, res) => {
     const device = await auth(req, res);
@@ -722,6 +767,9 @@ export const createHandler = (server: Server): RequestHandler => {
     confirmUsername,
     deleteUsername,
     lookupByUsernameHash,
+
+    lookupByUsernameLink,
+    replaceUsernameLink,
 
     putChallenge,
 

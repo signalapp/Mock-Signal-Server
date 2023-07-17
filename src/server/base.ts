@@ -105,6 +105,11 @@ export type PrepareMultiDeviceMessageResult = Readonly<{
   result: PreparedMultiDeviceMessage;
 }>;
 
+export type SetUsernameLinkResult = Readonly<{
+  entropy: Uint8Array;
+  serverId: string;
+}>;
+
 export type StorageWriteResult = Readonly<{
   updated: false;
   manifest: Proto.IStorageManifest;
@@ -185,6 +190,8 @@ export abstract class Server {
   private readonly uuidByReservedUsername = new Map<string, UUID>();
   private readonly usernameByUUID = new Map<UUID, string>();
   private readonly reservedUsernameByUUID = new Map<UUID, string>();
+  private readonly usernameLinkIdByUUID = new Map<UUID, string>();
+  private readonly usernameLinkById = new Map<UUID, string>();
   protected privCertificate: ServerCertificate | undefined;
   protected privZKSecret: ServerSecretParams | undefined;
 
@@ -903,12 +910,41 @@ export abstract class Server {
 
     this.uuidByUsername.delete(hash);
     this.usernameByUUID.delete(uuid);
+
+    const previousId = this.usernameLinkIdByUUID.get(uuid);
+    if (previousId !== undefined) {
+      this.usernameLinkById.delete(previousId);
+    }
+    this.usernameLinkIdByUUID.delete(uuid);
   }
 
   public async lookupByUsernameHash(
     usernameHash: Buffer,
   ): Promise<UUID | undefined> {
     return this.uuidByUsername.get(usernameHash.toString('hex'));
+  }
+
+  public async replaceUsernameLink(
+    uuid: UUID,
+    encryptedValue: string,
+  ): Promise<string> {
+    const lookupId = uuidv4();
+
+    const previousId = this.usernameLinkIdByUUID.get(uuid);
+    if (previousId !== undefined) {
+      this.usernameLinkById.delete(previousId);
+    }
+
+    this.usernameLinkIdByUUID.set(uuid, lookupId);
+    this.usernameLinkById.set(lookupId, encryptedValue);
+
+    return lookupId;
+  }
+
+  public async lookupByUsernameLink(
+    lookupId: string,
+  ): Promise<string | undefined> {
+    return this.usernameLinkById.get(lookupId);
   }
 
   // For easier testing
@@ -923,6 +959,27 @@ export abstract class Server {
     const hash = usernames.hash(username).toString('hex');
     this.usernameByUUID.set(uuid, hash);
     this.uuidByUsername.set(hash, uuid);
+  }
+
+  // For easier testing
+  public async setUsernameLink(
+    uuid: UUID,
+    username: string,
+  ): Promise<SetUsernameLinkResult> {
+    const {
+      entropy,
+      encryptedUsername,
+    } = usernames.createUsernameLink(username);
+
+    const serverId = await this.replaceUsernameLink(
+      uuid,
+      encryptedUsername.toString('base64'),
+    );
+
+    return {
+      entropy,
+      serverId,
+    };
   }
 
   //

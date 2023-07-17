@@ -72,3 +72,9 @@ export const UsernameConfirmationSchema = z.object({
 });
 
 export type UsernameConfirmation = z.infer<typeof UsernameConfirmationSchema>;
+
+export const PutUsernameLinkSchema = z.object({
+  usernameLinkEncryptedValue: z.string(),
+});
+
+export type PutUsernameLink = z.infer<typeof PutUsernameLinkSchema>;
