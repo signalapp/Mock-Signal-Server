@@ -432,7 +432,7 @@ export const createHandler = (server: Server): RequestHandler => {
         return send(res, 409);
       }
 
-      return send(res, 200);
+      return result;
     },
   );
 
@@ -467,14 +467,14 @@ export const createHandler = (server: Server): RequestHandler => {
     async (req, res) => {
       const { uuid: linkUuid = '' } = req.params;
 
-      const usernameLinkEncryptedValue =
+      const encryptedValue =
         await server.lookupByUsernameLink(linkUuid);
 
-      if (!usernameLinkEncryptedValue) {
+      if (!encryptedValue) {
         return send(res, 404);
       }
 
-      return { usernameLinkEncryptedValue };
+      return { usernameLinkEncryptedValue: toURLSafeBase64(encryptedValue) };
     },
   );
 

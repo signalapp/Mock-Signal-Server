@@ -105,6 +105,10 @@ export type PrepareMultiDeviceMessageResult = Readonly<{
   result: PreparedMultiDeviceMessage;
 }>;
 
+export type ConfirmUsernameResult = Readonly<{
+  usernameLinkHandle?: string;
+}>;
+
 export type SetUsernameLinkResult = Readonly<{
   entropy: Uint8Array;
   serverId: string;
@@ -191,7 +195,7 @@ export abstract class Server {
   private readonly usernameByUUID = new Map<UUID, string>();
   private readonly reservedUsernameByUUID = new Map<UUID, string>();
   private readonly usernameLinkIdByUUID = new Map<UUID, string>();
-  private readonly usernameLinkById = new Map<UUID, string>();
+  private readonly usernameLinkById = new Map<UUID, Buffer>();
   protected privCertificate: ServerCertificate | undefined;
   protected privZKSecret: ServerSecretParams | undefined;
 
@@ -877,19 +881,20 @@ export abstract class Server {
     {
       usernameHash,
       zkProof,
+      encryptedUsername,
     }: UsernameConfirmation,
-  ): Promise<boolean> {
+  ): Promise<ConfirmUsernameResult | undefined> {
     // Clear previously reserved usernames
     const reserved = this.reservedUsernameByUUID.get(uuid);
     if (reserved !== usernameHash.toString('hex')) {
-      return false;
+      return undefined;
     }
 
     try {
       usernames.verifyProof(zkProof, usernameHash);
     } catch (error) {
       debug('failed to verify username proof of %s: %O', uuid, error);
-      return false;
+      return undefined;
     }
 
     this.reservedUsernameByUUID.delete(uuid);
@@ -897,7 +902,16 @@ export abstract class Server {
 
     this.uuidByUsername.set(reserved, uuid);
     this.usernameByUUID.set(uuid, reserved);
-    return true;
+
+    let usernameLinkHandle: string | undefined;
+    if (encryptedUsername) {
+      usernameLinkHandle = await this.replaceUsernameLink(
+        uuid,
+        encryptedUsername,
+      );
+    }
+
+    return { usernameLinkHandle };
   }
 
   public async deleteUsername(
@@ -926,7 +940,7 @@ export abstract class Server {
 
   public async replaceUsernameLink(
     uuid: UUID,
-    encryptedValue: string,
+    encryptedValue: Buffer,
   ): Promise<string> {
     const lookupId = uuidv4();
 
@@ -943,7 +957,7 @@ export abstract class Server {
 
   public async lookupByUsernameLink(
     lookupId: string,
-  ): Promise<string | undefined> {
+  ): Promise<Buffer | undefined> {
     return this.usernameLinkById.get(lookupId);
   }
 
@@ -973,7 +987,7 @@ export abstract class Server {
 
     const serverId = await this.replaceUsernameLink(
       uuid,
-      encryptedUsername.toString('base64'),
+      encryptedUsername,
     );
 
     return {

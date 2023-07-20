@@ -69,12 +69,13 @@ export type UsernameReservation = z.infer<typeof UsernameReservationSchema>;
 export const UsernameConfirmationSchema = z.object({
   usernameHash: z.string().transform(fromURLSafeBase64),
   zkProof: z.string().transform(fromURLSafeBase64),
+  encryptedUsername: z.string().transform(fromURLSafeBase64).optional(),
 });
 
 export type UsernameConfirmation = z.infer<typeof UsernameConfirmationSchema>;
 
 export const PutUsernameLinkSchema = z.object({
-  usernameLinkEncryptedValue: z.string(),
+  usernameLinkEncryptedValue: z.string().transform(fromURLSafeBase64),
 });
 
 export type PutUsernameLink = z.infer<typeof PutUsernameLinkSchema>;
