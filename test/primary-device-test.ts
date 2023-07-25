@@ -36,7 +36,6 @@ async function createPrimaryDevice(name: string): Promise<PrimaryDevice> {
     serverPublicParams: serverSecretParams.getPublicParams(),
     profileName: name,
     contacts: {},
-    groups: {},
 
     async getSenderCertificate() {
       return generateSenderCertificate(serverCert, {

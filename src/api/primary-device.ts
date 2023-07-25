@@ -75,7 +75,6 @@ const debug = createDebug('mock:primary-device');
 export type Config = Readonly<{
   profileName: string;
   contacts: Proto.IAttachmentPointer;
-  groups: Proto.IAttachmentPointer;
   trustRoot: PublicKey;
   serverPublicParams: ServerPublicParams;
 
@@ -228,7 +227,7 @@ enum SyncState {
   Configuration = 1 << 3,
   Keys = 1 << 4,
 
-  Complete = Contacts | Groups | Blocked | Configuration | Keys,
+  Complete = Contacts | Blocked | Configuration | Keys,
 }
 
 type SyncEntry = {
@@ -440,7 +439,6 @@ export class PrimaryDevice {
   private readonly privateKey = PrivateKey.generate();
   private pniPrivateKey = PrivateKey.generate();
   private readonly contactsBlob: Proto.IAttachmentPointer;
-  private readonly groupsBlob: Proto.IAttachmentPointer;
   private privSenderCertificate: SenderCertificate | undefined;
   private readonly messageQueue = new PromiseQueue<MessageQueueEntry>();
   private readonly receiptQueue = new PromiseQueue<ReceiptQueueEntry>();
@@ -485,7 +483,6 @@ export class PrimaryDevice {
     }
 
     this.contactsBlob = this.config.contacts;
-    this.groupsBlob = this.config.groups;
     this.profileName = config.profileName;
 
     this.profileKey = new ProfileKey(crypto.randomBytes(32));
@@ -1549,14 +1546,6 @@ export class PrimaryDevice {
         },
       };
       stateChange = SyncState.Contacts;
-    } else if (request.type === Proto.SyncMessage.Request.Type.GROUPS) {
-      debug('got sync groups request');
-      response = {
-        groups: {
-          blob: this.groupsBlob,
-        },
-      };
-      stateChange = SyncState.Groups;
     } else if (request.type === Proto.SyncMessage.Request.Type.BLOCKED) {
       debug('got sync blocked request');
       response = {

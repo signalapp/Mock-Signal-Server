@@ -315,7 +315,6 @@ export class Server extends BaseServer {
     const primary = new PrimaryDevice(device, {
       profileName: profileName,
       contacts: attachmentToPointer(contactsCDNKey, contactsAttachment),
-      groups: this.emptyAttachment,
       trustRoot: this.trustRoot.getPublicKey(),
       serverPublicParams: this.zkSecret.getPublicParams(),
 
