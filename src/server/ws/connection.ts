@@ -412,7 +412,7 @@ export class Connection extends Service {
               from: parseInt(from as string, 10),
               to: parseInt(to as string, 10),
             }),
-            pni: device.pni,
+            pni: untagPni(device.pni),
           },
         ];
       },
