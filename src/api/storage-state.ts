@@ -11,7 +11,7 @@ import {
   encryptStorageManifest,
 } from '../crypto';
 import { Device } from '../data/device';
-import { UUIDKind } from '../types';
+import { ServiceIdKind } from '../types';
 import { Group } from './group';
 import { PrimaryDevice } from './primary-device';
 
@@ -84,17 +84,18 @@ class StorageStateItem {
     return group.masterKey.equals(masterKey);
   }
 
-  public isContact(device: Device, uuidKind: UUIDKind): boolean {
+  public isContact(device: Device, serviceIdKind: ServiceIdKind): boolean {
     if (this.type !== IdentifierType.CONTACT) {
       return false;
     }
 
-    const serviceUuid = this.record?.contact?.serviceUuid;
-    if (!serviceUuid) {
+    const serviceId = serviceIdKind === ServiceIdKind.ACI ?
+      this.record?.contact?.aci : this.record?.contact?.pni;
+    if (!serviceId) {
       return false;
     }
 
-    return serviceUuid === device.getUUIDByKind(uuidKind);
+    return serviceId === device.getServiceIdByKind(serviceIdKind);
   }
 
   public inspect(): string {
@@ -236,13 +237,16 @@ export class StorageState {
   public addContact(
     { device }: PrimaryDevice,
     diff: Proto.IContactRecord = {},
-    uuidKind = UUIDKind.ACI,
+    serviceIdKind = ServiceIdKind.ACI,
   ): StorageState {
     return this.addItem({
       type: IdentifierType.CONTACT,
       record: {
         contact: {
-          serviceUuid: device.getUUIDByKind(uuidKind),
+          aci: serviceIdKind === ServiceIdKind.ACI ?
+            device.getServiceIdByKind(serviceIdKind) : undefined,
+          pni: serviceIdKind === ServiceIdKind.PNI ?
+            device.getServiceIdByKind(serviceIdKind) : undefined,
           serviceE164: device.number,
           ...diff,
         },
@@ -253,10 +257,10 @@ export class StorageState {
   public updateContact(
     { device }: PrimaryDevice,
     diff: Proto.IContactRecord,
-    uuidKind = UUIDKind.ACI,
+    serviceIdKind = ServiceIdKind.ACI,
   ): StorageState {
     return this.updateItem(
-      (item) => item.isContact(device, uuidKind),
+      (item) => item.isContact(device, serviceIdKind),
       ({ contact }) => ({
         contact: {
           ...contact,
@@ -268,9 +272,11 @@ export class StorageState {
 
   public getContact(
     { device }: PrimaryDevice,
-    uuidKind = UUIDKind.ACI,
+    serviceIdKind = ServiceIdKind.ACI,
   ): Proto.IContactRecord | undefined {
-    const item = this.items.find((item) => item.isContact(device, uuidKind));
+    const item = this.items.find(
+      (item) => item.isContact(device, serviceIdKind),
+    );
     if (!item) {
       return undefined;
     }
@@ -283,9 +289,9 @@ export class StorageState {
 
   public removeContact(
     { device }: PrimaryDevice,
-    uuidKind = UUIDKind.ACI,
+    serviceIdKind = ServiceIdKind.ACI,
   ): StorageState {
-    return this.removeItem(item => item.isContact(device, uuidKind));
+    return this.removeItem(item => item.isContact(device, serviceIdKind));
   }
 
   public mergeContact(
@@ -294,21 +300,27 @@ export class StorageState {
   ): StorageState {
     const { device } = primary;
     return this
-      .removeItem(item => item.isContact(device, UUIDKind.ACI))
-      .removeItem(item => item.isContact(device, UUIDKind.PNI))
+      .removeItem(item => item.isContact(device, ServiceIdKind.ACI))
+      .removeItem(item => item.isContact(device, ServiceIdKind.PNI))
       .addContact(primary, {
-        pni: device.getUUIDByKind(UUIDKind.PNI),
+        pni: device.getServiceIdByKind(ServiceIdKind.PNI),
         ...diff,
       })
-      .unpin(primary, UUIDKind.PNI);
+      .unpin(primary, ServiceIdKind.PNI);
   }
 
-  public pin(primary: PrimaryDevice, uuidKind = UUIDKind.ACI): StorageState {
-    return this.changePin(primary, uuidKind, true);
+  public pin(
+    primary: PrimaryDevice,
+    serviceIdKind = ServiceIdKind.ACI,
+  ): StorageState {
+    return this.changePin(primary, serviceIdKind, true);
   }
 
-  public unpin(primary: PrimaryDevice, uuidKind = UUIDKind.ACI): StorageState {
-    return this.changePin(primary, uuidKind, false);
+  public unpin(
+    primary: PrimaryDevice,
+    serviceIdKind = ServiceIdKind.ACI,
+  ): StorageState {
+    return this.changePin(primary, serviceIdKind, false);
   }
 
   public isPinned({ device }: PrimaryDevice): boolean {
@@ -316,7 +328,7 @@ export class StorageState {
     assert(account, 'No account record found');
 
     return (account.pinnedConversations || []).some((convo) => {
-      return convo?.contact?.uuid === device.uuid;
+      return convo?.contact?.serviceId === device.aci;
     });
   }
 
@@ -495,10 +507,10 @@ export class StorageState {
 
   private changePin(
     { device }: PrimaryDevice,
-    uuidKind: UUIDKind,
+    serviceIdKind: ServiceIdKind,
     isPinned: boolean,
   ): StorageState {
-    const deviceUuid = device.getUUIDByKind(uuidKind);
+    const deviceServiceId = device.getServiceIdByKind(serviceIdKind);
 
     return this.updateItem(
       (item) => item.isAccount(),
@@ -510,12 +522,12 @@ export class StorageState {
         const newPinnedConversations = pinnedConversations?.slice() || [];
 
         const existingIndex = newPinnedConversations.findIndex((convo) => {
-          return convo?.contact?.uuid === deviceUuid;
+          return convo?.contact?.serviceId === deviceServiceId;
         });
 
         if (isPinned && existingIndex === -1) {
           newPinnedConversations.push({
-            contact: { uuid: deviceUuid },
+            contact: { serviceId: deviceServiceId },
           });
         } else if (!isPinned && existingIndex !== -1) {
           newPinnedConversations.splice(existingIndex, 1);

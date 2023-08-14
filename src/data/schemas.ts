@@ -4,6 +4,22 @@
 import z from 'zod';
 
 import { fromURLSafeBase64 } from '../util';
+import {
+  AciString,
+  DeviceId,
+  PniString,
+  RegistrationId,
+  ServiceIdString,
+} from '../types';
+
+export const AciSchema = z.string().transform(x => x as AciString);
+export const PniSchema = z.string()
+  .refine(x => x.startsWith('PNI:'))
+  .transform(x => x as PniString);
+export const ServiceIdSchema = z.string().transform(x => x as ServiceIdString);
+export const RegistrationIdSchema = z.number()
+  .transform(x => x as RegistrationId);
+export const DeviceIdSchema = z.number().transform(x => x as DeviceId);
 
 const SignedPreKeySchema = z.object({
   keyId: z.number(),
@@ -28,8 +44,8 @@ export type DeviceKeys = z.infer<typeof DeviceKeysSchema>;
 export const MessageSchema = z.object({
   // NOTE: Envelope.Type
   type: z.number(),
-  destinationDeviceId: z.number(),
-  destinationRegistrationId: z.number(),
+  destinationDeviceId: DeviceIdSchema,
+  destinationRegistrationId: RegistrationIdSchema,
   content: z.string(),
 });
 
@@ -43,8 +59,8 @@ export const MessageListSchema = z.object({
 export type MessageList = z.infer<typeof MessageListSchema>;
 
 export const RegistrationDataSchema = z.object({
-  registrationId: z.number(),
-  pniRegistrationId: z.number(),
+  registrationId: RegistrationIdSchema,
+  pniRegistrationId: RegistrationIdSchema,
 });
 
 export const GroupStateSchema = z.object({

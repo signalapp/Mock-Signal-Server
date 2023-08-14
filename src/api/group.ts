@@ -9,9 +9,10 @@ import {
   ProfileKeyCredentialPresentation,
   UuidCiphertext,
 } from '@signalapp/libsignal-client/zkgroup';
+import { ServiceId } from '@signalapp/libsignal-client';
 
 import { signalservice as Proto } from '../../protos/compiled';
-import { UUID } from '../types';
+import { AciString, ServiceIdString } from '../types';
 import { Group as GroupData } from '../data/group';
 
 const AccessRequired = Proto.AccessControl.AccessRequired;
@@ -25,7 +26,7 @@ export type GroupOptions = Readonly<{
 export type GroupMember = Readonly<{
   presentation: ProfileKeyCredentialPresentation;
   profileKey: ProfileKey;
-  uuid: UUID;
+  aci: AciString;
 }>;
 
 export type GroupFromConfigOptions = Readonly<{
@@ -119,26 +120,32 @@ export class Group extends GroupData {
     };
   }
 
-  public encryptUUID(uuid: UUID): Buffer {
+  public encryptServiceId(serviceId: ServiceIdString): Buffer {
     const cipher = new ClientZkGroupCipher(this.secretParams);
-    return cipher.encryptUuid(uuid).serialize();
+    return cipher.encryptServiceId(
+      ServiceId.parseFromServiceIdString(serviceId),
+    ).serialize();
   }
 
-  public decryptUUID(ciphertext: Uint8Array): UUID {
+  public decryptServiceId(ciphertext: Uint8Array): ServiceIdString {
     const cipher = new ClientZkGroupCipher(this.secretParams);
     const uuidCiphertext = new UuidCiphertext(Buffer.from(ciphertext));
-    return cipher.decryptUuid(uuidCiphertext).toString();
+    return cipher.decryptServiceId(
+      uuidCiphertext,
+    ).getServiceIdString() as ServiceIdString;
   }
 
-  public getMemberByUUID(
-    uuid: UUID,
+  public getMemberByServiceId(
+    serviceId: ServiceIdString,
   ): Proto.IMember | undefined {
-    return this.getMember(new UuidCiphertext(this.encryptUUID(uuid)));
+    return this.getMember(new UuidCiphertext(this.encryptServiceId(serviceId)));
   }
 
-  public getPendingMemberByUUID(
-    uuid: UUID,
+  public getPendingMemberByServiceId(
+    serviceId: ServiceIdString,
   ): Proto.IMemberPendingProfileKey | undefined {
-    return this.getPendingMember(new UuidCiphertext(this.encryptUUID(uuid)));
+    return this.getPendingMember(
+      new UuidCiphertext(this.encryptServiceId(serviceId)),
+    );
   }
 }

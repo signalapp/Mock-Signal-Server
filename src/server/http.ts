@@ -36,7 +36,16 @@ import {
   UsernameConfirmationSchema,
   UsernameReservationSchema,
 } from '../data/schemas';
-import { KyberPreKey, UUIDKind } from '../types';
+import {
+  AttachmentId,
+  DeviceId,
+  KyberPreKey,
+  ProvisioningCode,
+  RegistrationId,
+  ServiceIdKind,
+  ServiceIdString,
+  untagPni,
+} from '../types';
 import { signalservice as Proto } from '../../protos/compiled';
 
 const debug = createDebug('mock:http');
@@ -47,22 +56,22 @@ const parsePassword = (req: ServerRequest): ParseAuthHeaderResult => {
 
 const sendDevicesKeys = async (
   res: ServerResponse,
-  uuidKind: UUIDKind,
+  serviceIdKind: ServiceIdKind,
   devices: ReadonlyArray<Device>,
 ): Promise<void> => {
   const [ primary ] = devices;
   assert(primary !== undefined, 'Empty device list');
 
-  const identityKey = await primary.getIdentityKey(uuidKind);
+  const identityKey = await primary.getIdentityKey(serviceIdKind);
 
   send(res, 200, {
     identityKey: identityKey.serialize().toString('base64'),
     devices: await Promise.all(devices.map(async (device) => {
       const { signedPreKey, preKey } =
-        await device.popSingleUseKey(uuidKind);
+        await device.popSingleUseKey(serviceIdKind);
       return {
         deviceId: device.deviceId,
-        registrationId: device.getRegistrationId(uuidKind),
+        registrationId: device.getRegistrationId(serviceIdKind),
         signedPreKey: {
           keyId: signedPreKey.keyId,
           publicKey: signedPreKey.publicKey.serialize().toString('base64'),
@@ -96,45 +105,55 @@ export const createHandler = (server: Server): RequestHandler => {
     const device = await server.provisionDevice({
       number: username,
       password,
-      provisioningCode: req.params.code as string,
-      registrationId: body.registrationId as number,
-      pniRegistrationId: body.pniRegistrationId as number,
+      provisioningCode: req.params.code as ProvisioningCode,
+      registrationId: body.registrationId as RegistrationId,
+      pniRegistrationId: body.pniRegistrationId as RegistrationId,
     });
 
-    return { deviceId: device.deviceId, uuid: device.uuid, pni: device.pni };
+    return {
+      deviceId: device.deviceId,
+      uuid: device.aci,
+      pni: untagPni(device.pni),
+    };
   });
 
-  // TODO(indutny): add a route for /v2/keys/:uuid
-  const getDeviceKeys = get('/v2/keys/:uuid/:deviceId', async (req, res) => {
-    const uuid = req.params.uuid;
-    const deviceId = parseInt(req.params.deviceId || '', 10);
-    if (!uuid || deviceId.toString() !== req.params.deviceId) {
-      return send(res, 400, { error: 'Invalid request parameters' });
-    }
+  // TODO: DESKTOP-5821
+  const getDeviceKeys = get(
+    '/v2/keys/:serviceId/:deviceId',
+    async (req, res) => {
+      const serviceId = req.params.serviceId as ServiceIdString;
+      const deviceId = parseInt(req.params.deviceId || '', 10) as DeviceId;
+      if (!serviceId || deviceId.toString() !== req.params.deviceId) {
+        return send(res, 400, { error: 'Invalid request parameters' });
+      }
 
-    const device = await server.getDeviceByUUID(uuid, deviceId);
-    if (!device) {
-      return send(res, 404, { error: 'Device not found' });
-    }
+      const device = await server.getDeviceByServiceId(serviceId, deviceId);
+      if (!device) {
+        return send(res, 404, { error: 'Device not found' });
+      }
 
-    const uuidKind = device.getUUIDKind(uuid);
-    return await sendDevicesKeys(res, uuidKind, [ device ]);
-  });
+      const serviceIdKind = device.getServiceIdKind(serviceId);
+      return await sendDevicesKeys(res, serviceIdKind, [ device ]);
+    },
+  );
 
-  const getAllDeviceKeys = get('/v2/keys/:uuid(/\\*)', async (req, res) => {
-    const uuid = req.params.uuid;
-    if (!uuid) {
-      return send(res, 400, { error: 'Invalid request parameters' });
-    }
+  const getAllDeviceKeys = get(
+    '/v2/keys/:serviceId(/\\*)',
+    async (req, res) => {
+      const serviceId = req.params.serviceId as ServiceIdString;
+      if (!serviceId) {
+        return send(res, 400, { error: 'Invalid request parameters' });
+      }
 
-    const devices = await server.getAllDevicesByUUID(uuid);
-    if (devices.length === 0) {
-      return send(res, 404, { error: 'Account not found' });
-    }
+      const devices = await server.getAllDevicesByServiceId(serviceId);
+      if (devices.length === 0) {
+        return send(res, 404, { error: 'Account not found' });
+      }
 
-    const uuidKind = devices[0].getUUIDKind(uuid);
-    return await sendDevicesKeys(res, uuidKind, devices);
-  });
+      const serviceIdKind = devices[0].getServiceIdKind(serviceId);
+      return await sendDevicesKeys(res, serviceIdKind, devices);
+    },
+  );
 
   //
   // CDN
@@ -142,7 +161,9 @@ export const createHandler = (server: Server): RequestHandler => {
 
   const getAttachment = get('/attachments/:key/:subkey', async (req, res) => {
     const { key, subkey } = req.params;
-    const result = await server.fetchAttachment(`${key}/${subkey}`);
+    const result = await server.fetchAttachment(
+      `${key}/${subkey}` as AttachmentId,
+    );
     if (!result) {
       return send(res, 404, { error: 'Attachment not found' });
     }
@@ -293,11 +314,11 @@ export const createHandler = (server: Server): RequestHandler => {
     return device;
   }
 
-  function uuidKindFromQuery(req: ServerRequest): UUIDKind {
+  function serviceIdKindFromQuery(req: ServerRequest): ServiceIdKind {
     if (req.query.identity === 'pni') {
-      return UUIDKind.PNI;
+      return ServiceIdKind.PNI;
     }
-    return UUIDKind.ACI;
+    return ServiceIdKind.ACI;
   }
 
   function parseEllipticKey(base64: string): PublicKey {
@@ -324,11 +345,11 @@ export const createHandler = (server: Server): RequestHandler => {
       return;
     }
 
-    const uuidKind = uuidKindFromQuery(req);
+    const serviceIdKind = serviceIdKindFromQuery(req);
 
     const body = DeviceKeysSchema.parse(await json(req));
     try {
-      await server.updateDeviceKeys(device, uuidKind, {
+      await server.updateDeviceKeys(device, serviceIdKind, {
         identityKey: parseEllipticKey(body.identityKey),
         preKeys: body.preKeys
           ? body.preKeys.map((preKey) => {
@@ -374,11 +395,11 @@ export const createHandler = (server: Server): RequestHandler => {
         return;
       }
 
-      const uuidKind = uuidKindFromQuery(req);
+      const serviceIdKind = serviceIdKindFromQuery(req);
 
       return {
-        count: await device.getPreKeyCount(uuidKind),
-        pqCount: await device.getKyberPreKeyCount(uuidKind),
+        count: await device.getPreKeyCount(serviceIdKind),
+        pqCount: await device.getKyberPreKeyCount(serviceIdKind),
       };
     },
   );
@@ -393,7 +414,7 @@ export const createHandler = (server: Server): RequestHandler => {
       return;
     }
 
-    return { uuid: device.uuid, pni: device.pni, number: device.number };
+    return { uuid: device.aci, pni: device.pni, number: device.number };
   });
 
   const reserveUsername = put(
@@ -406,7 +427,7 @@ export const createHandler = (server: Server): RequestHandler => {
 
       const body = UsernameReservationSchema.parse(await json(req));
 
-      const usernameHash = await server.reserveUsername(device.uuid, body);
+      const usernameHash = await server.reserveUsername(device.aci, body);
 
       if (!usernameHash) {
         return send(res, 409);
@@ -426,7 +447,7 @@ export const createHandler = (server: Server): RequestHandler => {
 
       const body = UsernameConfirmationSchema.parse(await json(req));
 
-      const result = await server.confirmUsername(device.uuid, body);
+      const result = await server.confirmUsername(device.aci, body);
 
       if (!result) {
         return send(res, 409);
@@ -442,7 +463,7 @@ export const createHandler = (server: Server): RequestHandler => {
       return;
     }
 
-    await server.deleteUsername(device.uuid);
+    await server.deleteUsername(device.aci);
 
     return send(res, 204);
   });
@@ -491,7 +512,7 @@ export const createHandler = (server: Server): RequestHandler => {
       } = PutUsernameLinkSchema.parse(await json(req));
 
       const usernameLinkHandle = await server.replaceUsernameLink(
-        device.uuid,
+        device.aci,
         usernameLinkEncryptedValue,
       );
 

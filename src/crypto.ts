@@ -19,8 +19,8 @@ import {
   SERVER_CERTIFICATE_ID,
 } from './constants';
 import {
+  AciString,
   DeviceId,
-  UUID,
 } from './types';
 
 const AES_KEY_SIZE = 32;
@@ -39,7 +39,7 @@ export type ServerCertificate = {
 };
 
 export type Sender = {
-  readonly uuid: UUID;
+  readonly aci: AciString;
   readonly number?: string;
   readonly deviceId: DeviceId;
   readonly identityKey: PublicKey;
@@ -159,7 +159,7 @@ export function generateSenderCertificate(
 ): SenderCertificate {
   const data = Buffer.from(Proto.SenderCertificate.Certificate.encode({
     senderE164: sender.number,
-    senderUuid: sender.uuid,
+    senderUuid: sender.aci,
     senderDevice: sender.deviceId,
     expires: Long.fromNumber(sender.expires || NEVER_EXPIRES),
     identityKey: sender.identityKey.serialize(),

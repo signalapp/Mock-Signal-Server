@@ -61,13 +61,13 @@ export class ServerGroup extends Group {
   }
 
   public modify(
-    sourceACI: UuidCiphertext,
-    sourcePNI: UuidCiphertext,
+    sourceAci: UuidCiphertext,
+    sourcePni: UuidCiphertext,
     actions: Proto.GroupChange.IActions,
   ): ModifyGroupResult {
     const appliedActions: Proto.GroupChange.IActions = {
       version: actions.version,
-      sourceUuid: sourceACI.serialize(),
+      sourceUserId: sourceAci.serialize(),
     };
 
     assert.ok(actions.version, 'Actions should have a new version');
@@ -79,7 +79,7 @@ export class ServerGroup extends Group {
       version: actions.version,
     };
 
-    const authMember = this.getMember(sourceACI);
+    const authMember = this.getMember(sourceAci);
     const { accessControl } = newState;
 
     let changeEpoch = 1;
@@ -140,7 +140,7 @@ export class ServerGroup extends Group {
 
       const newPendingMember = {
         member: { userId, role },
-        addedByUserId: sourceACI.serialize(),
+        addedByUserId: sourceAci.serialize(),
         timestamp,
       };
 
@@ -160,8 +160,8 @@ export class ServerGroup extends Group {
       assert.ok(deletedUserId, 'Missing deletedUserId');
 
       assert.ok(
-        Buffer.from(deletedUserId).equals(sourceACI.serialize()) ||
-          Buffer.from(deletedUserId).equals(sourcePNI.serialize()),
+        Buffer.from(deletedUserId).equals(sourceAci.serialize()) ||
+          Buffer.from(deletedUserId).equals(sourcePni.serialize()),
         'Not a pending member',
       );
 
@@ -197,7 +197,7 @@ export class ServerGroup extends Group {
 
       assert.ok(
         presentationFFI.getUuidCiphertext().serialize().equals(
-          sourceACI.serialize(),
+          sourceAci.serialize(),
         ),
         'Not a pending member',
       );
@@ -250,11 +250,11 @@ export class ServerGroup extends Group {
       );
 
       const aci = presentationFFI.getUuidCiphertext();
-      const pni = sourcePNI;
+      const pni = sourcePni;
       const profileKey = presentationFFI.getProfileKeyCiphertext();
 
       assert.ok(
-        aci.serialize().equals(sourceACI.serialize()),
+        aci.serialize().equals(sourceAci.serialize()),
         'Not a pending member',
       );
 
@@ -277,7 +277,7 @@ export class ServerGroup extends Group {
       ];
 
       changeEpoch = Math.max(changeEpoch, 5);
-      appliedActions.sourceUuid = sourcePNI.serialize();
+      appliedActions.sourceUserId = sourcePni.serialize();
       appliedActions.promoteMembersPendingPniAciProfileKey = [
         ...(appliedActions.promoteMembersPendingPniAciProfileKey ?? []),
         {

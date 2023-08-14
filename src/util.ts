@@ -3,11 +3,10 @@
 
 import assert from 'assert';
 import { BufferReader } from 'protobufjs';
-import { ProtocolAddress } from '@signalapp/libsignal-client';
-import { stringify as stringifyUUID } from 'uuid';
+import { ProtocolAddress, ServiceId } from '@signalapp/libsignal-client';
 
 import { DAY_IN_SECONDS } from './constants';
-import type { RegistrationId } from './types';
+import type { DeviceId, RegistrationId, ServiceIdString } from './types';
 
 type PromiseQueueEntry<T> = Readonly<{
   value: T;
@@ -19,9 +18,9 @@ export type PromiseQueueConfig = Readonly<{
 }>;
 
 export type MultiRecipientMessageRecipient = Readonly<{
-  uuid: string;
-  deviceId: number;
-  registrationId: number;
+  serviceId: ServiceIdString;
+  deviceId: DeviceId;
+  registrationId: RegistrationId;
   material: Buffer;
 }>;
 
@@ -49,8 +48,8 @@ export type ParseAuthHeaderResult = {
   error: string;
 };
 
-const MULTI_RECIPIENT_MESSAGE_VERSION = 0x22;
-const MULTI_RECIPIENT_UUID_LEN = 16;
+const MULTI_RECIPIENT_MESSAGE_VERSION = 0x23;
+const MULTI_RECIPIENT_SERVICE_ID_LEN = 17;
 const MULTI_RECIPIENT_SHARED_MATERIAL_LEN = 48;
 
 export function parseAuthHeader(header?: string): ParseAuthHeaderResult {
@@ -206,19 +205,22 @@ export function parseMultiRecipientMessage(
   }
 
   const reader = new BufferReader(message);
+  // Version
   reader.skip(1);
 
   const count = reader.uint32();
   const recipients = new Array<MultiRecipientMessageRecipient>();
   while (recipients.length < count) {
-    const uuid = stringifyUUID(message.slice(
-      reader.pos,
-      reader.pos + MULTI_RECIPIENT_UUID_LEN,
-    ));
-    reader.skip(MULTI_RECIPIENT_UUID_LEN);
+    const serviceId = ServiceId.parseFromServiceIdFixedWidthBinary(
+      message.slice(
+        reader.pos,
+        reader.pos + MULTI_RECIPIENT_SERVICE_ID_LEN,
+      ),
+    ).getServiceIdString() as ServiceIdString;
+    reader.skip(MULTI_RECIPIENT_SERVICE_ID_LEN);
 
-    const deviceId = reader.uint32();
-    const registrationId = message.readUInt16BE(reader.pos);
+    const deviceId = reader.uint32() as DeviceId;
+    const registrationId = message.readUInt16BE(reader.pos) as RegistrationId;
     reader.skip(2);
     const material = message.slice(
       reader.pos,
@@ -228,7 +230,7 @@ export function parseMultiRecipientMessage(
 
     reader.skip(MULTI_RECIPIENT_SHARED_MATERIAL_LEN);
 
-    recipients.push({ uuid, deviceId, registrationId, material });
+    recipients.push({ serviceId, deviceId, registrationId, material });
   }
 
   const commonMaterial = message.slice(reader.pos);
@@ -254,7 +256,7 @@ export function getTodayInSeconds(): number {
 }
 
 export function generateRegistrationId(): RegistrationId {
-  return Math.max(1, (Math.random() * 0x4000) | 0);
+  return Math.max(1, (Math.random() * 0x4000) | 0) as RegistrationId;
 }
 
 export function toURLSafeBase64(buf: Uint8Array): string {

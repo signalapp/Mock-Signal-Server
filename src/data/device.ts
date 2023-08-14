@@ -6,14 +6,22 @@ import { ProtocolAddress, PublicKey } from '@signalapp/libsignal-client';
 import { ProfileKeyCommitment } from '@signalapp/libsignal-client/zkgroup';
 
 import {
-  DeviceId, KyberPreKey, PreKey, RegistrationId, SignedPreKey, UUID, UUIDKind,
+  AciString,
+  DeviceId,
+  KyberPreKey,
+  PniString,
+  PreKey,
+  RegistrationId,
+  ServiceIdKind,
+  ServiceIdString,
+  SignedPreKey,
 } from '../types';
 
 const debug = createDebug('mock:device');
 
 export type DeviceOptions = Readonly<{
-  uuid: UUID;
-  pni: UUID;
+  aci: AciString;
+  pni: PniString;
   number: string;
   deviceId: DeviceId;
   registrationId: RegistrationId;
@@ -22,7 +30,7 @@ export type DeviceOptions = Readonly<{
 
 export type ChangeNumberOptions = Readonly<{
   number: string;
-  pni: UUID;
+  pni: PniString;
   pniRegistrationId: RegistrationId;
 }>;
 
@@ -59,7 +67,7 @@ type InternalDeviceKeys = Readonly<{
 const PRE_KEY_ITERATOR_COUNT = 100;
 
 export class Device {
-  public readonly uuid: UUID;
+  public readonly aci: AciString;
   public readonly deviceId: DeviceId;
   public readonly address: ProtocolAddress;
 
@@ -67,16 +75,16 @@ export class Device {
   public profileKeyCommitment?: ProfileKeyCommitment;
   public profileName?: Buffer;
 
-  private keys = new Map<UUIDKind, InternalDeviceKeys>();
+  private keys = new Map<ServiceIdKind, InternalDeviceKeys>();
 
-  private privPni: UUID;
+  private privPni: PniString;
   private privNumber: string;
   private privPniAddress: ProtocolAddress;
   private readonly registrationId: RegistrationId;
   private pniRegistrationId: RegistrationId;
 
   constructor(options: DeviceOptions) {
-    this.uuid = options.uuid;
+    this.aci = options.aci;
     this.deviceId = options.deviceId;
     this.registrationId = options.registrationId;
 
@@ -84,24 +92,24 @@ export class Device {
     this.privNumber = options.number;
     this.pniRegistrationId = options.pniRegistrationId;
 
-    this.address = ProtocolAddress.new(this.uuid, this.deviceId);
+    this.address = ProtocolAddress.new(this.aci, this.deviceId);
     this.privPniAddress = ProtocolAddress.new(this.pni, this.deviceId);
   }
 
   public get debugId(): string {
-    return `${this.uuid}.${this.deviceId}`;
+    return `${this.aci}.${this.deviceId}`;
   }
 
-  public getRegistrationId(uuidKind: UUIDKind): number {
-    switch (uuidKind) {
-    case UUIDKind.ACI:
+  public getRegistrationId(serviceIdKind: ServiceIdKind): number {
+    switch (serviceIdKind) {
+    case ServiceIdKind.ACI:
       return this.registrationId;
-    case UUIDKind.PNI:
+    case ServiceIdKind.PNI:
       return this.pniRegistrationId;
     }
   }
 
-  public get pni(): UUID {
+  public get pni(): PniString {
     return this.privPni;
   }
 
@@ -124,8 +132,11 @@ export class Device {
     this.privPniAddress = ProtocolAddress.new(this.pni, this.deviceId);
   }
 
-  public async setKeys(uuidKind: UUIDKind, keys: DeviceKeys): Promise<void> {
-    debug('setting %s keys for %s', uuidKind, this.debugId);
+  public async setKeys(
+    serviceIdKind: ServiceIdKind,
+    keys: DeviceKeys,
+  ): Promise<void> {
+    debug('setting %s keys for %s', serviceIdKind, this.debugId);
     const { signedPreKey, lastResortKey } = keys;
 
     if (!signedPreKey) {
@@ -135,7 +146,7 @@ export class Device {
       throw new Error('setKeys: Missing lastResortKey');
     }
 
-    this.keys.set(uuidKind, {
+    this.keys.set(serviceIdKind, {
       identityKey: keys.identityKey,
 
       signedPreKey,
@@ -148,16 +159,20 @@ export class Device {
     });
   }
 
-  public async getIdentityKey(uuidKind = UUIDKind.ACI): Promise<PublicKey> {
-    const keys = this.keys.get(uuidKind);
+  public async getIdentityKey(
+    serviceIdKind = ServiceIdKind.ACI,
+  ): Promise<PublicKey> {
+    const keys = this.keys.get(serviceIdKind);
     if (!keys) {
       throw new Error('No keys available for device');
     }
     return keys.identityKey;
   }
 
-  public async popSingleUseKey(uuidKind = UUIDKind.ACI): Promise<SingleUseKey> {
-    const keys = this.keys.get(uuidKind);
+  public async popSingleUseKey(
+    serviceIdKind = ServiceIdKind.ACI,
+  ): Promise<SingleUseKey> {
+    const keys = this.keys.get(serviceIdKind);
     if (!keys) {
       throw new Error('No keys available for device');
     }
@@ -198,8 +213,10 @@ export class Device {
     };
   }
 
-  public async getPreKeyCount(uuidKind = UUIDKind.ACI): Promise<number> {
-    const keys = this.keys.get(uuidKind);
+  public async getPreKeyCount(
+    serviceIdKind = ServiceIdKind.ACI,
+  ): Promise<number> {
+    const keys = this.keys.get(serviceIdKind);
     if (!keys) {
       throw new Error('No keys available for device');
     }
@@ -209,8 +226,10 @@ export class Device {
     return keys.preKeys.length;
   }
 
-  public async getKyberPreKeyCount(uuidKind = UUIDKind.ACI): Promise<number> {
-    const keys = this.keys.get(uuidKind);
+  public async getKyberPreKeyCount(
+    serviceIdKind = ServiceIdKind.ACI,
+  ): Promise<number> {
+    const keys = this.keys.get(serviceIdKind);
     if (!keys) {
       throw new Error('No keys available for device');
     }
@@ -221,30 +240,30 @@ export class Device {
   }
 
 
-  public getUUIDByKind(uuidKind: UUIDKind): UUID {
-    switch (uuidKind) {
-    case UUIDKind.ACI:
-      return this.uuid;
-    case UUIDKind.PNI:
+  public getServiceIdByKind(serviceIdKind: ServiceIdKind): ServiceIdString {
+    switch (serviceIdKind) {
+    case ServiceIdKind.ACI:
+      return this.aci;
+    case ServiceIdKind.PNI:
       return this.pni;
     }
   }
 
-  public getUUIDKind(uuid: UUID): UUIDKind {
-    if (uuid === this.uuid) {
-      return UUIDKind.ACI;
+  public getServiceIdKind(serviceId: ServiceIdString): ServiceIdKind {
+    if (serviceId === this.aci) {
+      return ServiceIdKind.ACI;
     }
-    if (uuid === this.pni) {
-      return UUIDKind.PNI;
+    if (serviceId === this.pni) {
+      return ServiceIdKind.PNI;
     }
-    throw new Error(`Unknown uuid: ${uuid}`);
+    throw new Error(`Unknown serviceId: ${serviceId}`);
   }
 
-  public getAddressByKind(uuidKind: UUIDKind): ProtocolAddress {
-    switch (uuidKind) {
-    case UUIDKind.ACI:
+  public getAddressByKind(serviceIdKind: ServiceIdKind): ProtocolAddress {
+    switch (serviceIdKind) {
+    case ServiceIdKind.ACI:
       return this.address;
-    case UUIDKind.PNI:
+    case ServiceIdKind.PNI:
       return this.pniAddress;
     }
   }

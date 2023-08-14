@@ -11,7 +11,13 @@ import {
   generateServerCertificate,
 } from '../src/crypto';
 import { Device } from '../src/data/device';
-import { UUIDKind } from '../src/types';
+import {
+  AciString,
+  DeviceId,
+  PniString,
+  RegistrationId,
+  ServiceIdKind,
+} from '../src/types';
 import { PrimaryDevice } from '../src/api/primary-device';
 
 const trustRoot = PrivateKey.generate();
@@ -19,16 +25,16 @@ const serverCert = generateServerCertificate(trustRoot);
 const serverSecretParams = ServerSecretParams.generate();
 
 async function createPrimaryDevice(name: string): Promise<PrimaryDevice> {
-  const uuid = uuidv4();
-  const pni = uuidv4();
+  const aci = uuidv4() as AciString;
+  const pni = `PNI:${uuidv4()}` as PniString;
 
   const device = new Device({
-    uuid,
+    aci,
     pni,
     number: '+1',
-    deviceId: 1,
-    registrationId: 1,
-    pniRegistrationId: 2,
+    deviceId: 1 as DeviceId,
+    registrationId: 1 as RegistrationId,
+    pniRegistrationId: 2 as RegistrationId,
   });
 
   const primary = new PrimaryDevice(device, {
@@ -40,19 +46,16 @@ async function createPrimaryDevice(name: string): Promise<PrimaryDevice> {
     async getSenderCertificate() {
       return generateSenderCertificate(serverCert, {
         number: device.number,
-        uuid: device.uuid,
+        aci: device.aci,
         deviceId: device.deviceId,
-        identityKey: await device.getIdentityKey(UUIDKind.ACI),
+        identityKey: await device.getIdentityKey(ServiceIdKind.ACI),
       });
     },
 
     async generateNumber() {
       throw new Error('Should not be called');
     },
-    async generateUUID() {
-      throw new Error('Should not be called');
-    },
-    async releaseUUID() {
+    async generatePni() {
       throw new Error('Should not be called');
     },
     async changeDeviceNumber() {
@@ -61,7 +64,7 @@ async function createPrimaryDevice(name: string): Promise<PrimaryDevice> {
     async send() {
       throw new Error('Should not be called');
     },
-    async getDeviceByUUID() {
+    async getDeviceByServiceId() {
       throw new Error('Not implemented');
     },
     async issueExpiringProfileKeyCredential() {
@@ -110,7 +113,7 @@ describe('PrimaryDevice', () => {
     const alice = await createPrimaryDevice('Alice');
     const bob = await createPrimaryDevice('Bob');
 
-    const key = await bob.device.popSingleUseKey(UUIDKind.ACI);
+    const key = await bob.device.popSingleUseKey(ServiceIdKind.ACI);
     await alice.addSingleUseKey(bob.device, key);
 
     const encrypted = await alice.encryptText(bob.device, 'Hello');

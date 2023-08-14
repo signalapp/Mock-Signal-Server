@@ -1,12 +1,12 @@
 // Copyright 2022 Signal Messenger, LLC
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { UUID } from '../types';
+import { AciString } from '../types';
 
 import { signalservice as Proto } from '../../protos/compiled';
 
 export type Contact = Readonly<{
-  uuid: UUID;
+  aci: AciString;
   number: string;
   profileName: string;
   profileKey?: Buffer;
@@ -14,9 +14,9 @@ export type Contact = Readonly<{
 
 export function serializeContacts(contacts: ReadonlyArray<Contact>): Buffer {
   const chunks = contacts.map((contact) => {
-    const { uuid, number, profileName: name, profileKey } = contact;
+    const { aci, number, profileName: name, profileKey } = contact;
     return Buffer.from(Proto.ContactDetails.encode({
-      uuid,
+      aci,
       number,
       name,
       profileKey,

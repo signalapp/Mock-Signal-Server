@@ -20,7 +20,14 @@ import {
   MessageListSchema,
   RegistrationDataSchema,
 } from '../../data/schemas';
-import { UUID } from '../../types';
+import {
+  DeviceId,
+  ProvisionIdString,
+  ProvisioningCode,
+  RegistrationId,
+  ServiceIdString,
+  untagPni,
+} from '../../types';
 import { generateAccessKeyVerifier } from '../../crypto';
 import { Server } from '../base';
 import {
@@ -51,14 +58,14 @@ export class Connection extends Service {
       headers,
       { credentialType } = {},
     ) => {
-      const uuid = params.uuid as string;
+      const serviceId = params.serviceId as ServiceIdString;
 
-      const target = await this.server.getDeviceByUUID(uuid);
+      const target = await this.server.getDeviceByServiceId(serviceId);
       if (!target) {
         return [ 404, { error: 'Device not found' } ];
       }
 
-      if (this.server.isUnregistered(uuid)) {
+      if (this.server.isUnregistered(serviceId)) {
         return [ 404, { error: 'Unregistered' } ];
       }
 
@@ -82,8 +89,8 @@ export class Connection extends Service {
         }
       }
 
-      const uuidKind = target.getUUIDKind(uuid);
-      const identityKey = await target.getIdentityKey(uuidKind);
+      const serviceIdKind = target.getServiceIdKind(serviceId);
+      const identityKey = await target.getIdentityKey(serviceIdKind);
 
       return [ 200, {
         name: target.profileName,
@@ -100,9 +107,9 @@ export class Connection extends Service {
         credential: credential?.toString('base64'),
       } ];
     };
-    this.router.get('/v1/profile/:uuid', getProfile);
-    this.router.get('/v1/profile/:uuid/:version', getProfile);
-    this.router.get('/v1/profile/:uuid/:version/:request', getProfile);
+    this.router.get('/v1/profile/:serviceId', getProfile);
+    this.router.get('/v1/profile/:serviceId/:version', getProfile);
+    this.router.get('/v1/profile/:serviceId/:version/:request', getProfile);
 
     const requireAuth = (handler: Handler): Handler => {
       return async (params, body, headers) => {
@@ -156,26 +163,26 @@ export class Connection extends Service {
           commonMaterial,
         } = parseMultiRecipientMessage(Buffer.from(body));
 
-        const listByUUID = new Map<UUID, Array<Message>>();
+        const listByServiceId = new Map<ServiceIdString, Array<Message>>();
 
         for (const recipient of recipients) {
           const {
-            uuid,
+            serviceId,
             deviceId,
             registrationId,
             material,
           } = recipient;
 
-          let list: Array<Message> | undefined = listByUUID.get(uuid);
+          let list: Array<Message> | undefined = listByServiceId.get(serviceId);
           if (!list) {
             list = [];
-            listByUUID.set(uuid, list);
+            listByServiceId.set(serviceId, list);
           }
 
           list.push({
             type: Proto.Envelope.Type.UNIDENTIFIED_SENDER,
-            destinationDeviceId: deviceId,
-            destinationRegistrationId: registrationId,
+            destinationDeviceId: deviceId as DeviceId,
+            destinationRegistrationId: registrationId as RegistrationId,
             content: combineMultiRecipientMessage({
               material,
               commonMaterial,
@@ -186,14 +193,14 @@ export class Connection extends Service {
         // TODO(indutny): verify access key xor
 
         const results = await Promise.all(
-          Array.from(listByUUID.entries()).map(async (
-            [ uuid, messages ],
+          Array.from(listByServiceId.entries()).map(async (
+            [ serviceId, messages ],
           ) => {
             return {
-              uuid,
+              uuid: serviceId,
               prepared: await this.server.prepareMultiDeviceMessage(
                 undefined,
-                uuid,
+                serviceId,
                 messages,
               ),
             };
@@ -244,7 +251,7 @@ export class Connection extends Service {
           assert.ok(prepared.status === 'ok');
           return this.server.handlePreparedMultiDeviceMessage(
             undefined,
-            prepared.targetUUID,
+            prepared.targetServiceId,
             prepared.result,
           );
         }));
@@ -253,7 +260,7 @@ export class Connection extends Service {
       },
     );
 
-    this.router.put('/v1/messages/:uuid', async (
+    this.router.put('/v1/messages/:serviceId', async (
       params, body, headers, query = {},
     ) => {
       if (!body) {
@@ -264,8 +271,8 @@ export class Connection extends Service {
         Buffer.from(body).toString(),
       ));
 
-      const targetUUID = params.uuid as string;
-      const target = await this.server.getDeviceByUUID(targetUUID);
+      const targetServiceId = params.serviceId as ServiceIdString;
+      const target = await this.server.getDeviceByServiceId(targetServiceId);
       if (!target) {
         return [ 404, { error: 'Device not found' } ];
       }
@@ -277,15 +284,15 @@ export class Connection extends Service {
         }
       }
 
-      if (this.server.isUnregistered(targetUUID)) {
+      if (this.server.isUnregistered(targetServiceId)) {
         return [ 404, { error: 'Unregistered' } ];
       }
 
       if (
         this.device &&
         this.server.isSendRateLimited({
-          source: this.device.uuid,
-          target: targetUUID,
+          source: this.device.aci,
+          target: targetServiceId,
         })
       ) {
         return [ 428, { token: 'token', options: [ 'recaptcha' ] } ];
@@ -293,7 +300,7 @@ export class Connection extends Service {
 
       const prepared = await this.server.prepareMultiDeviceMessage(
         this.device,
-        params.uuid as string,
+        params.serviceId as ServiceIdString,
         messages,
       );
 
@@ -301,7 +308,7 @@ export class Connection extends Service {
       case 'ok':
         await this.server.handlePreparedMultiDeviceMessage(
           this.device,
-          prepared.targetUUID,
+          prepared.targetServiceId,
           prepared.result,
         );
         return [ 200, { ok: true } ];
@@ -369,15 +376,15 @@ export class Connection extends Service {
       const device = await server.provisionDevice({
         number: username,
         password,
-        provisioningCode: params.code as string,
+        provisioningCode: params.code as ProvisioningCode,
         registrationId,
         pniRegistrationId,
       });
 
       return [ 200, {
         deviceId: device.deviceId,
-        uuid: device.uuid,
-        pni: device.pni,
+        uuid: device.aci,
+        pni: untagPni(device.pni),
       } ];
     });
 
@@ -433,11 +440,11 @@ export class Connection extends Service {
     }
 
     if (url.startsWith('/v1/websocket/provisioning')) {
-      const uuid = await this.server.generateUUID();
+      const id = await this.server.generateProvisionId();
       try {
-        await this.handleProvision(uuid);
+        await this.handleProvision(id);
       } catch (error) {
-        await this.server.releaseUUID(uuid);
+        await this.server.releaseProvisionId(id);
         throw error;
       }
       return;
@@ -476,18 +483,18 @@ export class Connection extends Service {
   // Private
   //
 
-  private async handleProvision(uuid: UUID) {
+  private async handleProvision(id: ProvisionIdString) {
     {
       const { status } = await this.send('PUT', '/v1/address', {
         body: Proto.ProvisioningUuid.encode({
-          uuid,
+          uuid: id,
         }).finish(),
       });
       assert.strictEqual(status, 200);
     }
 
     {
-      const { envelope } = await this.server.getProvisioningResponse(uuid);
+      const { envelope } = await this.server.getProvisioningResponse(id);
       const { status } = await this.send('PUT', '/v1/message', {
         body: envelope,
       });

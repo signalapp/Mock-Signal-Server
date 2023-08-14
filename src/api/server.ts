@@ -24,9 +24,12 @@ import {
   PRIMARY_DEVICE_ID,
 } from '../constants';
 import {
+  AciString,
+  ProvisionIdString,
   ProvisioningCode,
-  UUID,
-  UUIDKind,
+  ServiceIdKind,
+  ServiceIdString,
+  untagPni,
 } from '../types';
 import {
   serializeContacts,
@@ -103,12 +106,12 @@ export type PendingProvisionResponse = Readonly<{
 }>
 
 export type RateLimitOptions = Readonly<{
-  source: UUID;
-  target: UUID;
+  source: ServiceIdString;
+  target: ServiceIdString;
 }>;
 
 type ProvisionResultQueue = Readonly<{
-  seenUuidKinds: Set<UUIDKind>;
+  seenServiceIdKinds: Set<ServiceIdKind>;
   promiseQueue: PromiseQueue<Device>;
 }>;
 
@@ -140,10 +143,11 @@ export class Server extends BaseServer {
   private provisionResultQueueByCode =
     new Map<ProvisioningCode, ProvisionResultQueue>();
   private provisionResultQueueByKey = new Map<string, ProvisionResultQueue>();
-  private manifestQueueByUuid = new Map<UUID, PromiseQueue<number>>();
+  private manifestQueueByAci = new Map<AciString, PromiseQueue<number>>();
   private groupQueueById = new Map<string, PromiseQueue<number>>();
-  private rateLimitCountByPair = new Map<`${UUID}:${UUID}`, number>();
-  private unregisteredUuids = new Set<UUID>();
+  private rateLimitCountByPair =
+    new Map<`${ServiceIdString}:${ServiceIdString}`, number>();
+  private unregisteredServiceIds = new Set<ServiceIdString>();
 
   constructor(config: Config = {}) {
     super();
@@ -245,10 +249,10 @@ export class Server extends BaseServer {
     device: Device,
     afterVersion?: number,
   ): Promise<void> {
-    let queue = this.manifestQueueByUuid.get(device.uuid);
+    let queue = this.manifestQueueByAci.get(device.aci);
     if (!queue) {
       queue = this.createQueue();
-      this.manifestQueueByUuid.set(device.uuid, queue);
+      this.manifestQueueByAci.set(device.aci, queue);
     }
 
     let version: number;
@@ -281,20 +285,18 @@ export class Server extends BaseServer {
   }: CreatePrimaryDeviceOptions): Promise<PrimaryDevice> {
     const number = await this.generateNumber();
 
-    const uuid = await this.generateUUID();
-    const pni = await this.generateUUID();
     const registrationId = await generateRegistrationId();
     const pniRegistrationId = await generateRegistrationId();
     const device = await this.registerDevice({
-      uuid,
-      pni,
       number,
       registrationId,
       pniRegistrationId,
     });
 
-    debug('creating primary device with uuid=%s registrationId=%d',
-      uuid, registrationId);
+    const { aci } = device;
+
+    debug('creating primary device with aci=%s registrationId=%d',
+      aci, registrationId);
 
     if (!this.emptyAttachment) {
       throw new Error('Mock#init must be called before starting the server');
@@ -319,12 +321,11 @@ export class Server extends BaseServer {
       serverPublicParams: this.zkSecret.getPublicParams(),
 
       generateNumber: this.generateNumber.bind(this),
-      generateUUID: this.generateUUID.bind(this),
-      releaseUUID: this.releaseUUID.bind(this),
+      generatePni: this.generatePni.bind(this),
       changeDeviceNumber: this.changeDeviceNumber.bind(this),
       send: this.send.bind(this),
       getSenderCertificate: this.getSenderCertificate.bind(this, device),
-      getDeviceByUUID: this.getDeviceByUUID.bind(this),
+      getDeviceByServiceId: this.getDeviceByServiceId.bind(this),
       issueExpiringProfileKeyCredential:
         this.issueExpiringProfileKeyCredential.bind(this),
       getGroup: this.getGroup.bind(this),
@@ -339,10 +340,14 @@ export class Server extends BaseServer {
     });
     await primary.init();
 
-    this.primaryDevices.set(number, primary);
-    this.primaryDevices.set(uuid, primary);
+    this.primaryDevices.set(primary.device.number, primary);
+    this.primaryDevices.set(primary.device.aci, primary);
 
-    debug('created primary device number=%s uuid=%s', number, uuid);
+    debug(
+      'created primary device number=%s aci=%s',
+      primary.device.number,
+      primary.device.aci,
+    );
 
     return primary;
   }
@@ -352,18 +357,16 @@ export class Server extends BaseServer {
     const pniRegistrationId = await generateRegistrationId();
 
     const device = await this.registerDevice({
-      uuid: primary.device.uuid,
-      pni: primary.device.pni,
-      number: primary.device.number,
+      primary: primary.device,
       registrationId,
       pniRegistrationId,
     });
 
-    for (const uuidKind of [ UUIDKind.ACI, UUIDKind.PNI ]) {
+    for (const serviceIdKind of [ ServiceIdKind.ACI, ServiceIdKind.PNI ]) {
       await this.updateDeviceKeys(
         device,
-        uuidKind,
-        await primary.generateKeys(device, uuidKind),
+        serviceIdKind,
+        await primary.generateKeys(device, serviceIdKind),
       );
     }
 
@@ -372,12 +375,22 @@ export class Server extends BaseServer {
     return device;
   }
 
-  public unregister(primary: PrimaryDevice, uuidKind = UUIDKind.ACI): void {
-    this.unregisteredUuids.add(primary.device.getUUIDByKind(uuidKind));
+  public unregister(
+    primary: PrimaryDevice,
+    serviceIdKind = ServiceIdKind.ACI,
+  ): void {
+    this.unregisteredServiceIds.add(
+      primary.device.getServiceIdByKind(serviceIdKind),
+    );
   }
 
-  public register(primary: PrimaryDevice, uuidKind = UUIDKind.ACI): void {
-    this.unregisteredUuids.delete(primary.device.getUUIDByKind(uuidKind));
+  public register(
+    primary: PrimaryDevice,
+    serviceIdKind = ServiceIdKind.ACI,
+  ): void {
+    this.unregisteredServiceIds.delete(
+      primary.device.getServiceIdByKind(serviceIdKind),
+    );
   }
 
   public rateLimit({ source, target }: RateLimitOptions): void {
@@ -388,7 +401,7 @@ export class Server extends BaseServer {
     source,
     target,
   }: RateLimitOptions): number | undefined {
-    const key: `${UUID}:${UUID}` = `${source}:${target}`;
+    const key: `${ServiceIdString}:${ServiceIdString}` = `${source}:${target}`;
     const existing = this.rateLimitCountByPair.get(key);
     this.rateLimitCountByPair.delete(key);
     return existing;
@@ -399,7 +412,7 @@ export class Server extends BaseServer {
   //
 
   public async getProvisioningResponse(
-    uuid: UUID,
+    id: ProvisionIdString,
   ): Promise<ProvisioningResponse> {
     const responseQueue = this.createQueue<PendingProvisionResponse>();
     const resultQueue = this.createQueue<Device>();
@@ -419,7 +432,7 @@ export class Server extends BaseServer {
 
     const query = parseURL(provisionURL, true).query || {};
 
-    assert.strictEqual(query.uuid, uuid, 'UUID mismatch');
+    assert.strictEqual(query.uuid, id, 'id mismatch');
     if (!query.pub_key || Array.isArray(query.pub_key)) {
       throw new Error('Expected `pub_key` in provision URL');
     }
@@ -427,13 +440,17 @@ export class Server extends BaseServer {
     const publicKey = PublicKey.deserialize(
       Buffer.from(query.pub_key, 'base64'));
 
-    const aciIdentityKey = await primaryDevice.getIdentityKey(UUIDKind.ACI);
-    const pniIdentityKey = await primaryDevice.getIdentityKey(UUIDKind.PNI);
+    const aciIdentityKey = await primaryDevice.getIdentityKey(
+      ServiceIdKind.ACI,
+    );
+    const pniIdentityKey = await primaryDevice.getIdentityKey(
+      ServiceIdKind.PNI,
+    );
     const provisioningCode = await this.getProvisioningCode(
-      uuid, primaryDevice.device.number);
+      id, primaryDevice.device.number);
 
     this.provisionResultQueueByCode.set(provisioningCode, {
-      seenUuidKinds: new Set(),
+      seenServiceIdKinds: new Set(),
       promiseQueue: resultQueue,
     });
 
@@ -443,8 +460,8 @@ export class Server extends BaseServer {
       pniIdentityKeyPrivate: pniIdentityKey.serialize(),
       pniIdentityKeyPublic: pniIdentityKey.getPublicKey().serialize(),
       number: primaryDevice.device.number,
-      aci: primaryDevice.device.uuid,
-      pni: primaryDevice.device.pni,
+      aci: primaryDevice.device.aci,
+      pni: untagPni(primaryDevice.device.pni),
       provisioningCode,
       profileKey: primaryDevice.profileKey.serialize(),
       userAgent: primaryDevice.userAgent,
@@ -466,7 +483,7 @@ export class Server extends BaseServer {
 
   public async handleMessage(
     source: Device | undefined,
-    uuidKind: UUIDKind,
+    serviceIdKind: ServiceIdKind,
     envelopeType: EnvelopeType,
     target: Device,
     encrypted: Buffer,
@@ -476,31 +493,36 @@ export class Server extends BaseServer {
       'No source for non-sealed sender envelope',
     );
 
-    debug('got message for %s.%d', target.uuid, target.deviceId);
+    debug('got message for %s.%d', target.aci, target.deviceId);
 
     if (target.deviceId !== PRIMARY_DEVICE_ID) {
       debug('ignoring message, not primary');
       return;
     }
 
-    const primary = this.primaryDevices.get(target.uuid);
+    const primary = this.primaryDevices.get(target.aci);
     if (!primary) {
       debug('ignoring message, primary device not found');
       return;
     }
 
-    await primary.handleEnvelope(source, uuidKind, envelopeType, encrypted);
+    await primary.handleEnvelope(
+      source,
+      serviceIdKind,
+      envelopeType,
+      encrypted,
+    );
   }
 
-  public isUnregistered(uuid: UUID): boolean {
-    return this.unregisteredUuids.has(uuid);
+  public isUnregistered(serviceId: ServiceIdString): boolean {
+    return this.unregisteredServiceIds.has(serviceId);
   }
 
   public isSendRateLimited({
     source,
     target,
   }: IsSendRateLimitedOptions): boolean {
-    const key: `${UUID}:${UUID}` = `${source}:${target}`;
+    const key: `${ServiceIdString}:${ServiceIdString}` = `${source}:${target}`;
     const existing = this.rateLimitCountByPair.get(key);
     if (existing === undefined) {
       return false;
@@ -526,12 +548,12 @@ export class Server extends BaseServer {
 
   public override async updateDeviceKeys(
     device: Device,
-    uuidKind: UUIDKind,
+    serviceIdKind: ServiceIdKind,
     keys: DeviceKeys,
   ): Promise<void> {
-    await super.updateDeviceKeys(device, uuidKind, keys);
+    await super.updateDeviceKeys(device, serviceIdKind, keys);
 
-    const key = `${device.uuid}.${device.getRegistrationId(uuidKind)}`;
+    const key = `${device.aci}.${device.getRegistrationId(serviceIdKind)}`;
 
     // Device is marked as provisioned only once we have its keys
     const resultQueue = this.provisionResultQueueByKey.get(key);
@@ -539,17 +561,18 @@ export class Server extends BaseServer {
       return;
     }
 
-    debug('updateDeviceKeys: got keys for', device.debugId, uuidKind);
+    debug('updateDeviceKeys: got keys for', device.debugId, serviceIdKind);
 
-    const { seenUuidKinds, promiseQueue } = resultQueue;
+    const { seenServiceIdKinds, promiseQueue } = resultQueue;
 
     assert(
-      !seenUuidKinds.has(uuidKind),
-      `Duplicate uuid kind ${uuidKind} for device: ${device.debugId}`);
-    seenUuidKinds.add(uuidKind);
+      !seenServiceIdKinds.has(serviceIdKind),
+      `Duplicate service id kind ${serviceIdKind} ` +
+        `for device: ${device.debugId}`);
+    seenServiceIdKinds.add(serviceIdKind);
     if (
-      !seenUuidKinds.has(UUIDKind.ACI) ||
-      !seenUuidKinds.has(UUIDKind.PNI)
+      !seenServiceIdKinds.has(ServiceIdKind.ACI) ||
+      !seenServiceIdKinds.has(ServiceIdKind.PNI)
     ) {
       return;
     }
@@ -571,12 +594,12 @@ export class Server extends BaseServer {
 
     const device = await super.provisionDevice(options);
 
-    for (const uuidKind of [ UUIDKind.ACI, UUIDKind.PNI ]) {
-      const key = `${device.uuid}.${device.getRegistrationId(uuidKind)}`;
+    for (const serviceIdKind of [ ServiceIdKind.ACI, ServiceIdKind.PNI ]) {
+      const key = `${device.aci}.${device.getRegistrationId(serviceIdKind)}`;
       this.provisionResultQueueByKey.set(key, queue);
     }
 
-    const primary = this.primaryDevices.get(device.uuid);
+    const primary = this.primaryDevices.get(device.aci);
     primary?.addSecondaryDevice(device);
 
     return device;
@@ -624,10 +647,10 @@ export class Server extends BaseServer {
   ): Promise<void> {
     debug('onStorageManifestUpdate', device.debugId);
 
-    let queue = this.manifestQueueByUuid.get(device.uuid);
+    let queue = this.manifestQueueByAci.get(device.aci);
     if (!queue) {
       queue = this.createQueue();
-      this.manifestQueueByUuid.set(device.uuid, queue);
+      this.manifestQueueByAci.set(device.aci, queue);
     }
 
     queue.push(version.toNumber());

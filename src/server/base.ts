@@ -6,7 +6,12 @@ import crypto from 'crypto';
 import Long from 'long';
 import { v4 as uuidv4 } from 'uuid';
 import createDebug from 'debug';
-import { SenderCertificate, usernames } from '@signalapp/libsignal-client';
+import {
+  Aci,
+  Pni,
+  SenderCertificate,
+  usernames,
+} from '@signalapp/libsignal-client';
 import {
   AuthCredentialPresentation,
   GroupPublicParams,
@@ -31,12 +36,15 @@ import {
   PROFILE_KEY_CREDENTIAL_EXPIRATION,
 } from '../constants';
 import {
+  AciString,
   AttachmentId,
   DeviceId,
+  PniString,
+  ProvisionIdString,
   ProvisioningCode,
   RegistrationId,
-  UUID,
-  UUIDKind,
+  ServiceIdKind,
+  ServiceIdString,
 } from '../types';
 import { getTodayInSeconds } from '../util';
 import {
@@ -82,10 +90,15 @@ export type ProvisionDeviceOptions = Readonly<{
   pniRegistrationId: RegistrationId;
 }>;
 
-export type RegisterDeviceOptions = Readonly<{
-  uuid: UUID;
-  pni: UUID;
+export type RegisterDeviceOptions = Readonly<({
+  primary?: undefined;
+  provisionId?: ProvisionIdString;
   number: string;
+} | {
+  primary: Device;
+  provisionId?: undefined;
+  number?: undefined;
+}) & {
   registrationId: RegistrationId;
   pniRegistrationId: RegistrationId;
 }>
@@ -101,7 +114,7 @@ export type PrepareMultiDeviceMessageResult = Readonly<{
   status: 'unknown';
 } | {
   status: 'ok';
-  targetUUID: UUID;
+  targetServiceId: ServiceIdString;
   result: PreparedMultiDeviceMessage;
 }>;
 
@@ -141,8 +154,8 @@ export type EncryptedStickerPack = Readonly<{
 }>;
 
 export type IsSendRateLimitedOptions = Readonly<{
-  source: UUID;
-  target: UUID;
+  source: ServiceIdString;
+  target: ServiceIdString;
 }>;
 
 export { ModifyGroupResult };
@@ -173,66 +186,99 @@ const debug = createDebug('mock:server:base');
 // NOTE: This class is currently extended only by src/api/server.ts
 export abstract class Server {
   private readonly devices = new Map<string, Array<Device>>();
-  private readonly devicesByUUID = new Map<UUID, Device>();
+  private readonly devicesByServiceId = new Map<ServiceIdString, Device>();
   private readonly devicesByAuth = new Map<string, AuthEntry>();
-  private readonly usedUUIDs = new Set<string>();
+  private readonly usedServiceIds = new Set<ServiceIdString>();
+  private readonly usedProvisionIds = new Set<ProvisionIdString>();
   private readonly storageAuthByUsername = new Map<string, StorageAuthEntry>();
   private readonly storageAuthByDevice = new Map<Device, StorageAuthEntry>();
-  private readonly storageManifestByUuid =
-    new Map<UUID, Proto.IStorageManifest>();
-  private readonly storageItemsByUuid =
-    new Map<UUID, Map<string, Buffer>>();
+  private readonly storageManifestByAci =
+    new Map<AciString, Proto.IStorageManifest>();
+  private readonly storageItemsByAci =
+    new Map<AciString, Map<string, Buffer>>();
   private readonly provisioningCodes =
-    new Map<string, Map<ProvisioningCode, UUID>>();
+    new Map<string, Map<ProvisioningCode, ProvisionIdString>>();
   private readonly attachments = new Map<AttachmentId, Buffer>();
   private readonly stickerPacks = new Map<string, EncryptedStickerPack>();
   private readonly webSockets = new Map<Device, Set<WebSocket>>();
   private readonly messageQueue =
     new WeakMap<Device, Array<MessageQueueEntry>>();
   private readonly groups = new Map<string, ServerGroup>();
-  private readonly uuidByUsername = new Map<string, UUID>();
-  private readonly uuidByReservedUsername = new Map<string, UUID>();
-  private readonly usernameByUUID = new Map<UUID, string>();
-  private readonly reservedUsernameByUUID = new Map<UUID, string>();
-  private readonly usernameLinkIdByUUID = new Map<UUID, string>();
-  private readonly usernameLinkById = new Map<UUID, Buffer>();
+  private readonly aciByUsername = new Map<string, AciString>();
+  private readonly aciByReservedUsername = new Map<string, AciString>();
+  private readonly usernameByAci = new Map<AciString, string>();
+  private readonly reservedUsernameByAci = new Map<AciString, string>();
+  private readonly usernameLinkIdByServiceId =
+    new Map<ServiceIdString, string>();
+  private readonly usernameLinkById = new Map<string, Buffer>();
   protected privCertificate: ServerCertificate | undefined;
   protected privZKSecret: ServerSecretParams | undefined;
+
+  //
+  // Service Ids
+  //
+
+  public async generateAci(): Promise<AciString> {
+    let result: AciString;
+    do {
+      result = uuidv4() as AciString;
+    } while (this.usedServiceIds.has(result));
+    this.usedServiceIds.add(result);
+    return result;
+  }
+
+  public async generatePni(): Promise<PniString> {
+    let result: PniString;
+    do {
+      result = `PNI:${uuidv4()}` as PniString;
+    } while (this.usedServiceIds.has(result));
+    this.usedServiceIds.add(result);
+    return result;
+  }
 
   //
   // Provisioning
   //
 
-  public async generateUUID(): Promise<UUID> {
-    let result: UUID;
+  public async generateProvisionId(): Promise<ProvisionIdString> {
+    let result: ProvisionIdString;
     do {
-      result = uuidv4();
-    } while (this.usedUUIDs.has(result) || this.devicesByUUID.has(result));
-    this.usedUUIDs.add(result);
+      result = uuidv4() as ProvisionIdString;
+    } while (this.usedProvisionIds.has(result));
+    this.usedProvisionIds.add(result);
     return result;
   }
 
-  public async releaseUUID(uuid: UUID): Promise<void> {
-    if (this.devicesByUUID.has(uuid)) {
-      assert.ok(!this.usedUUIDs.has(uuid));
-      throw new Error('Can\'t release UUID');
-    }
-    this.usedUUIDs.delete(uuid);
+  public async releaseProvisionId(id: ProvisionIdString): Promise<void> {
+    this.usedProvisionIds.delete(id);
   }
 
   public abstract getProvisioningResponse(
-    uuid: UUID
+    id: ProvisionIdString
   ): Promise<ProvisioningResponse>;
 
   public async registerDevice({
-    uuid,
-    pni,
-    number,
+    primary,
+    provisionId,
+    number: maybeNumber,
     registrationId,
     pniRegistrationId,
   }: RegisterDeviceOptions): Promise<Device> {
-    if (!this.usedUUIDs.has(uuid)) {
-      throw new Error('Use generateUUID() to create new UUID');
+    if (provisionId && !this.usedProvisionIds.has(provisionId)) {
+      throw new Error('Use generateProvisionId() to create new provision id');
+    }
+
+    let aci: AciString;
+    let pni: PniString;
+    let number: string;
+    if (primary) {
+      ({ aci, pni, number } = primary);
+    } else {
+      [ aci, pni ] = await Promise.all([
+        this.generateAci(),
+        this.generatePni(),
+      ]);
+      number = maybeNumber;
     }
 
     let list = this.devices.get(number);
@@ -240,11 +286,11 @@ export abstract class Server {
       list = [];
       this.devices.set(number, list);
     }
-    const deviceId = list.length + 1;
+    const deviceId = (list.length + 1) as DeviceId;
     const isPrimary = deviceId === PRIMARY_DEVICE_ID;
 
     const device = new Device({
-      uuid,
+      aci,
       pni,
       number,
       deviceId,
@@ -253,31 +299,31 @@ export abstract class Server {
     });
 
     if (isPrimary) {
-      assert(!this.devicesByUUID.has(uuid), 'Duplicate primary device');
-      this.devicesByUUID.set(uuid, device);
-      this.devicesByUUID.set(pni, device);
+      assert(!this.devicesByServiceId.has(aci), 'Duplicate primary device');
+      this.devicesByServiceId.set(aci, device);
+      this.devicesByServiceId.set(pni, device);
     }
     list.push(device);
 
-    debug('registered device number=%j uuid=%s', number, uuid);
+    debug('registered device number=%j aci=%s', number, aci);
     return device;
   }
 
   // Called from primary device
   public async getProvisioningCode(
-    uuid: UUID,
+    id: ProvisionIdString,
     number: string,
   ): Promise<ProvisioningCode> {
     let entry = this.provisioningCodes.get(number);
     if (!entry) {
-      entry = new Map<ProvisioningCode, UUID>();
+      entry = new Map<ProvisioningCode, ProvisionIdString>();
       this.provisioningCodes.set(number, entry);
     }
     let code: ProvisioningCode;
     do {
-      code = crypto.randomBytes(8).toString('hex');
+      code = crypto.randomBytes(8).toString('hex') as ProvisioningCode;
     } while (entry.has(code));
-    entry.set(code, uuid);
+    entry.set(code, id);
     return code;
   }
 
@@ -294,8 +340,8 @@ export abstract class Server {
       throw new Error('Invalid number for provisioning');
     }
 
-    const uuid = entry.get(provisioningCode);
-    if (!uuid) {
+    const aci = entry.get(provisioningCode);
+    if (!aci) {
       throw new Error('Invalid provisioning code');
     }
     entry.delete(provisioningCode);
@@ -304,9 +350,7 @@ export abstract class Server {
     assert(primary !== undefined, 'Missing primary device when provisioning');
 
     const device = await this.registerDevice({
-      uuid: primary.uuid,
-      pni: primary.pni,
-      number,
+      primary,
       registrationId,
       pniRegistrationId,
     });
@@ -314,7 +358,7 @@ export abstract class Server {
     const username = `${number}.${device.deviceId}`;
 
     // This is awkward, but WebSockets use it.
-    const secondUsername = `${device.uuid}.${device.deviceId}`;
+    const secondUsername = `${device.aci}.${device.deviceId}`;
 
     // Add auth only after successfully registering the device
     assert(
@@ -328,17 +372,17 @@ export abstract class Server {
     this.devicesByAuth.set(username, authEntry);
     this.devicesByAuth.set(secondUsername, authEntry);
 
-    debug('provisioned device number=%j uuid=%j', number, uuid);
+    debug('provisioned device number=%j aci=%j', number, aci);
     return device;
   }
 
   public async updateDeviceKeys(
     device: Device,
-    uuidKind: UUIDKind,
+    serviceIdKind: ServiceIdKind,
     keys: DeviceKeys,
   ): Promise<void> {
     debug('setting device=%s keys', device.debugId);
-    await device.setKeys(uuidKind, keys);
+    await device.setKeys(serviceIdKind, keys);
   }
 
   public async changeDeviceNumber(
@@ -365,10 +409,10 @@ export abstract class Server {
     }
     newDevices.push(device);
 
-    const oldPrimary = this.devicesByUUID.get(oldPni);
+    const oldPrimary = this.devicesByServiceId.get(oldPni);
     if (oldPrimary === device) {
-      this.devicesByUUID.delete(oldPni);
-      this.devicesByUUID.set(options.pni, device);
+      this.devicesByServiceId.delete(oldPni);
+      this.devicesByServiceId.set(options.pni, device);
     }
   }
 
@@ -396,8 +440,10 @@ export abstract class Server {
   //
 
   protected async storeAttachment(attachment: Buffer): Promise<AttachmentId> {
-    const id = ATTACHMENT_PREFIX +
-      crypto.createHash('sha256').update(attachment).digest('hex');
+    const id = (
+      ATTACHMENT_PREFIX +
+      crypto.createHash('sha256').update(attachment).digest('hex')
+    ) as AttachmentId;
     this.attachments.set(id, attachment);
     return id;
   }
@@ -427,14 +473,14 @@ export abstract class Server {
 
   public async prepareMultiDeviceMessage(
     source: Device | undefined,
-    targetUUID: UUID,
+    targetServiceId: ServiceIdString,
     messages: ReadonlyArray<Message>,
   ): Promise<PrepareMultiDeviceMessageResult> {
-    if (this.isUnregistered(targetUUID)) {
+    if (this.isUnregistered(targetServiceId)) {
       return { status: 'unknown' };
     }
 
-    const devices = await this.getAllDevicesByUUID(targetUUID);
+    const devices = await this.getAllDevicesByServiceId(targetServiceId);
     if (devices.length === 0) {
       return { status: 'unknown' };
     }
@@ -460,11 +506,13 @@ export abstract class Server {
         continue;
       }
 
-      const uuidKind = target.getUUIDKind(targetUUID);
+      const serviceIdKind = target.getServiceIdKind(targetServiceId);
 
       deviceById.delete(destinationDeviceId);
 
-      if (target.getRegistrationId(uuidKind) !== destinationRegistrationId) {
+      if (
+        target.getRegistrationId(serviceIdKind) !== destinationRegistrationId
+      ) {
         staleDevices.add(destinationDeviceId);
         continue;
       }
@@ -472,7 +520,7 @@ export abstract class Server {
       result.push([ target, message ]);
     }
 
-    if (source && source.uuid === targetUUID) {
+    if (source && source.aci === targetServiceId) {
       deviceById.delete(source.deviceId);
     }
 
@@ -488,12 +536,12 @@ export abstract class Server {
       };
     }
 
-    return { status: 'ok', targetUUID, result };
+    return { status: 'ok', targetServiceId, result };
   }
 
   public async handlePreparedMultiDeviceMessage(
     source: Device | undefined,
-    targetUUID: UUID,
+    targetServiceId: ServiceIdString,
     prepared: PreparedMultiDeviceMessage,
   ): Promise<void> {
     for (const [ target, message ] of prepared) {
@@ -508,11 +556,11 @@ export abstract class Server {
         throw new Error(`Unsupported envelope type: ${message.type}`);
       }
 
-      const uuidKind = target.getUUIDKind(targetUUID);
+      const serviceIdKind = target.getServiceIdKind(targetServiceId);
 
       await this.handleMessage(
         source,
-        uuidKind,
+        serviceIdKind,
         envelopeType,
         target,
         Buffer.from(message.content, 'base64'),
@@ -522,7 +570,7 @@ export abstract class Server {
 
   public abstract handleMessage(
     source: Device | undefined,
-    uuidKind: UUIDKind,
+    serviceIdKind: ServiceIdKind,
     envelopeType: EnvelopeType,
     target: Device,
     encrypted: Buffer,
@@ -694,7 +742,7 @@ export abstract class Server {
   public async getStorageManifest(
     device: Device,
   ): Promise<Proto.IStorageManifest | undefined> {
-    return this.storageManifestByUuid.get(device.uuid);
+    return this.storageManifestByAci.get(device.aci);
   }
 
   public async applyStorageWrite(
@@ -761,7 +809,7 @@ export abstract class Server {
       manifest.version.toNumber(),
       device.debugId,
     );
-    this.storageManifestByUuid.set(device.uuid, manifest);
+    this.storageManifestByAci.set(device.aci, manifest);
 
     if (shouldNotify) {
       await this.onStorageManifestUpdate(device, manifest.version);
@@ -771,7 +819,7 @@ export abstract class Server {
   }
 
   private async clearStorageItems(device: Device): Promise<void> {
-    this.storageItemsByUuid.get(device.uuid)?.clear();
+    this.storageItemsByAci.get(device.aci)?.clear();
   }
 
   private async setStorageItem(
@@ -779,10 +827,10 @@ export abstract class Server {
     key: Buffer,
     value: Buffer,
   ): Promise<void> {
-    let map = this.storageItemsByUuid.get(device.uuid);
+    let map = this.storageItemsByAci.get(device.aci);
     if (!map) {
       map = new Map();
-      this.storageItemsByUuid.set(device.uuid, map);
+      this.storageItemsByAci.set(device.aci, map);
     }
 
     map.set(key.toString('hex'), value);
@@ -792,7 +840,7 @@ export abstract class Server {
     device: Device,
     key: Buffer,
   ): Promise<Buffer | undefined> {
-    const map = this.storageItemsByUuid.get(device.uuid);
+    const map = this.storageItemsByAci.get(device.aci);
     if (!map) {
       return undefined;
     }
@@ -803,7 +851,7 @@ export abstract class Server {
   public async getAllStorageKeys(
     device: Device,
   ): Promise<Array<Buffer>> {
-    const map = this.storageItemsByUuid.get(device.uuid);
+    const map = this.storageItemsByAci.get(device.aci);
     if (!map) {
       return [];
     }
@@ -831,7 +879,7 @@ export abstract class Server {
     device: Device,
     key: Buffer,
   ): Promise<void> {
-    const map = this.storageItemsByUuid.get(device.uuid);
+    const map = this.storageItemsByAci.get(device.aci);
     if (!map) {
       return;
     }
@@ -849,27 +897,27 @@ export abstract class Server {
   //
 
   public async reserveUsername(
-    uuid: UUID,
+    aci: AciString,
     { usernameHashes }: UsernameReservation,
   ): Promise<Buffer | undefined> {
     // Clear previously reserved usernames
-    const reserved = this.reservedUsernameByUUID.get(uuid);
+    const reserved = this.reservedUsernameByAci.get(aci);
     if (reserved !== undefined) {
-      this.reservedUsernameByUUID.delete(uuid);
-      this.uuidByReservedUsername.delete(reserved);
+      this.reservedUsernameByAci.delete(aci);
+      this.aciByReservedUsername.delete(reserved);
     }
 
     for (const hash of usernameHashes) {
       const hashHex = hash.toString('hex');
-      if (this.uuidByReservedUsername.has(hashHex)) {
+      if (this.aciByReservedUsername.has(hashHex)) {
         continue;
       }
-      if (this.uuidByUsername.has(hashHex)) {
+      if (this.aciByUsername.has(hashHex)) {
         continue;
       }
 
-      this.reservedUsernameByUUID.set(uuid, hashHex);
-      this.uuidByReservedUsername.set(hashHex, uuid);
+      this.reservedUsernameByAci.set(aci, hashHex);
+      this.aciByReservedUsername.set(hashHex, aci);
       return hash;
     }
 
@@ -877,7 +925,7 @@ export abstract class Server {
   }
 
   public async confirmUsername(
-    uuid: UUID,
+    aci: AciString,
     {
       usernameHash,
       zkProof,
@@ -885,7 +933,7 @@ export abstract class Server {
     }: UsernameConfirmation,
   ): Promise<ConfirmUsernameResult | undefined> {
     // Clear previously reserved usernames
-    const reserved = this.reservedUsernameByUUID.get(uuid);
+    const reserved = this.reservedUsernameByAci.get(aci);
     if (reserved !== usernameHash.toString('hex')) {
       return undefined;
     }
@@ -893,20 +941,20 @@ export abstract class Server {
     try {
       usernames.verifyProof(zkProof, usernameHash);
     } catch (error) {
-      debug('failed to verify username proof of %s: %O', uuid, error);
+      debug('failed to verify username proof of %s: %O', aci, error);
       return undefined;
     }
 
-    this.reservedUsernameByUUID.delete(uuid);
-    this.uuidByReservedUsername.delete(reserved);
+    this.reservedUsernameByAci.delete(aci);
+    this.aciByReservedUsername.delete(reserved);
 
-    this.uuidByUsername.set(reserved, uuid);
-    this.usernameByUUID.set(uuid, reserved);
+    this.aciByUsername.set(reserved, aci);
+    this.usernameByAci.set(aci, reserved);
 
     let usernameLinkHandle: string | undefined;
     if (encryptedUsername) {
       usernameLinkHandle = await this.replaceUsernameLink(
-        uuid,
+        aci,
         encryptedUsername,
       );
     }
@@ -915,41 +963,41 @@ export abstract class Server {
   }
 
   public async deleteUsername(
-    uuid: UUID,
+    aci: AciString,
   ): Promise<void> {
-    const hash = this.usernameByUUID.get(uuid);
+    const hash = this.usernameByAci.get(aci);
     if (!hash) {
       return;
     }
 
-    this.uuidByUsername.delete(hash);
-    this.usernameByUUID.delete(uuid);
+    this.aciByUsername.delete(hash);
+    this.usernameByAci.delete(aci);
 
-    const previousId = this.usernameLinkIdByUUID.get(uuid);
+    const previousId = this.usernameLinkIdByServiceId.get(aci);
     if (previousId !== undefined) {
       this.usernameLinkById.delete(previousId);
     }
-    this.usernameLinkIdByUUID.delete(uuid);
+    this.usernameLinkIdByServiceId.delete(aci);
   }
 
   public async lookupByUsernameHash(
     usernameHash: Buffer,
-  ): Promise<UUID | undefined> {
-    return this.uuidByUsername.get(usernameHash.toString('hex'));
+  ): Promise<AciString | undefined> {
+    return this.aciByUsername.get(usernameHash.toString('hex'));
   }
 
   public async replaceUsernameLink(
-    uuid: UUID,
+    aci: AciString,
     encryptedValue: Buffer,
   ): Promise<string> {
     const lookupId = uuidv4();
 
-    const previousId = this.usernameLinkIdByUUID.get(uuid);
+    const previousId = this.usernameLinkIdByServiceId.get(aci);
     if (previousId !== undefined) {
       this.usernameLinkById.delete(previousId);
     }
 
-    this.usernameLinkIdByUUID.set(uuid, lookupId);
+    this.usernameLinkIdByServiceId.set(aci, lookupId);
     this.usernameLinkById.set(lookupId, encryptedValue);
 
     return lookupId;
@@ -964,20 +1012,20 @@ export abstract class Server {
   // For easier testing
   public async lookupByUsername(
     username: string,
-  ): Promise<UUID | undefined> {
-    return this.uuidByUsername.get(usernames.hash(username).toString('hex'));
+  ): Promise<AciString | undefined> {
+    return this.aciByUsername.get(usernames.hash(username).toString('hex'));
   }
 
   // For easier testing
-  public async setUsername(uuid: UUID, username: string): Promise<void> {
+  public async setUsername(aci: AciString, username: string): Promise<void> {
     const hash = usernames.hash(username).toString('hex');
-    this.usernameByUUID.set(uuid, hash);
-    this.uuidByUsername.set(hash, uuid);
+    this.usernameByAci.set(aci, hash);
+    this.aciByUsername.set(hash, aci);
   }
 
   // For easier testing
   public async setUsernameLink(
-    uuid: UUID,
+    aci: AciString,
     username: string,
   ): Promise<SetUsernameLinkResult> {
     const {
@@ -986,7 +1034,7 @@ export abstract class Server {
     } = usernames.createUsernameLink(username);
 
     const serverId = await this.replaceUsernameLink(
-      uuid,
+      aci,
       encryptedUsername,
     );
 
@@ -1015,11 +1063,11 @@ export abstract class Server {
     return list[deviceId - 1];
   }
 
-  public async getDeviceByUUID(
-    uuid: UUID,
+  public async getDeviceByServiceId(
+    serviceId: ServiceIdString,
     deviceId?: DeviceId,
   ): Promise<Device | undefined> {
-    const primary = this.devicesByUUID.get(uuid);
+    const primary = this.devicesByServiceId.get(serviceId);
     if (deviceId === undefined || !primary || primary.deviceId === deviceId) {
       return primary;
     }
@@ -1029,10 +1077,10 @@ export abstract class Server {
     return await this.getDevice(primary.number, deviceId);
   }
 
-  public async getAllDevicesByUUID(
-    uuid: UUID,
+  public async getAllDevicesByServiceId(
+    serviceId: ServiceIdString,
   ): Promise<ReadonlyArray<Device>> {
-    const primary = this.devicesByUUID.get(uuid);
+    const primary = this.devicesByServiceId.get(serviceId);
     if (!primary) {
       return [];
     }
@@ -1045,14 +1093,14 @@ export abstract class Server {
   ): Promise<SenderCertificate> {
     return generateSenderCertificate(this.certificate, {
       number: device.number,
-      uuid: device.uuid,
+      aci: device.aci,
       deviceId: device.deviceId,
-      identityKey: await device.getIdentityKey(UUIDKind.ACI),
+      identityKey: await device.getIdentityKey(ServiceIdKind.ACI),
     });
   }
 
   public async getGroupCredentials(
-    { uuid, pni }: Device,
+    { aci, pni }: Device,
     { from, to }: GroupCredentialsRange,
   ): Promise<GroupCredentials> {
     const today = getTodayInSeconds();
@@ -1073,7 +1121,9 @@ export abstract class Server {
       redemptionTime += DAY_IN_SECONDS
     ) {
       result.push({
-        credential: auth.issueAuthCredentialWithPni(uuid, pni, redemptionTime)
+        credential: auth.issueAuthCredentialWithPniAsServiceId(
+          Aci.parseFromServiceIdString(aci),
+          Pni.parseFromServiceIdString(pni), redemptionTime)
           .serialize().toString('base64'),
         redemptionTime,
       });
@@ -1098,7 +1148,7 @@ export abstract class Server {
   }
 
   public async issueExpiringProfileKeyCredential(
-    { uuid, profileKeyCommitment }: Device,
+    { aci, profileKeyCommitment }: Device,
     request: ProfileKeyCredentialRequest,
   ): Promise<Buffer | undefined> {
     if (!profileKeyCommitment) {
@@ -1110,13 +1160,13 @@ export abstract class Server {
     const profile = new ServerZkProfileOperations(this.zkSecret);
     return profile.issueExpiringProfileKeyCredential(
       request,
-      uuid,
+      Aci.parseFromServiceIdString(aci),
       profileKeyCommitment,
       today + PROFILE_KEY_CREDENTIAL_EXPIRATION,
     ).serialize();
   }
 
-  public abstract isUnregistered(uuid: UUID): boolean;
+  public abstract isUnregistered(serviceId: ServiceIdString): boolean;
 
   public abstract isSendRateLimited(options: IsSendRateLimitedOptions): boolean;
 

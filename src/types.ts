@@ -3,13 +3,18 @@
 
 import { KEMPublicKey, PublicKey } from '@signalapp/libsignal-client';
 
-export type UUID = string;
-export type ProvisioningCode = string;
-export type RegistrationId = number;
-export type DeviceId = number;
-export type AttachmentId = string;
+export type AciString = string & { __aci: never };
+export type PniString = string & { __pni: never };
+export type ServiceIdString = AciString | PniString;
 
-export enum UUIDKind {
+export type ProvisionIdString = string & { __provision_id: never };
+
+export type ProvisioningCode = string & { __provisioning_code: never };
+export type RegistrationId = number & { __reg_id: never };
+export type DeviceId = number & { __device_id: never };
+export type AttachmentId = string & { __attachment_id: never };
+
+export enum ServiceIdKind {
   ACI = 'ACI',
   PNI = 'PNI'
 }
@@ -30,3 +35,7 @@ export type PreKey = Readonly<{
   keyId: number;
   publicKey: PublicKey;
 }>;
+
+export function untagPni(pni: PniString): string {
+  return pni.replace(/^PNI:/, '');
+}
