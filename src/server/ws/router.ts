@@ -38,7 +38,9 @@ export class Router {
   public register(method: string, pattern: string, handler: Handler): void {
     this.routes.push({
       method,
-      pattern: new URLPattern(pattern),
+      pattern: new URLPattern(pattern, {
+        segmentValueCharset: ':a-zA-Z0-9-_~ %',
+      }),
       handler,
     });
   }

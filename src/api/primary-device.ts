@@ -12,6 +12,7 @@ import {
   KEMKeyPair,
   KyberPreKeyRecord,
   KyberPreKeyStore as KyberPreKeyStoreBase,
+  Pni,
   PreKeyBundle,
   PreKeyRecord,
   PreKeySignalMessage,
@@ -42,7 +43,6 @@ import {
   ProfileKeyCredentialRequest,
   ServerPublicParams,
 } from '@signalapp/libsignal-client/zkgroup';
-import { parse as parseUUID } from 'uuid';
 
 import { signalservice as Proto } from '../../protos/compiled';
 import {
@@ -1105,7 +1105,7 @@ export class PrimaryDevice {
       const signature = pniIdentity.signAlternateIdentity(aciPublic);
 
       pniSignatureMessage = {
-        pni: new Uint8Array(parseUUID(this.device.pni)),
+        pni: Pni.parseFromServiceIdString(this.device.pni).getServiceIdBinary(),
         signature,
       };
     }
