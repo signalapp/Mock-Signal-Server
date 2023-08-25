@@ -553,6 +553,11 @@ export class Server extends BaseServer {
   ): Promise<void> {
     await super.updateDeviceKeys(device, serviceIdKind, keys);
 
+    // Atomic linking updates only signed pre keys, and we should ignore it.
+    if (!keys.preKeys?.length && !keys.kyberPreKeys?.length) {
+      return;
+    }
+
     const key = `${device.aci}.${device.getRegistrationId(serviceIdKind)}`;
 
     // Device is marked as provisioned only once we have its keys

@@ -16,19 +16,24 @@ import WebSocket from 'ws';
 import { signalservice as Proto } from '../../../protos/compiled';
 import { Device } from '../../data/device';
 import {
+  AtomicLinkingDataSchema,
   Message,
   MessageListSchema,
-  RegistrationDataSchema,
 } from '../../data/schemas';
 import {
   DeviceId,
   ProvisionIdString,
   ProvisioningCode,
   RegistrationId,
+  ServiceIdKind,
   ServiceIdString,
   untagPni,
 } from '../../types';
-import { generateAccessKeyVerifier } from '../../crypto';
+import {
+  decodeKyberPreKey,
+  decodeSignedPreKey,
+  generateAccessKeyVerifier,
+} from '../../crypto';
 import { Server } from '../base';
 import {
   combineMultiRecipientMessage,
@@ -352,7 +357,7 @@ export class Connection extends Service {
       }),
     );
 
-    this.router.put('/v1/devices/:code', async (params, body, headers) => {
+    this.router.put('/v1/devices/link', async (_params, body, headers) => {
       const { error, username, password } = parseAuthHeader(
         headers.authorization,
       );
@@ -367,18 +372,43 @@ export class Connection extends Service {
       }
 
       const {
-        registrationId,
-        pniRegistrationId,
-      } = RegistrationDataSchema.parse(
+        verificationCode,
+        accountAttributes,
+        aciSignedPreKey,
+        pniSignedPreKey,
+        aciPqLastResortPreKey,
+        pniPqLastResortPreKey,
+      } = AtomicLinkingDataSchema.parse(
         JSON.parse(Buffer.from(body).toString()),
       );
+
+      const {
+        registrationId,
+        pniRegistrationId,
+      } = accountAttributes;
 
       const device = await server.provisionDevice({
         number: username,
         password,
-        provisioningCode: params.code as ProvisioningCode,
+        provisioningCode: verificationCode as ProvisioningCode,
         registrationId,
         pniRegistrationId,
+      });
+
+      const primary = await server.getDeviceByServiceId(device.aci);
+      if (!primary) {
+        throw new Error('Primary device not found');
+      }
+
+      await server.updateDeviceKeys(device, ServiceIdKind.ACI, {
+        identityKey: await primary.getIdentityKey(ServiceIdKind.ACI),
+        lastResortKey: decodeKyberPreKey(aciPqLastResortPreKey),
+        signedPreKey: decodeSignedPreKey(aciSignedPreKey),
+      });
+      await server.updateDeviceKeys(device, ServiceIdKind.PNI, {
+        identityKey: await primary.getIdentityKey(ServiceIdKind.PNI),
+        lastResortKey: decodeKyberPreKey(pniPqLastResortPreKey),
+        signedPreKey: decodeSignedPreKey(pniSignedPreKey),
       });
 
       return [ 200, {

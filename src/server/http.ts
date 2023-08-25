@@ -15,12 +15,13 @@ import {
   put,
   router,
 } from 'microrouter';
-import { KEMPublicKey, PublicKey } from '@signalapp/libsignal-client';
+import { PublicKey } from '@signalapp/libsignal-client';
 import type { UuidCiphertext } from '@signalapp/libsignal-client/zkgroup';
 import createDebug from 'debug';
 
 import { Server } from './base';
 import { ServerGroup } from './group';
+import { decodeKyberPreKey, decodePreKey, decodeSignedPreKey } from '../crypto';
 import { Device } from '../data/device';
 import {
   ParseAuthHeaderResult,
@@ -31,20 +32,14 @@ import {
 import {
   DeviceKeysSchema,
   PutUsernameLinkSchema,
-  RegistrationDataSchema,
-  ServerSignedPreKey,
   UsernameConfirmationSchema,
   UsernameReservationSchema,
 } from '../data/schemas';
 import {
   AttachmentId,
   DeviceId,
-  KyberPreKey,
-  ProvisioningCode,
-  RegistrationId,
   ServiceIdKind,
   ServiceIdString,
-  untagPni,
 } from '../types';
 import { signalservice as Proto } from '../../protos/compiled';
 
@@ -90,32 +85,6 @@ export const createHandler = (server: Server): RequestHandler => {
   //
   // Unauthorized requests
   //
-
-  const provisionDevice = put('/v1/devices/:code', async (req, res) => {
-    const { error, username, password } = parsePassword(req);
-    if (error) {
-      return send(res, 400, { error });
-    }
-    if (!username || !password) {
-      return send(res, 400, { error: 'Invalid authorization header' });
-    }
-
-    const body = RegistrationDataSchema.parse(await json(req));
-
-    const device = await server.provisionDevice({
-      number: username,
-      password,
-      provisioningCode: req.params.code as ProvisioningCode,
-      registrationId: body.registrationId as RegistrationId,
-      pniRegistrationId: body.pniRegistrationId as RegistrationId,
-    });
-
-    return {
-      deviceId: device.deviceId,
-      uuid: device.aci,
-      pni: untagPni(device.pni),
-    };
-  });
 
   // TODO: DESKTOP-5821
   const getDeviceKeys = get(
@@ -321,24 +290,6 @@ export const createHandler = (server: Server): RequestHandler => {
     return ServiceIdKind.ACI;
   }
 
-  function parseEllipticKey(base64: string): PublicKey {
-    return PublicKey.deserialize(Buffer.from(base64, 'base64'));
-  }
-
-  function parseKyberKey(base64: string): KEMPublicKey {
-    return KEMPublicKey.deserialize(Buffer.from(base64, 'base64'));
-  }
-
-  function decodeKyberPreKey(
-    key: ServerSignedPreKey,
-  ): KyberPreKey {
-    return {
-      keyId: key.keyId,
-      publicKey: parseKyberKey(key.publicKey),
-      signature: Buffer.from(key.signature, 'base64'),
-    };
-  }
-
   const putKeys = put('/v2/keys', async (req, res) => {
     const device = await auth(req, res);
     if (!device) {
@@ -350,27 +301,16 @@ export const createHandler = (server: Server): RequestHandler => {
     const body = DeviceKeysSchema.parse(await json(req));
     try {
       await server.updateDeviceKeys(device, serviceIdKind, {
-        identityKey: parseEllipticKey(body.identityKey),
-        preKeys: body.preKeys
-          ? body.preKeys.map((preKey) => {
-            return {
-              keyId: preKey.keyId,
-              publicKey: parseEllipticKey(preKey.publicKey),
-            };
-          })
-          : undefined,
-        kyberPreKeys: body.pqPreKeys
-          ? body.pqPreKeys.map(decodeKyberPreKey)
-          : undefined,
+        identityKey: PublicKey.deserialize(
+          Buffer.from(body.identityKey, 'base64'),
+        ),
+        preKeys: body.preKeys?.map(decodePreKey),
+        kyberPreKeys: body.pqPreKeys?.map(decodeKyberPreKey),
         lastResortKey: body.pqLastResortPreKey
           ? decodeKyberPreKey(body.pqLastResortPreKey)
           : undefined,
         signedPreKey: body.signedPreKey
-          ? {
-            keyId: body.signedPreKey.keyId,
-            publicKey: parseEllipticKey(body.signedPreKey.publicKey),
-            signature: Buffer.from(body.signedPreKey.signature, 'base64'),
-          }
+          ? decodeSignedPreKey(body.signedPreKey)
           : undefined,
       });
     } catch (error) {
@@ -773,7 +713,6 @@ export const createHandler = (server: Server): RequestHandler => {
     put('/v1/devices/capabilities', dummyAuth({ ok: true })),
 
     // TODO(indutny): support nameless devices? They use different route
-    provisionDevice,
     getDeviceKeys,
     getAllDeviceKeys,
     getAttachment,

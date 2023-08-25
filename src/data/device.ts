@@ -137,7 +137,11 @@ export class Device {
     keys: DeviceKeys,
   ): Promise<void> {
     debug('setting %s keys for %s', serviceIdKind, this.debugId);
-    const { signedPreKey, lastResortKey } = keys;
+    const existingKeys = this.keys.get(serviceIdKind);
+    const {
+      signedPreKey = existingKeys?.signedPreKey,
+      lastResortKey = existingKeys?.lastResortKey,
+    } = keys;
 
     if (!signedPreKey) {
       throw new Error('setKeys: Missing signedPreKey');

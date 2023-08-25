@@ -21,6 +21,12 @@ export const RegistrationIdSchema = z.number()
   .transform(x => x as RegistrationId);
 export const DeviceIdSchema = z.number().transform(x => x as DeviceId);
 
+const PreKeySchema = z.object({
+  keyId: z.number(),
+  publicKey: z.string(),
+});
+export type ServerPreKey = z.infer<typeof PreKeySchema>;
+
 const SignedPreKeySchema = z.object({
   keyId: z.number(),
   publicKey: z.string(),
@@ -30,10 +36,7 @@ export type ServerSignedPreKey = z.infer<typeof SignedPreKeySchema>;
 
 export const DeviceKeysSchema = z.object({
   identityKey: z.string(),
-  preKeys: z.object({
-    keyId: z.number(),
-    publicKey: z.string(),
-  }).array(),
+  preKeys: PreKeySchema.array(),
   pqPreKeys: SignedPreKeySchema.array().optional(),
   pqLastResortPreKey: SignedPreKeySchema.optional(),
   signedPreKey: SignedPreKeySchema.optional(),
@@ -58,9 +61,18 @@ export const MessageListSchema = z.object({
 
 export type MessageList = z.infer<typeof MessageListSchema>;
 
-export const RegistrationDataSchema = z.object({
-  registrationId: RegistrationIdSchema,
-  pniRegistrationId: RegistrationIdSchema,
+export const AtomicLinkingDataSchema = z.object({
+  verificationCode: z.string(),
+  accountAttributes: z.object({
+    fetchesMessages: z.boolean(),
+    registrationId: RegistrationIdSchema,
+    pniRegistrationId: RegistrationIdSchema,
+    name: z.string(),
+  }),
+  aciSignedPreKey: SignedPreKeySchema,
+  pniSignedPreKey: SignedPreKeySchema,
+  aciPqLastResortPreKey: SignedPreKeySchema,
+  pniPqLastResortPreKey: SignedPreKeySchema,
 });
 
 export const GroupStateSchema = z.object({
