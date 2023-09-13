@@ -1105,7 +1105,7 @@ export class PrimaryDevice {
       const signature = pniIdentity.signAlternateIdentity(aciPublic);
 
       pniSignatureMessage = {
-        pni: Pni.parseFromServiceIdString(this.device.pni).getServiceIdBinary(),
+        pni: Pni.parseFromServiceIdString(this.device.pni).getRawUuidBytes(),
         signature,
       };
     }
