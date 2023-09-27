@@ -53,6 +53,8 @@ import {
   PreKey,
   ServiceIdKind,
   ServiceIdString,
+  UntaggedPniString,
+  untagPni,
 } from '../types';
 import { Contact } from '../data/contacts';
 import { Group as GroupData } from '../data/group';
@@ -124,7 +126,7 @@ export type EncryptOptions = Readonly<{
   timestamp?: number;
   sealed?: boolean;
   serviceIdKind?: ServiceIdKind;
-  updatedPni?: PniString;
+  updatedPni?: UntaggedPniString;
   // Sender Key
   distributionId?: string;
   group?: Group;
@@ -1313,7 +1315,7 @@ export class PrimaryDevice {
         const envelope = await this.encryptContent(device, content, {
           ...options,
           timestamp,
-          updatedPni: this.device.pni,
+          updatedPni: untagPni(this.device.pni),
         });
 
         return { device, envelope };

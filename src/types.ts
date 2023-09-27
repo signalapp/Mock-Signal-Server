@@ -5,6 +5,7 @@ import { KEMPublicKey, PublicKey } from '@signalapp/libsignal-client';
 
 export type AciString = string & { __aci: never };
 export type PniString = string & { __pni: never };
+export type UntaggedPniString = string & { __untagged_pni: never };
 export type ServiceIdString = AciString | PniString;
 
 export type ProvisionIdString = string & { __provision_id: never };
@@ -36,6 +37,10 @@ export type PreKey = Readonly<{
   publicKey: PublicKey;
 }>;
 
-export function untagPni(pni: PniString): string {
-  return pni.replace(/^PNI:/, '');
+export function untagPni(pni: PniString): UntaggedPniString {
+  return pni.replace(/^PNI:/, '') as UntaggedPniString;
+}
+
+export function tagPni(pni: UntaggedPniString): PniString {
+  return `PNI:${pni}` as PniString;
 }

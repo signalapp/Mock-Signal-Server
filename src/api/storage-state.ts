@@ -11,7 +11,7 @@ import {
   encryptStorageManifest,
 } from '../crypto';
 import { Device } from '../data/device';
-import { ServiceIdKind } from '../types';
+import { ServiceIdKind, UntaggedPniString, tagPni, untagPni } from '../types';
 import { Group } from './group';
 import { PrimaryDevice } from './primary-device';
 
@@ -89,13 +89,18 @@ class StorageStateItem {
       return false;
     }
 
-    const serviceId = serviceIdKind === ServiceIdKind.ACI ?
-      this.record?.contact?.aci : this.record?.contact?.pni;
-    if (!serviceId) {
+    if (serviceIdKind === ServiceIdKind.ACI) {
+      return this.record?.contact?.aci === device.aci;
+    }
+
+    const untaggedPni = this.record?.contact?.pni;
+    if (!untaggedPni) {
       return false;
     }
 
-    return serviceId === device.getServiceIdByKind(serviceIdKind);
+    const pni = tagPni(untaggedPni as UntaggedPniString);
+
+    return pni === device.pni;
   }
 
   public inspect(): string {
@@ -244,9 +249,9 @@ export class StorageState {
       record: {
         contact: {
           aci: serviceIdKind === ServiceIdKind.ACI ?
-            device.getServiceIdByKind(serviceIdKind) : undefined,
+            device.aci : undefined,
           pni: serviceIdKind === ServiceIdKind.PNI ?
-            device.getServiceIdByKind(serviceIdKind) : undefined,
+            untagPni(device.pni) : undefined,
           serviceE164: device.number,
           ...diff,
         },
@@ -303,7 +308,7 @@ export class StorageState {
       .removeItem(item => item.isContact(device, ServiceIdKind.ACI))
       .removeItem(item => item.isContact(device, ServiceIdKind.PNI))
       .addContact(primary, {
-        pni: device.getServiceIdByKind(ServiceIdKind.PNI),
+        pni: untagPni(device.pni),
         ...diff,
       })
       .unpin(primary, ServiceIdKind.PNI);
