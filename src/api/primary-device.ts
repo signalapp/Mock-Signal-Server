@@ -62,6 +62,7 @@ import {
   decryptStorageItem,
   decryptStorageManifest,
   deriveAccessKey,
+  deriveStorageKey,
   encryptProfileName,
 } from '../crypto';
 import {
@@ -445,7 +446,8 @@ export class PrimaryDevice {
   private lockPromise: Promise<void> | undefined;
 
   private readonly syncStates = new WeakMap<Device, SyncEntry>();
-  private readonly storageKey = crypto.randomBytes(16);
+  private readonly masterKey = crypto.randomBytes(16);
+  private readonly storageKey: Buffer;
   private readonly privateKey = PrivateKey.generate();
   private pniPrivateKey = PrivateKey.generate();
   private readonly contactsBlob: Proto.IAttachmentPointer;
@@ -497,6 +499,7 @@ export class PrimaryDevice {
     this.profileName = config.profileName;
 
     this.profileKey = new ProfileKey(crypto.randomBytes(32));
+    this.storageKey = deriveStorageKey(this.masterKey);
 
     this.device.profileName = encryptProfileName(
       this.profileKey.serialize(),
@@ -1588,7 +1591,7 @@ export class PrimaryDevice {
     } else if (request.type === Proto.SyncMessage.Request.Type.KEYS) {
       debug('got sync keys request');
       response = {
-        keys: { storageService: this.storageKey },
+        keys: { master: this.masterKey },
       };
       stateChange = SyncState.Keys;
     } else {

@@ -196,6 +196,14 @@ export function deriveAccessKey(
   ]);
 }
 
+export function deriveStorageKey(
+  masterKey: Buffer,
+): Buffer {
+  const hash = crypto.createHmac('sha256', masterKey);
+  hash.update('Storage Service Encryption');
+  return hash.digest();
+}
+
 function deriveStorageManifestKey(
   storageKey: Buffer,
   version: Long,
