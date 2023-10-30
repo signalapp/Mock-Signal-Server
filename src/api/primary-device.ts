@@ -446,7 +446,6 @@ export class PrimaryDevice {
   private lockPromise: Promise<void> | undefined;
 
   private readonly syncStates = new WeakMap<Device, SyncEntry>();
-  private readonly masterKey = crypto.randomBytes(16);
   private readonly storageKey: Buffer;
   private readonly privateKey = PrivateKey.generate();
   private pniPrivateKey = PrivateKey.generate();
@@ -472,6 +471,7 @@ export class PrimaryDevice {
   public readonly profileKey: ProfileKey;
   public readonly profileName: string;
   public readonly secondaryDevices = new Array<Device>();
+  public readonly masterKey = crypto.randomBytes(16);
 
   public lastResortKeyId = 1;
 

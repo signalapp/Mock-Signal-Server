@@ -468,6 +468,7 @@ export class Server extends BaseServer {
       readReceipts: true,
       // TODO(indutny): is it correct?
       ProvisioningVersion: Proto.ProvisioningVersion.CURRENT,
+      masterKey: primaryDevice.masterKey,
     }).finish();
 
     const { body, ephemeralKey } = encryptProvisionMessage(
