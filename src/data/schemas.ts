@@ -35,7 +35,6 @@ const SignedPreKeySchema = z.object({
 export type ServerSignedPreKey = z.infer<typeof SignedPreKeySchema>;
 
 export const DeviceKeysSchema = z.object({
-  identityKey: z.string(),
   preKeys: PreKeySchema.array(),
   pqPreKeys: SignedPreKeySchema.array().optional(),
   pqLastResortPreKey: SignedPreKeySchema.optional(),
