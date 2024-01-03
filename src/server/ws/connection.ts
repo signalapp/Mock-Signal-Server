@@ -401,12 +401,10 @@ export class Connection extends Service {
       }
 
       await server.updateDeviceKeys(device, ServiceIdKind.ACI, {
-        identityKey: await primary.getIdentityKey(ServiceIdKind.ACI),
         lastResortKey: decodeKyberPreKey(aciPqLastResortPreKey),
         signedPreKey: decodeSignedPreKey(aciSignedPreKey),
       });
       await server.updateDeviceKeys(device, ServiceIdKind.PNI, {
-        identityKey: await primary.getIdentityKey(ServiceIdKind.PNI),
         lastResortKey: decodeKyberPreKey(pniPqLastResortPreKey),
         signedPreKey: decodeSignedPreKey(pniSignedPreKey),
       });

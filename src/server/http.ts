@@ -15,7 +15,6 @@ import {
   put,
   router,
 } from 'microrouter';
-import { PublicKey } from '@signalapp/libsignal-client';
 import type { UuidCiphertext } from '@signalapp/libsignal-client/zkgroup';
 import createDebug from 'debug';
 
@@ -301,9 +300,6 @@ export const createHandler = (server: Server): RequestHandler => {
     const body = DeviceKeysSchema.parse(await json(req));
     try {
       await server.updateDeviceKeys(device, serviceIdKind, {
-        identityKey: PublicKey.deserialize(
-          Buffer.from(body.identityKey, 'base64'),
-        ),
         preKeys: body.preKeys?.map(decodePreKey),
         kyberPreKeys: body.pqPreKeys?.map(decodeKyberPreKey),
         lastResortKey: body.pqLastResortPreKey

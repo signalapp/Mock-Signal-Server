@@ -379,10 +379,15 @@ export abstract class Server {
   public async updateDeviceKeys(
     device: Device,
     serviceIdKind: ServiceIdKind,
-    keys: DeviceKeys,
+    keys: Omit<DeviceKeys, 'identityKey'>,
   ): Promise<void> {
     debug('setting device=%s keys', device.debugId);
-    await device.setKeys(serviceIdKind, keys);
+    const primary = this.devicesByServiceId.get(device.aci);
+    assert(primary, 'must have primary device');
+    await device.setKeys(serviceIdKind, {
+      ...keys,
+      identityKey: await primary.getIdentityKey(serviceIdKind),
+    });
   }
 
   public async changeDeviceNumber(
