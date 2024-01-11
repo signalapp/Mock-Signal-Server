@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import assert from 'assert';
-import { BufferReader } from 'protobufjs';
 import { ProtocolAddress, ServiceId } from '@signalapp/libsignal-client';
+import { BufferReader } from 'protobufjs';
 
 import { DAY_IN_SECONDS } from './constants';
 import type { DeviceId, RegistrationId, ServiceIdString } from './types';
@@ -17,10 +17,14 @@ export type PromiseQueueConfig = Readonly<{
   timeout?: number;
 }>;
 
-export type MultiRecipientMessageRecipient = Readonly<{
-  serviceId: ServiceIdString;
+export type MultiRecipientDestination = Readonly<{
   deviceId: DeviceId;
   registrationId: RegistrationId;
+}>;
+
+export type MultiRecipientMessageRecipient = Readonly<{
+  serviceId: ServiceIdString;
+  destinations: ReadonlyArray<MultiRecipientDestination>;
   material: Buffer;
 }>;
 
@@ -219,9 +223,21 @@ export function parseMultiRecipientMessage(
     ).getServiceIdString() as ServiceIdString;
     reader.skip(MULTI_RECIPIENT_SERVICE_ID_LEN);
 
-    const deviceId = reader.uint32() as DeviceId;
-    const registrationId = message.readUInt16BE(reader.pos) as RegistrationId;
-    reader.skip(2);
+    const destinations = new Array<MultiRecipientDestination>();
+    while (reader.pos + 3 <= reader.len) {
+      const deviceId = reader.uint32() as DeviceId;
+      const registrationIdAndFlag = message.readUInt16BE(reader.pos);
+      reader.skip(2);
+
+      const registrationId = (registrationIdAndFlag & 0x7fff) as RegistrationId;
+
+      destinations.push({ deviceId, registrationId });
+
+      if ((registrationIdAndFlag & 0x8000) === 0) {
+        break;
+      }
+    }
+
     const material = message.slice(
       reader.pos,
       reader.pos + MULTI_RECIPIENT_SHARED_MATERIAL_LEN,
@@ -230,7 +246,7 @@ export function parseMultiRecipientMessage(
 
     reader.skip(MULTI_RECIPIENT_SHARED_MATERIAL_LEN);
 
-    recipients.push({ serviceId, deviceId, registrationId, material });
+    recipients.push({ serviceId, destinations, material });
   }
 
   const commonMaterial = message.slice(reader.pos);

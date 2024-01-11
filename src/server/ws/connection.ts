@@ -21,10 +21,8 @@ import {
   MessageListSchema,
 } from '../../data/schemas';
 import {
-  DeviceId,
   ProvisionIdString,
   ProvisioningCode,
-  RegistrationId,
   ServiceIdKind,
   ServiceIdString,
   untagPni,
@@ -173,8 +171,7 @@ export class Connection extends Service {
         for (const recipient of recipients) {
           const {
             serviceId,
-            deviceId,
-            registrationId,
+            destinations,
             material,
           } = recipient;
 
@@ -184,15 +181,17 @@ export class Connection extends Service {
             listByServiceId.set(serviceId, list);
           }
 
-          list.push({
-            type: Proto.Envelope.Type.UNIDENTIFIED_SENDER,
-            destinationDeviceId: deviceId as DeviceId,
-            destinationRegistrationId: registrationId as RegistrationId,
-            content: combineMultiRecipientMessage({
-              material,
-              commonMaterial,
-            }).toString('base64'),
-          });
+          for (const { deviceId, registrationId } of destinations) {
+            list.push({
+              type: Proto.Envelope.Type.UNIDENTIFIED_SENDER,
+              destinationDeviceId: deviceId,
+              destinationRegistrationId: registrationId,
+              content: combineMultiRecipientMessage({
+                material,
+                commonMaterial,
+              }).toString('base64'),
+            });
+          }
         }
 
         // TODO(indutny): verify access key xor
