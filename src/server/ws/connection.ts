@@ -10,6 +10,8 @@ import createDebug from 'debug';
 import {
   ProfileKeyCredentialRequest,
 } from '@signalapp/libsignal-client/zkgroup';
+import SealedSenderMultiRecipientMessage from
+  '@signalapp/libsignal-client/dist/SealedSenderMultiRecipientMessage';
 
 import WebSocket from 'ws';
 
@@ -21,8 +23,10 @@ import {
   MessageListSchema,
 } from '../../data/schemas';
 import {
+  DeviceId,
   ProvisionIdString,
   ProvisioningCode,
+  RegistrationId,
   ServiceIdKind,
   ServiceIdString,
   untagPni,
@@ -34,9 +38,7 @@ import {
 } from '../../crypto';
 import { Server } from '../base';
 import {
-  combineMultiRecipientMessage,
   parseAuthHeader,
-  parseMultiRecipientMessage,
 } from '../../util';
 
 import { Service, WSRequest, WSResponse } from './service';
@@ -161,35 +163,34 @@ export class Connection extends Service {
           return [ 400, { error: 'Missing body' } ];
         }
 
-        const {
-          recipients,
-          commonMaterial,
-        } = parseMultiRecipientMessage(Buffer.from(body));
+        const message = new SealedSenderMultiRecipientMessage(
+          Buffer.from(body),
+        );
 
         const listByServiceId = new Map<ServiceIdString, Array<Message>>();
 
-        for (const recipient of recipients) {
-          const {
-            serviceId,
-            destinations,
-            material,
-          } = recipient;
-
-          let list: Array<Message> | undefined = listByServiceId.get(serviceId);
+        const recipients = message.recipientsByServiceIdString();
+        for (
+          const [ serviceId, recipient ] of Object.entries(recipients)
+        ) {
+          let list: Array<Message> | undefined = listByServiceId.get(
+            serviceId as ServiceIdString,
+          );
           if (!list) {
             list = [];
-            listByServiceId.set(serviceId, list);
+            listByServiceId.set(serviceId as ServiceIdString, list);
           }
 
-          for (const { deviceId, registrationId } of destinations) {
+          for (const [ i, deviceId ] of recipient.deviceIds.entries()) {
+            const registrationId = recipient.registrationIds.at(i);
+
             list.push({
               type: Proto.Envelope.Type.UNIDENTIFIED_SENDER,
-              destinationDeviceId: deviceId,
-              destinationRegistrationId: registrationId,
-              content: combineMultiRecipientMessage({
-                material,
-                commonMaterial,
-              }).toString('base64'),
+              destinationDeviceId: deviceId as DeviceId,
+              destinationRegistrationId: registrationId as RegistrationId,
+              content: message.messageForRecipient(
+                recipient,
+              ).toString('base64'),
             });
           }
         }
