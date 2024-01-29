@@ -226,10 +226,6 @@ export type PrepareChangeNumberEntry = Readonly<{
 
 export type PrepareChangeNumberResult = ReadonlyArray<PrepareChangeNumberEntry>;
 
-export type ToContactOptions = Readonly<{
-  includeProfileKey?: boolean;
-}>;
-
 enum SyncState {
   Empty = 0,
   Contacts = 1 << 0,
@@ -535,14 +531,11 @@ export class PrimaryDevice {
     this.isInitialized = true;
   }
 
-  public toContact({
-    includeProfileKey = true,
-  }: ToContactOptions = {}): Contact {
+  public toContact(): Contact {
     return {
       aci: this.device.aci,
       number: this.device.number,
       profileName: this.profileName,
-      profileKey: includeProfileKey ? this.profileKey.serialize() : undefined,
     };
   }
 

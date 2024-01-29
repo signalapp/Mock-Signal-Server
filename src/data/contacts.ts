@@ -9,17 +9,15 @@ export type Contact = Readonly<{
   aci: AciString;
   number: string;
   profileName: string;
-  profileKey?: Buffer;
 }>;
 
 export function serializeContacts(contacts: ReadonlyArray<Contact>): Buffer {
   const chunks = contacts.map((contact) => {
-    const { aci, number, profileName: name, profileKey } = contact;
+    const { aci, number, profileName: name } = contact;
     return Buffer.from(Proto.ContactDetails.encode({
       aci,
       number,
       name,
-      profileKey,
     }).finish());
   }).map((chunk) => {
     const size: Array<number> = [];

@@ -305,9 +305,7 @@ export class Server extends BaseServer {
     const contactsAttachment = encryptAttachment(
       serializeContacts([
         ...contacts.map((device) => device.toContact()),
-        ...contactsWithoutProfileKey.map((device) => device.toContact({
-          includeProfileKey: false,
-        })),
+        ...contactsWithoutProfileKey.map((device) => device.toContact()),
       ]),
     );
     const contactsCDNKey = await this.storeAttachment(contactsAttachment.blob);
