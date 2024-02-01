@@ -143,8 +143,20 @@ export type CreateGroupOptions = Readonly<{
   members: ReadonlyArray<PrimaryDevice>;
 }>;
 
-export type InviteToGroupOptions = EncryptOptions & Readonly<{
-  sendInvite?: boolean;
+export type SendUpdateToList = ReadonlyArray<Readonly<{
+  device: Device;
+  options?: EncryptOptions;
+}>>;
+
+export type InviteToGroupOptions = Readonly<{
+  timestamp?: number;
+  serviceIdKind?: ServiceIdKind;
+  sendUpdateTo?: SendUpdateToList;
+}>;
+
+export type AcceptPniInviteOptions = Readonly<{
+  timestamp?: number;
+  sendUpdateTo?: SendUpdateToList;
 }>;
 
 export type SyncSentOptions = Readonly<{
@@ -807,17 +819,21 @@ export class PrimaryDevice {
 
   public async inviteToGroup(
     group: Group,
-    device: Device,
-    options: InviteToGroupOptions = {},
+    invitee: Device,
+    {
+      timestamp = Date.now(),
+      serviceIdKind = ServiceIdKind.ACI,
+      sendUpdateTo = [
+        { device: invitee, options: { serviceIdKind } },
+      ],
+    }: InviteToGroupOptions = {},
   ): Promise<Group> {
-    const { serviceIdKind = ServiceIdKind.ACI, sendInvite = true } = options;
-
     const serverGroup = await this.config.getGroup(
       group.publicParams.serialize(),
     );
     assert(serverGroup !== undefined, 'Group does not exist on server');
 
-    const targetServiceId = device.getServiceIdByKind(serviceIdKind);
+    const targetServiceId = invitee.getServiceIdByKind(serviceIdKind);
     const userId = group.encryptServiceId(targetServiceId);
 
     const modifyResult = await this.config.modifyGroup({
@@ -841,24 +857,33 @@ export class PrimaryDevice {
       groupState: serverGroup.state,
     });
 
-    if (sendInvite) {
-      // Send the invitation
-      const encryptOptions = {
-        timestamp: Date.now(),
-        ...options,
+    if (sendUpdateTo?.length) {
+      const groupV2 = {
+        ...updatedGroup.toContext(),
+        groupChange: Proto.GroupChange.encode(
+          modifyResult.signedChange,
+        ).finish(),
       };
-      const envelope = await this.encryptContent(device, {
-        dataMessage: {
-          groupV2: {
-            ...updatedGroup.toContext(),
-            groupChange: Proto.GroupChange.encode(
-              modifyResult.signedChange,
-            ).finish(),
+
+      await Promise.all(sendUpdateTo.map(async ({ device, options }) => {
+        // Send the invitation
+        const encryptOptions = {
+          timestamp,
+          ...options,
+        };
+
+        const envelope = await this.encryptContent(
+          device,
+          {
+            dataMessage: {
+              groupV2,
+              timestamp: Long.fromNumber(encryptOptions.timestamp),
+            },
           },
-          timestamp: Long.fromNumber(encryptOptions.timestamp),
-        },
-      }, encryptOptions);
-      await this.config.send(device, envelope);
+          encryptOptions,
+        );
+        await this.config.send(device, envelope);
+      }));
     }
 
     return updatedGroup;
@@ -866,8 +891,10 @@ export class PrimaryDevice {
 
   public async acceptPniInvite(
     group: Group,
-    device: Device,
-    options: EncryptOptions = {},
+    {
+      timestamp = Date.now(),
+      sendUpdateTo = [],
+    }: AcceptPniInviteOptions = {},
   ): Promise<Group> {
     const serverGroup = await this.config.getGroup(
       group.publicParams.serialize(),
@@ -899,23 +926,30 @@ export class PrimaryDevice {
       groupState: serverGroup.state,
     });
 
-    // Send the invitation
-    const encryptOptions = {
-      timestamp: Date.now(),
-      ...options,
+    const groupV2 = {
+      ...updatedGroup.toContext(),
+      groupChange: Proto.GroupChange.encode(
+        modifyResult.signedChange,
+      ).finish(),
     };
-    const envelope = await this.encryptContent(device, {
-      dataMessage: {
-        groupV2: {
-          ...updatedGroup.toContext(),
-          groupChange: Proto.GroupChange.encode(
-            modifyResult.signedChange,
-          ).finish(),
+
+    await Promise.all(sendUpdateTo.map(async ({ device, options }) => {
+      // Send the accepted invite
+      const encryptOptions = {
+        timestamp,
+        ...options,
+      };
+      const content = {
+        dataMessage: {
+          groupV2,
+          timestamp: Long.fromNumber(encryptOptions.timestamp),
         },
-        timestamp: Long.fromNumber(encryptOptions.timestamp),
-      },
-    }, encryptOptions);
-    await this.config.send(device, envelope);
+      };
+
+      const envelope = await this.encryptContent(
+        device, content, encryptOptions);
+      await this.config.send(device, envelope);
+    }));
 
     return updatedGroup;
   }
