@@ -262,6 +262,7 @@ type DecryptResult = Readonly<{
 }>;
 
 class SignedPreKeyStore extends SignedPreKeyStoreBase {
+  private lastId = 0;
   private readonly records = new Map<number, SignedPreKeyRecord>();
 
   async saveSignedPreKey(
@@ -277,6 +278,13 @@ class SignedPreKeyStore extends SignedPreKeyStoreBase {
       throw new Error(`Signed pre key not found: ${id}`);
     }
     return result;
+  }
+
+  public getNextId(): number {
+    this.lastId += 1;
+
+    // Note: intentionally starting from 1
+    return this.lastId;
   }
 }
 
@@ -474,14 +482,11 @@ export class PrimaryDevice {
   private readonly senderKeys = new Map<ServiceIdKind, SenderKeyStore>();
   private readonly identity = new Map<ServiceIdKind, IdentityStore>();
 
-  public readonly signedPreKeyId: number = 1;
   public readonly publicKey = this.privateKey.getPublicKey();
   public readonly profileKey: ProfileKey;
   public readonly profileName: string;
   public readonly secondaryDevices = new Array<Device>();
   public readonly masterKey = crypto.randomBytes(16);
-
-  public lastResortKeyId = 1;
 
   // TODO(indutny): make primary device type configurable
   public readonly userAgent = 'OWI';
@@ -571,45 +576,48 @@ export class PrimaryDevice {
     signedPreKeyRecord: SignedPreKeyRecord,
     lastResortKeyRecord: KyberPreKeyRecord
   }> {
-    const shouldSave = device === this.device;
+    const isPrimary = device === this.device;
 
     const signedPreKey = PrivateKey.generate();
     const signedPreKeySig = this.getPrivateKey(serviceIdKind).sign(
       signedPreKey.getPublicKey().serialize());
+    const signedPreKeyId = this.signedPreKeys.get(
+      serviceIdKind,
+    )?.getNextId() || 1;
     const signedPreKeyRecord = SignedPreKeyRecord.new(
-      this.signedPreKeyId,
+      signedPreKeyId,
       Date.now(),
       signedPreKey.getPublicKey(),
       signedPreKey,
       signedPreKeySig);
-    if (shouldSave) {
+    if (isPrimary) {
       await this.signedPreKeys.get(serviceIdKind)?.saveSignedPreKey(
-        this.signedPreKeyId,
+        signedPreKeyId,
         signedPreKeyRecord);
     }
 
-    this.lastResortKeyId = this.kyberPreKeys.get(
+    const lastResortKeyId = this.kyberPreKeys.get(
       serviceIdKind,
     )?.getNextId() || 1;
     const lastResortKeyRecord = this.generateKyberPreKey(
-      this.lastResortKeyId,
+      lastResortKeyId,
       serviceIdKind,
     );
-    if (shouldSave) {
+    if (isPrimary) {
       await this.kyberPreKeys.get(serviceIdKind)?.saveLastResortKey(
-        this.lastResortKeyId,
+        lastResortKeyId,
         lastResortKeyRecord);
     }
 
     return {
       identityKey: this.getPublicKey(serviceIdKind),
       signedPreKey: {
-        keyId: this.signedPreKeyId,
+        keyId: signedPreKeyId,
         publicKey: signedPreKey.getPublicKey(),
         signature: signedPreKeySig,
       },
       lastResortKey: {
-        keyId: this.lastResortKeyId,
+        keyId: lastResortKeyId,
         publicKey: lastResortKeyRecord.publicKey(),
         signature: lastResortKeyRecord.signature(),
       },
@@ -628,17 +636,18 @@ export class PrimaryDevice {
     const preKeyStore = this.preKeys.get(serviceIdKind);
     assert.ok(preKeyStore, 'Missing preKey store');
 
-    const shouldSave = device === this.device;
+    const isPrimary = device === this.device;
+    if (!isPrimary) {
+      return;
+    }
 
     while (true) {
       const preKey = PrivateKey.generate();
       const publicKey = preKey.getPublicKey();
       const keyId = preKeyStore.getNextId();
 
-      if (shouldSave) {
-        const record = PreKeyRecord.new(keyId, publicKey, preKey);
-        await preKeyStore.savePreKey(keyId, record);
-      }
+      const record = PreKeyRecord.new(keyId, publicKey, preKey);
+      await preKeyStore.savePreKey(keyId, record);
 
       yield { keyId, publicKey };
     }
@@ -668,15 +677,16 @@ export class PrimaryDevice {
     const kyberPreKeyStore = this.kyberPreKeys.get(serviceIdKind);
     assert.ok(kyberPreKeyStore, 'Missing kyberPreKeyStore store');
 
-    const shouldSave = device === this.device;
+    const isPrimary = device === this.device;
+    if (!isPrimary) {
+      return;
+    }
 
     while (true) {
       const keyId = kyberPreKeyStore.getNextId();
       const record = this.generateKyberPreKey(keyId, serviceIdKind);
 
-      if (shouldSave) {
-        await kyberPreKeyStore.saveKyberPreKey(keyId, record);
-      }
+      await kyberPreKeyStore.saveKyberPreKey(keyId, record);
 
       yield {
         keyId,
