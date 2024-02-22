@@ -12,7 +12,10 @@ import {
   PrivateKey,
   PublicKey,
 } from '@signalapp/libsignal-client';
-import { ServerSecretParams } from '@signalapp/libsignal-client/zkgroup';
+import {
+  GenericServerSecretParams,
+  ServerSecretParams,
+} from '@signalapp/libsignal-client/zkgroup';
 import createDebug from 'debug';
 import WebSocket from 'ws';
 import { run } from 'micro';
@@ -72,6 +75,8 @@ type TrustRoot = Readonly<{
 type ZKParams = Readonly<{
   secretParams: string;
   publicParams: string;
+  genericSecretParams: string;
+  genericPublicParams: string;
 }>
 
 type StrictConfig = Readonly<{
@@ -172,6 +177,10 @@ export class Server extends BaseServer {
     const zkSecret = Buffer.from(
       this.config.zkParams.secretParams, 'base64');
     this.zkSecret = new ServerSecretParams(zkSecret);
+
+    const genericSecret = Buffer.from(
+      this.config.zkParams.genericSecretParams, 'base64');
+    this.genericServerSecret = new GenericServerSecretParams(genericSecret);
 
     this.certificate = generateServerCertificate(this.trustRoot);
 

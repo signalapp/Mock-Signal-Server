@@ -440,6 +440,11 @@ export class Connection extends Service {
               from: parseInt(from as string, 10),
               to: parseInt(to as string, 10),
             }),
+            callLinkAuthCredentials:
+              await this.server.getCallLinkAuthCredentials(device, {
+                from: parseInt(from as string, 10),
+                to: parseInt(to as string, 10),
+              }),
             pni: untagPni(device.pni),
           },
         ];

@@ -14,6 +14,8 @@ import {
 } from '@signalapp/libsignal-client';
 import {
   AuthCredentialPresentation,
+  CallLinkAuthCredentialResponse,
+  GenericServerSecretParams,
   GroupPublicParams,
   ProfileKeyCredentialRequest,
   ServerSecretParams,
@@ -213,6 +215,7 @@ export abstract class Server {
   private readonly usernameLinkById = new Map<string, Buffer>();
   protected privCertificate: ServerCertificate | undefined;
   protected privZKSecret: ServerSecretParams | undefined;
+  protected privGenericServerSecret: GenericServerSecretParams | undefined;
 
   //
   // Service Ids
@@ -1152,6 +1155,38 @@ export abstract class Server {
     return presentation;
   }
 
+  public async getCallLinkAuthCredentials(
+    { aci }: Device,
+    { from, to }: GroupCredentialsRange,
+  ): Promise<GroupCredentials> {
+    const today = getTodayInSeconds();
+    if (
+      from > to ||
+      from < today ||
+      to > today + DAY_IN_SECONDS * MAX_GROUP_CREDENTIALS_DAYS
+    ) {
+      throw new Error('Invalid redemption range');
+    }
+
+    const result: GroupCredentials = [];
+
+    for (
+      let redemptionTime = from;
+      redemptionTime <= to;
+      redemptionTime += DAY_IN_SECONDS
+    ) {
+      result.push({
+        credential: CallLinkAuthCredentialResponse.issueCredential(
+          Aci.parseFromServiceIdString(aci),
+          redemptionTime,
+          this.genericServerSecret)
+          .serialize().toString('base64'),
+        redemptionTime,
+      });
+    }
+    return result;
+  }
+
   public async issueExpiringProfileKeyCredential(
     { aci, profileKeyCommitment }: Device,
     request: ProfileKeyCredentialRequest,
@@ -1191,6 +1226,20 @@ export abstract class Server {
       throw new Error('Certificate not set');
     }
     return this.privCertificate;
+  }
+
+  protected set genericServerSecret(value: GenericServerSecretParams) {
+    if (this.privGenericServerSecret) {
+      throw new Error('zkgroup generic secret already set');
+    }
+    this.privGenericServerSecret = value;
+  }
+
+  protected get genericServerSecret(): GenericServerSecretParams {
+    if (!this.privGenericServerSecret) {
+      throw new Error('zkgroup generic secret not set');
+    }
+    return this.privGenericServerSecret;
   }
 
   protected set zkSecret(value: ServerSecretParams) {
