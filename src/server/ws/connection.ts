@@ -463,6 +463,13 @@ export class Connection extends Service {
 
       return [ 200, await server.getStorageAuth(device) ];
     });
+
+    //
+    // Keepalive
+    //
+    this.router.get('/v1/keepalive', async () => {
+      return [ 200, { ok: true } ];
+    });
   }
 
   public async start(): Promise<void> {
