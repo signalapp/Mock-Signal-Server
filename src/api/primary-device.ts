@@ -246,7 +246,7 @@ enum SyncState {
   Configuration = 1 << 3,
   Keys = 1 << 4,
 
-  Complete = Contacts | Blocked | Configuration | Keys,
+  Complete = Contacts | Blocked | Configuration,
 }
 
 type SyncEntry = {
@@ -1647,7 +1647,7 @@ export class PrimaryDevice {
     const syncEntry = this.getSyncState(source);
     syncEntry.state |= stateChange;
 
-    if (syncEntry.state === SyncState.Complete) {
+    if ((syncEntry.state & SyncState.Complete) === SyncState.Complete) {
       debug('sync with %s complete', source.debugId);
       syncEntry.complete();
     }
