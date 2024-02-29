@@ -467,6 +467,7 @@ export class Connection extends Service {
     //
     // Keepalive
     //
+
     this.router.get('/v1/keepalive', async () => {
       return [ 200, { ok: true } ];
     });
