@@ -1008,8 +1008,14 @@ export class PrimaryDevice {
     return state;
   }
 
-  public async setStorageState(state: StorageState): Promise<StorageState> {
-    const writeOperation = state.createWriteOperation(this.storageKey);
+  public async setStorageState(
+    state: StorageState,
+    previousState?: StorageState,
+  ): Promise<StorageState> {
+    const writeOperation = state.createWriteOperation(
+      this.storageKey,
+      previousState,
+    );
     assert(writeOperation.manifest, 'write operation without manifest');
 
     const { updated, error } = await this.config.applyStorageWrite(

@@ -450,9 +450,11 @@ message Verified {
 message SyncMessage {
   message Sent {
     message UnidentifiedDeliveryStatus {
-      optional string destination     = 1;
+      optional string destination = 1;
       optional string destinationServiceId = 3;
-      optional bool   unidentified    = 2;
+      optional bool   unidentified = 2;
+      reserved /* destinationPni */ 4;
+      optional bytes destinationPniIdentityKey = 5; // Only set for PNI destinations
     }
 
     message StoryMessageRecipient {
@@ -606,6 +608,11 @@ message SyncMessage {
     optional Event     event     = 6;
   }
 
+  message CallLinkUpdate {
+    optional bytes rootKey = 1;
+    optional bytes adminPasskey = 2;
+  }
+
   message CallLogEvent {
     enum Type {
       CLEAR = 0;
@@ -634,7 +641,7 @@ message SyncMessage {
   reserved                                                 17; // pniIdentity
   optional PniChangeNumber        pniChangeNumber        = 18;
   optional CallEvent              callEvent              = 19;
-  reserved                                                 20; // callLinkUpdate
+  optional CallLinkUpdate         callLinkUpdate         = 20;
   optional CallLogEvent           callLogEvent           = 21;
 }
 
