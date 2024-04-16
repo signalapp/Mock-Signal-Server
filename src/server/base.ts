@@ -1130,8 +1130,8 @@ export abstract class Server {
     const { zkc } = flags;
 
     const issueCredential = zkc ?
-      auth.issueAuthCredentialWithPniZkc :
-      auth.issueAuthCredentialWithPniAsServiceId;
+      auth.issueAuthCredentialWithPniZkc.bind(auth) :
+      auth.issueAuthCredentialWithPniAsServiceId.bind(auth);
 
     for (
       let redemptionTime = from;
