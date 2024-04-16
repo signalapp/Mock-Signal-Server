@@ -431,6 +431,7 @@ export class Connection extends Service {
         const {
           redemptionStartSeconds: from,
           redemptionEndSeconds: to,
+          zkcCredential,
         } = query;
 
         return [
@@ -439,7 +440,7 @@ export class Connection extends Service {
             credentials:  await this.server.getGroupCredentials(device, {
               from: parseInt(from as string, 10),
               to: parseInt(to as string, 10),
-            }),
+            }, { zkc: zkcCredential === 'true' }),
             callLinkAuthCredentials:
               await this.server.getCallLinkAuthCredentials(device, {
                 from: parseInt(from as string, 10),

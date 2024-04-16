@@ -72,6 +72,10 @@ export type GroupCredentialsRange = Readonly<{
   to: number;
 }>;
 
+export type GroupCredentialsFlags = Readonly<{
+  zkc: boolean | undefined
+}>;
+
 export type StorageCredentials = Readonly<{
   username: string;
   password: string;
@@ -1110,6 +1114,7 @@ export abstract class Server {
   public async getGroupCredentials(
     { aci, pni }: Device,
     { from, to }: GroupCredentialsRange,
+    flags: GroupCredentialsFlags = { zkc: false },
   ): Promise<GroupCredentials> {
     const today = getTodayInSeconds();
     if (
@@ -1122,6 +1127,11 @@ export abstract class Server {
 
     const auth = new ServerZkAuthOperations(this.zkSecret);
     const result: GroupCredentials = [];
+    const { zkc } = flags;
+
+    const issueCredential = zkc ?
+      auth.issueAuthCredentialWithPniZkc :
+      auth.issueAuthCredentialWithPniAsServiceId;
 
     for (
       let redemptionTime = from;
@@ -1129,7 +1139,7 @@ export abstract class Server {
       redemptionTime += DAY_IN_SECONDS
     ) {
       result.push({
-        credential: auth.issueAuthCredentialWithPniAsServiceId(
+        credential: issueCredential(
           Aci.parseFromServiceIdString(aci),
           Pni.parseFromServiceIdString(pni), redemptionTime)
           .serialize().toString('base64'),
