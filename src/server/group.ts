@@ -5,6 +5,8 @@ import assert from 'assert';
 import Long from 'long';
 import {
   GroupPublicParams,
+  GroupSendDerivedKeyPair,
+  GroupSendEndorsementsResponse,
   ProfileKeyCredentialPresentation,
   ServerSecretParams,
   ServerZkProfileOperations,
@@ -32,6 +34,18 @@ export type ModifyGroupResult = Readonly<{
 const { AccessRequired } = Proto.AccessControl;
 const { Role } = Proto.Member;
 
+const SECONDS_PER_DAY = 86400;
+
+function getTodaysKey(zkSecret: ServerSecretParams): GroupSendDerivedKeyPair {
+  const now = Math.floor(Date.now() / 1000);
+  const startOfDay = now - (now % SECONDS_PER_DAY);
+  const expiration = startOfDay + 2 * SECONDS_PER_DAY;
+  return GroupSendDerivedKeyPair.forExpiration(
+    new Date(1000 * expiration),
+    zkSecret,
+  );
+}
+
 export class ServerGroup extends Group {
   private readonly profileOps: ServerZkProfileOperations;
   private readonly zkSecret: ServerSecretParams;
@@ -58,6 +72,28 @@ export class ServerGroup extends Group {
         groupState: unrolledState,
       } ],
     };
+  }
+
+  public getGroupSendEndorsementResponse(
+    sourceAci: UuidCiphertext,
+  ): Uint8Array | null {
+    const authMember = this.getMember(sourceAci);
+    if (!authMember) {
+      return null;
+    }
+
+    const members = this.state.members ?? [];
+
+    const groupCiphertexts = members.map(member => {
+      assert(member.userId, 'Member must have a user ID');
+      return new UuidCiphertext(Buffer.from(member.userId));
+    });
+
+    const todaysKey = getTodaysKey(this.zkSecret);
+    return GroupSendEndorsementsResponse.issue(
+      groupCiphertexts,
+      todaysKey,
+    ).serialize();
   }
 
   public modify(

@@ -15,7 +15,7 @@ import {
   put,
   router,
 } from 'microrouter';
-import type { UuidCiphertext } from '@signalapp/libsignal-client/zkgroup';
+import { UuidCiphertext } from '@signalapp/libsignal-client/zkgroup';
 import createDebug from 'debug';
 
 import { Server } from './base';
@@ -30,6 +30,7 @@ import {
 } from '../util';
 import {
   DeviceKeysSchema,
+  PositiveInt,
   PutUsernameLinkSchema,
   UsernameConfirmationSchema,
   UsernameReservationSchema,
@@ -473,14 +474,39 @@ export const createHandler = (server: Server): RequestHandler => {
   // GV2
   //
 
-  const getGroup = get('/v1/groups', async (req, res) => {
+
+  async function getGroupInner(
+    req: ServerRequest,
+    res: ServerResponse,
+  ): Promise<Proto.IGroupResponse | void> {
     const auth = await groupAuthAndFetch(req, res);
     if (!auth) {
       return;
     }
 
     const { group } = auth;
-    return send(res, 200, Proto.Group.encode(group.state).finish());
+    return {
+      group: group.state,
+      groupSendEndorsementResponse: group.getGroupSendEndorsementResponse(
+        auth.aciCiphertext,
+      ),
+    };
+  }
+
+  const getGroupV1 = get('/v1/groups', async (req, res) => {
+    const response = await getGroupInner(req, res);
+    if (!response || !response.group) {
+      return;
+    }
+    return send(res, 200, Proto.Group.encode(response.group).finish());
+  });
+
+  const getGroup = get('/v2/groups', async (req, res) => {
+    const response = await getGroupInner(req, res);
+    if (!response || !response.group) {
+      return;
+    }
+    return send(res, 200, Proto.GroupResponse.encode(response).finish());
   });
 
   const getGroupVersion = get(
@@ -505,7 +531,12 @@ export const createHandler = (server: Server): RequestHandler => {
     },
   );
 
-  const getGroupLogs = get('/v1/groups/logs/:since', async (req, res) => {
+  const SIX_HOURS = 6 * 60 * 60 * 1000;
+
+  async function getGroupLogsInner(
+    req: ServerRequest,
+    res: ServerResponse,
+  ): Promise<Proto.IGroupChanges | void> {
     const auth = await groupAuthAndFetch(req, res);
     if (!auth) {
       return;
@@ -522,15 +553,75 @@ export const createHandler = (server: Server): RequestHandler => {
       return send(res, 403, { error: '`since` is before joinedAtVersion' });
     }
 
+    const { groupChanges } = group.getChangesSince(since);
+
+    const expirationResult = PositiveInt.safeParse(
+      req.headers['cached-send-endorsements'],
+    );
+
+    if (!expirationResult.success) {
+      return send(res, 400);
+    }
+
+    const expirationTime = expirationResult.data;
+    const expiresInLessThanSixHours = expirationTime < (Date.now() + SIX_HOURS);
+
+    const membershipChange = groupChanges?.find(change => {
+      const encodedActions = change.groupChange?.actions;
+      assert(encodedActions, 'Missing actions in the group change');
+      const actions = Proto.GroupChange.Actions.decode(encodedActions);
+      return (
+        actions.addMembers.length > 0 ||
+        actions.deleteMembers.length > 0 ||
+        actions.promoteMembersPendingPniAciProfileKey.length > 0 ||
+        actions.promotePendingMembers.length > 0
+      );
+    });
+
+    let groupSendEndorsementResponse: Uint8Array | null = null;
+
+    if (membershipChange || expiresInLessThanSixHours) {
+      groupSendEndorsementResponse = group.getGroupSendEndorsementResponse(
+        auth.aciCiphertext,
+      );
+    }
+
+    return {
+      groupChanges,
+      groupSendEndorsementResponse,
+    };
+  }
+
+  const getGroupLogsV1 = get('/v1/groups/logs/:since', async (req, res) => {
+    const response = await getGroupLogsInner(req, res);
+    if (!response) {
+      return;
+    }
     return send(
       res,
       200,
-      Proto.GroupChanges.encode(group.getChangesSince(since)).finish(),
+      Proto.GroupChanges.encode({
+        groupChanges: response.groupChanges,
+      }).finish(),
     );
   });
 
-  // TODO(indutny): implement me
-  const createGroup = put('/v1/groups', async (req, res) => {
+  const getGroupLogs = get('/v2/groups/logs/:since', async (req, res) => {
+    const response = await getGroupLogsInner(req, res);
+    if (!response) {
+      return;
+    }
+    return send(
+      res,
+      200,
+      Proto.GroupChanges.encode(response).finish(),
+    );
+  });
+
+  async function createGroupInner(
+    req: ServerRequest,
+    res: ServerResponse,
+  ): Promise<Proto.IGroupResponse | void> {
     const auth = await groupAuth(req, res);
     if (!auth) {
       return;
@@ -548,14 +639,38 @@ export const createHandler = (server: Server): RequestHandler => {
       return send(res, 400, { error: 'Invalid group public key' });
     }
 
-    await server.createGroup(groupData);
+    const group = await server.createGroup(groupData);
 
     // TODO(indutny): verify that creator is a member
 
+    return {
+      group: group.state,
+      groupSendEndorsementResponse: group.getGroupSendEndorsementResponse(
+        auth.aciCiphertext,
+      ),
+    };
+  }
+
+  const createGroupV1 = put('/v1/groups', async (req, res) => {
+    const response = await createGroupInner(req, res);
+    if (!response) {
+      return;
+    }
     return send(res, 200);
   });
 
-  const modifyGroup = patch('/v1/groups', async (req, res) => {
+  const createGroup = put('/v2/groups', async (req, res) => {
+    const response = await createGroupInner(req, res);
+    if (!response) {
+      return;
+    }
+    return send(res, 200, Proto.GroupResponse.encode(response).finish());
+  });
+
+  async function modifyGroupInner(
+    req: ServerRequest,
+    res: ServerResponse,
+  ): Promise<Proto.IGroupChangeResponse | void> {
     const auth = await groupAuthAndFetch(req, res);
     if (!auth) {
       return;
@@ -579,11 +694,12 @@ export const createHandler = (server: Server): RequestHandler => {
         return send(res, 409, { error: 'Conflict' });
       }
 
-      return send(
-        res,
-        200,
-        Proto.GroupChange.encode(modifyResult.signedChange).finish(),
-      );
+      return {
+        groupChange: modifyResult.signedChange,
+        groupSendEndorsementResponse: group.getGroupSendEndorsementResponse(
+          auth.aciCiphertext,
+        ),
+      };
     } catch (error) {
       assert(error instanceof Error);
 
@@ -592,8 +708,30 @@ export const createHandler = (server: Server): RequestHandler => {
       // TODO(indutny): would be nice to give 403 here
       return send(res, 500, { error: error.stack });
     }
+  }
 
-    return send(res, 200, Proto.Group.encode(group.state).finish());
+  const modifyGroupV1 = patch('/v1/groups', async (req, res) => {
+    const response = await modifyGroupInner(req, res);
+    if (!response || !response.groupChange) {
+      return;
+    }
+    return send(
+      res,
+      200,
+      Proto.GroupChange.encode(response.groupChange).finish(),
+    );
+  });
+
+  const modifyGroup = patch('/v2/groups', async (req, res) => {
+    const response = await modifyGroupInner(req, res);
+    if (!response) {
+      return;
+    }
+    return send(
+      res,
+      200,
+      Proto.GroupChangeResponse.encode(response).finish(),
+    );
   });
 
   //
@@ -730,10 +868,14 @@ export const createHandler = (server: Server): RequestHandler => {
     putChallenge,
 
     // Technically these should live on a separate server, but who cares
+    getGroupV1,
     getGroup,
     getGroupVersion,
+    getGroupLogsV1,
     getGroupLogs,
+    createGroupV1,
     createGroup,
+    modifyGroupV1,
     modifyGroup,
 
     getStorageManifest,

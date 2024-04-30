@@ -12,6 +12,8 @@ import {
   ServiceIdString,
 } from '../types';
 
+export const PositiveInt = z.number().int().positive();
+
 export const AciSchema = z.string().transform(x => x as AciString);
 export const PniSchema = z.string()
   .refine(x => x.startsWith('PNI:'))
