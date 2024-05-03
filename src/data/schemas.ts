@@ -12,7 +12,7 @@ import {
   ServiceIdString,
 } from '../types';
 
-export const PositiveInt = z.number().int().positive();
+export const PositiveInt = z.coerce.number().int().nonnegative();
 
 export const AciSchema = z.string().transform(x => x as AciString);
 export const PniSchema = z.string()
