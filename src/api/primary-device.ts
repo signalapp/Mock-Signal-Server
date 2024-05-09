@@ -486,7 +486,7 @@ export class PrimaryDevice {
   public readonly profileKey: ProfileKey;
   public readonly profileName: string;
   public readonly secondaryDevices = new Array<Device>();
-  public readonly masterKey = crypto.randomBytes(16);
+  public readonly masterKey = crypto.randomBytes(32);
 
   // TODO(indutny): make primary device type configurable
   public readonly userAgent = 'OWI';
