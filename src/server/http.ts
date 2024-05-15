@@ -520,7 +520,7 @@ export const createHandler = (server: Server): RequestHandler => {
     },
   );
 
-  const SIX_HOURS = 6 * 60 * 60 * 1000;
+  const SECONDS_IN_SIX_HOURS = 6 * 60 * 60;
 
   async function getGroupLogsInner(
     req: ServerRequest,
@@ -583,7 +583,9 @@ export const createHandler = (server: Server): RequestHandler => {
     }
 
     const expirationTime = expirationResult.data;
-    const expiresInLessThanSixHours = expirationTime < (Date.now() + SIX_HOURS);
+    const currentTime = Math.floor(Date.now() / 1000);
+    const expiresInLessThanSixHours =
+      expirationTime < (currentTime + SECONDS_IN_SIX_HOURS);
 
     const membershipChange = groupChanges?.find(change => {
       const encodedActions = change.groupChange?.actions;

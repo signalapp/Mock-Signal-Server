@@ -40,7 +40,7 @@
   },
   "homepage": "https://github.com/signalapp/Mock-Signal-Server#readme",
   "dependencies": {
-    "@signalapp/libsignal-client": "^0.42.0",
+    "@signalapp/libsignal-client": "^0.45.0",
     "debug": "^4.3.2",
     "long": "^4.0.0",
     "micro": "^9.3.4",
