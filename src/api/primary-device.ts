@@ -1430,6 +1430,13 @@ export class PrimaryDevice {
     return distributionId;
   }
 
+  public async unlink(device: Device): Promise<void> {
+    const index = this.secondaryDevices.indexOf(device);
+    if (index === -1) {
+      throw new Error('Device was not linked');
+    }
+    this.secondaryDevices.splice(index, 1);
+  }
 
   public async receive(source: Device, encrypted: Buffer): Promise<void> {
     const envelope = Proto.Envelope.decode(encrypted);
