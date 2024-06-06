@@ -1,8 +1,6 @@
 // Copyright 2022 Signal Messenger, LLC
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import assert from 'assert';
-import Long from 'long';
 import {
   GroupPublicParams,
   GroupSendDerivedKeyPair,
@@ -12,10 +10,16 @@ import {
   ServerZkProfileOperations,
   UuidCiphertext,
 } from '@signalapp/libsignal-client/zkgroup';
+import assert from 'assert';
+import Long from 'long';
 
 import { signalservice as Proto } from '../../protos/compiled';
 import { Group } from '../data/group';
 import { GroupStateSchema } from '../data/schemas';
+import {
+  daysToSeconds,
+  getTodayInSeconds,
+} from '../util';
 
 export type ServerGroupOptions = Readonly<{
   profileOps: ServerZkProfileOperations;
@@ -34,12 +38,9 @@ export type ModifyGroupResult = Readonly<{
 const { AccessRequired } = Proto.AccessControl;
 const { Role } = Proto.Member;
 
-const SECONDS_PER_DAY = 86400;
-
 function getTodaysKey(zkSecret: ServerSecretParams): GroupSendDerivedKeyPair {
-  const now = Math.floor(Date.now() / 1000);
-  const startOfDay = now - (now % SECONDS_PER_DAY);
-  const expiration = startOfDay + 2 * SECONDS_PER_DAY;
+  const startOfDay = getTodayInSeconds();
+  const expiration = startOfDay + daysToSeconds(2);
   return GroupSendDerivedKeyPair.forExpiration(
     new Date(1000 * expiration),
     zkSecret,

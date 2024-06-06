@@ -1,9 +1,14 @@
 // Copyright 2022 Signal Messenger, LLC
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import {
+  CreateCallLinkCredentialRequest,
+  UuidCiphertext,
+} from '@signalapp/libsignal-client/zkgroup';
 import assert from 'assert';
-import Long from 'long';
 import { Buffer } from 'buffer';
+import createDebug from 'debug';
+import Long from 'long';
 import { RequestHandler, buffer, json, send } from 'micro';
 import {
   AugmentedRequestHandler as RouteHandler,
@@ -12,26 +17,22 @@ import {
   del,
   get,
   patch,
+  post,
   put,
   router,
 } from 'microrouter';
-import { UuidCiphertext } from '@signalapp/libsignal-client/zkgroup';
-import createDebug from 'debug';
 
-import { Server } from './base';
-import { ServerGroup } from './group';
+import { signalservice as Proto } from '../../protos/compiled';
 import { decodeKyberPreKey, decodePreKey, decodeSignedPreKey } from '../crypto';
 import { Device } from '../data/device';
 import {
-  ParseAuthHeaderResult,
-  fromURLSafeBase64,
-  parseAuthHeader,
-  toURLSafeBase64,
-} from '../util';
-import {
+  CreateCallLinkAuthSchema,
+  CreateCallLinkSchema,
+  DeleteCallLinkSchema,
   DeviceKeysSchema,
   PositiveInt,
   PutUsernameLinkSchema,
+  UpdateCallLinkSchema,
   UsernameConfirmationSchema,
   UsernameReservationSchema,
 } from '../data/schemas';
@@ -41,7 +42,15 @@ import {
   ServiceIdKind,
   ServiceIdString,
 } from '../types';
-import { signalservice as Proto } from '../../protos/compiled';
+import {
+  ParseAuthHeaderResult,
+  fromURLSafeBase64,
+  parseAuthHeader,
+  toBase64,
+  toURLSafeBase64,
+} from '../util';
+import { CallLinkEntry, Server } from './base';
+import { ServerGroup } from './group';
 
 const debug = createDebug('mock:http');
 
@@ -164,6 +173,72 @@ export const createHandler = (server: Server): RequestHandler => {
     debug('Unsupported request %s %s', req.method, req.url);
     return send(res, 404, { error: 'Not supported yet' });
   };
+
+  //
+  // Calling
+  //
+
+  function toCallLinkResponse(callLink: CallLinkEntry) {
+    return {
+      name: callLink.encryptedName,
+      restrictions: String(callLink.restrictions),
+      revoked: callLink.revoked,
+      expiration: Math.floor(callLink.expiration / 1000), // unix
+    };
+  }
+
+  const getCallLink = get(
+    '/v1/call-link/',
+    async (req, res) => {
+      const roomId = req.headers['x-room-id'];
+      if (typeof roomId !== 'string') {
+        return send(res, 400, { error: 'Missing room ID' });
+      }
+
+      const callLink = await server.getCallLink(roomId);
+      if (!callLink) {
+        return send(res, 404, { error: 'Call link not found' });
+      }
+
+      return toCallLinkResponse(callLink);
+    },
+  );
+
+  const createOrUpdateCallLink = put(
+    '/v1/call-link',
+    async (req, res) => {
+      const roomId = req.headers['x-room-id'];
+      if (typeof roomId !== 'string') {
+        return send(res, 400, { error: 'Missing room ID' });
+      }
+
+      const body = await json(req);
+
+      let callLink: CallLinkEntry;
+      if (!server.hasCallLink(roomId)) {
+        const createParams = CreateCallLinkSchema.parse(body);
+        callLink = await server.createCallLink(roomId, createParams);
+      } else {
+        const updateParams = UpdateCallLinkSchema.parse(body);
+        callLink = await server.updateCallLink(roomId, updateParams);
+      }
+
+      return toCallLinkResponse(callLink);
+    },
+  );
+
+  const deleteCallLink = del(
+    '/v1/call-link',
+    async (req, res) => {
+      const roomId = req.headers['x-room-id'];
+      if (typeof roomId !== 'string') {
+        return send(res, 400, { error: 'Missing room ID' });
+      }
+      const deleteParams = DeleteCallLinkSchema.parse(await json(req));
+      await server.deleteCallLink(roomId, deleteParams);
+      return null;
+    },
+  );
 
   //
   // Authorized requests
@@ -456,6 +531,32 @@ export const createHandler = (server: Server): RequestHandler => {
       return { usernameLinkHandle };
     },
   );
+
+  //
+  // Call links
+  //
+
+  const createCallLinkAuth = post(
+    '/v1/call-link/create-auth',
+    async (req, res) => {
+      const device = await auth(req, res);
+      if (!device) {
+        return;
+      }
+
+      const body = CreateCallLinkAuthSchema.parse(await json(req));
+      const request = new CreateCallLinkCredentialRequest(
+        body.createCallLinkCredentialRequest,
+      );
+      const response = await server.createCallLinkAuth(device, request);
+
+      return {
+        redemptionTime: -Date.now(),
+        credential: toBase64(response.serialize()),
+      };
+    },
+  );
+
 
   //
   // Captcha
@@ -874,6 +975,8 @@ export const createHandler = (server: Server): RequestHandler => {
     lookupByUsernameLink,
     replaceUsernameLink,
 
+    createCallLinkAuth,
+
     putChallenge,
 
     // Technically these should live on a separate server, but who cares
@@ -891,6 +994,10 @@ export const createHandler = (server: Server): RequestHandler => {
     getStorageManifestByVersion,
     putStorage,
     putStorageRead,
+
+    getCallLink,
+    createOrUpdateCallLink,
+    deleteCallLink,
 
     // TODO(indutny): support this
     get('/v1/groups/token', notFound),

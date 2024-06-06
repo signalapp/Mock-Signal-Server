@@ -1,11 +1,6 @@
 // Copyright 2022 Signal Messenger, LLC
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import assert from 'assert';
-import crypto from 'crypto';
-import Long from 'long';
-import { v4 as uuidv4 } from 'uuid';
-import createDebug from 'debug';
 import {
   Aci,
   Pni,
@@ -15,6 +10,8 @@ import {
 import {
   AuthCredentialPresentation,
   CallLinkAuthCredentialResponse,
+  CreateCallLinkCredentialRequest,
+  CreateCallLinkCredentialResponse,
   GenericServerSecretParams,
   GroupPublicParams,
   ProfileKeyCredentialRequest,
@@ -23,13 +20,13 @@ import {
   ServerZkProfileOperations,
   UuidCiphertext,
 } from '@signalapp/libsignal-client/zkgroup';
+import assert from 'assert';
+import crypto from 'crypto';
+import createDebug from 'debug';
+import Long from 'long';
+import { v4 as uuidv4 } from 'uuid';
 
 import { signalservice as Proto } from '../../protos/compiled';
-import {
-  ServerCertificate,
-  generateSenderCertificate,
-} from '../crypto';
-import { ChangeNumberOptions, Device, DeviceKeys } from '../data/device';
 import {
   ATTACHMENT_PREFIX,
   DAY_IN_SECONDS,
@@ -37,6 +34,19 @@ import {
   PRIMARY_DEVICE_ID,
   PROFILE_KEY_CREDENTIAL_EXPIRATION,
 } from '../constants';
+import {
+  ServerCertificate,
+  generateSenderCertificate,
+} from '../crypto';
+import { ChangeNumberOptions, Device, DeviceKeys } from '../data/device';
+import {
+  CreateCallLink,
+  DeleteCallLink,
+  Message,
+  UpdateCallLink,
+  UsernameConfirmation,
+  UsernameReservation,
+} from '../data/schemas';
 import {
   AciString,
   AttachmentId,
@@ -49,11 +59,6 @@ import {
   ServiceIdString,
 } from '../types';
 import { getTodayInSeconds } from '../util';
-import {
-  Message,
-  UsernameConfirmation,
-  UsernameReservation,
-} from '../data/schemas';
 import { ModifyGroupResult, ServerGroup } from './group';
 
 export enum EnvelopeType {
@@ -187,6 +192,14 @@ type MessageQueueEntry = {
   reject(error: Error): void;
 };
 
+export type CallLinkEntry = Readonly<{
+  adminPasskey: Buffer,
+  encryptedName: string,
+  restrictions: 'none' | 'adminApproval',
+  revoked: boolean,
+  expiration: number,
+}>;
+
 const debug = createDebug('mock:server:base');
 
 // NOTE: This class is currently extended only by src/api/server.ts
@@ -217,6 +230,7 @@ export abstract class Server {
   private readonly usernameLinkIdByServiceId =
     new Map<ServiceIdString, string>();
   private readonly usernameLinkById = new Map<string, Buffer>();
+  private readonly callLinksByRoomId = new Map<string, CallLinkEntry>();
   protected privCertificate: ServerCertificate | undefined;
   protected privZKSecret: ServerSecretParams | undefined;
   protected privGenericServerSecret: GenericServerSecretParams | undefined;
@@ -1054,6 +1068,82 @@ export abstract class Server {
       entropy,
       serverId,
     };
+  }
+
+  //
+  // Call Links
+  //
+
+  public async createCallLinkAuth(
+    device: Device,
+    request: CreateCallLinkCredentialRequest,
+  ): Promise<CreateCallLinkCredentialResponse> {
+    return request.issueCredential(
+      Aci.parseFromServiceIdString(device.aci),
+      getTodayInSeconds(),
+      this.genericServerSecret,
+    );
+  }
+
+  public hasCallLink(roomId: string) {
+    return this.callLinksByRoomId.has(roomId);
+  }
+
+  public async createCallLink(
+    roomId: string,
+    { adminPasskey }: CreateCallLink,
+  ): Promise<CallLinkEntry> {
+    const callLink: CallLinkEntry = {
+      adminPasskey,
+      encryptedName: '',
+      restrictions: 'none',
+      revoked: false,
+      expiration: new Date('2101-01-01').getTime(),
+    };
+    this.callLinksByRoomId.set(roomId, callLink);
+    return callLink;
+  }
+
+  public async getCallLink(
+    roomId: string,
+  ): Promise<CallLinkEntry | undefined> {
+    return this.callLinksByRoomId.get(roomId);
+  }
+
+  public async updateCallLink(
+    roomId: string,
+    { adminPasskey, name, restrictions, revoked }: UpdateCallLink,
+  ): Promise<CallLinkEntry> {
+    const callLink = this.callLinksByRoomId.get(roomId);
+    if (!callLink) {
+      throw new Error('Call link not found');
+    }
+    if (!callLink.adminPasskey.equals(adminPasskey)) {
+      throw new Error('Invalid admin passkey');
+    }
+    const newCallLink: CallLinkEntry = {
+      adminPasskey,
+      encryptedName: name ?? callLink.encryptedName,
+      restrictions: restrictions ?? callLink.restrictions,
+      revoked: revoked ?? callLink.revoked,
+      expiration: callLink.expiration,
+    };
+    this.callLinksByRoomId.set(roomId, newCallLink);
+    return newCallLink;
+  }
+
+  public async deleteCallLink(
+    roomId: string,
+    { adminPasskey }: DeleteCallLink,
+  ): Promise<void> {
+    const callLink = this.callLinksByRoomId.get(roomId);
+    if (!callLink) {
+      throw new Error('Call link not found');
+    }
+    if (!callLink.adminPasskey.equals(adminPasskey)) {
+      throw new Error('Invalid admin passkey');
+    }
+    this.callLinksByRoomId.delete(roomId);
   }
 
   //

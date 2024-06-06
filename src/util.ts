@@ -1,8 +1,8 @@
 // Copyright 2022 Signal Messenger, LLC
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import assert from 'assert';
 import { ProtocolAddress } from '@signalapp/libsignal-client';
+import assert from 'assert';
 
 import { DAY_IN_SECONDS } from './constants';
 import type { RegistrationId } from './types';
@@ -186,16 +186,27 @@ export function getTodayInSeconds(): number {
   return now - (now % DAY_IN_SECONDS);
 }
 
+export function daysToSeconds(days: number): number {
+  return days * DAY_IN_SECONDS;
+}
+
 export function generateRegistrationId(): RegistrationId {
   return Math.max(1, (Math.random() * 0x4000) | 0) as RegistrationId;
 }
 
+export function toBase64(buf: Uint8Array): string {
+  return Buffer.from(buf).toString('base64');
+}
+
 export function toURLSafeBase64(buf: Uint8Array): string {
-  return Buffer.from(buf)
-    .toString('base64')
+  return toBase64(buf)
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
     .replace(/=+$/g, '');
+}
+
+export function fromBase64(base64: string): Buffer {
+  return Buffer.from(base64, 'base64');
 }
 
 export function fromURLSafeBase64(base64: string): Buffer {
@@ -203,5 +214,5 @@ export function fromURLSafeBase64(base64: string): Buffer {
 
   // Note that `Buffer.from()` ignores padding anyway so we don't need to
   // restore it.
-  return Buffer.from(source, 'base64');
+  return fromBase64(source);
 }

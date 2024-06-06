@@ -3,7 +3,6 @@
 
 import z from 'zod';
 
-import { fromURLSafeBase64 } from '../util';
 import {
   AciString,
   DeviceId,
@@ -11,6 +10,7 @@ import {
   RegistrationId,
   ServiceIdString,
 } from '../types';
+import { fromBase64, fromURLSafeBase64 } from '../util';
 
 export const PositiveInt = z.coerce.number().int().nonnegative();
 
@@ -108,3 +108,31 @@ export const PutUsernameLinkSchema = z.object({
 });
 
 export type PutUsernameLink = z.infer<typeof PutUsernameLinkSchema>;
+
+export const CreateCallLinkAuthSchema = z.object({
+  createCallLinkCredentialRequest: z.string().transform(fromBase64),
+});
+
+export type CreateCallLinkAuth = z.infer<typeof CreateCallLinkAuthSchema>;
+
+export const CreateCallLinkSchema = z.object({
+  adminPasskey: z.string().transform(fromBase64),
+  zkparams: z.string().transform(fromBase64),
+});
+
+export type CreateCallLink = z.infer<typeof CreateCallLinkSchema>;
+
+export const UpdateCallLinkSchema = z.object({
+  adminPasskey: z.string().transform(fromBase64),
+  name: z.string().optional(),
+  restrictions: z.enum([ 'none', 'adminApproval' ]).optional(),
+  revoked: z.boolean().optional(),
+});
+
+export type UpdateCallLink = z.infer<typeof UpdateCallLinkSchema>;
+
+export const DeleteCallLinkSchema = z.object({
+  adminPasskey: z.string().transform(fromBase64),
+});
+
+export type DeleteCallLink = z.infer<typeof DeleteCallLinkSchema>;
