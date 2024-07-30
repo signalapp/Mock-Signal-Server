@@ -14,6 +14,7 @@ import SealedSenderMultiRecipientMessage from
   '@signalapp/libsignal-client/dist/SealedSenderMultiRecipientMessage';
 
 import WebSocket from 'ws';
+import { v4 as uuidv4 } from 'uuid';
 
 import { signalservice as Proto } from '../../../protos/compiled';
 import { Device } from '../../data/device';
@@ -37,9 +38,7 @@ import {
   generateAccessKeyVerifier,
 } from '../../crypto';
 import { Server } from '../base';
-import {
-  parseAuthHeader,
-} from '../../util';
+import { parseAuthHeader } from '../../util';
 
 import { Service, WSRequest, WSResponse } from './service';
 import { Handler, Router } from './router';
@@ -471,6 +470,19 @@ export class Connection extends Service {
 
     this.router.get('/v1/keepalive', async () => {
       return [ 200, { ok: true } ];
+    });
+
+    //
+    // Attachment upload forms
+    //
+    this.router.get('/v4/attachments/form/upload', async () => {
+      const key = uuidv4();
+      const headers = {expectedHeaders: uuidv4()};
+      const address = this.server.address();
+      const signedUploadLocation =
+        `https://127.0.0.1:${address.port}/cdn3/${key}`;
+
+      return [ 200, { cdn: 3, key, headers, signedUploadLocation } ];
     });
   }
 

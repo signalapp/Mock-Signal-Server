@@ -16,11 +16,15 @@ import {
   ServerResponse,
   del,
   get,
+  head,
   patch,
   post,
   put,
   router,
 } from 'microrouter';
+import * as fs from 'fs';
+import { Server as TusServer} from '@tus/server';
+import { FileStore} from '@tus/file-store';
 
 import { signalservice as Proto } from '../../protos/compiled';
 import { decodeKyberPreKey, decodePreKey, decodeSignedPreKey } from '../crypto';
@@ -51,8 +55,10 @@ import {
 } from '../util';
 import { CallLinkEntry, Server } from './base';
 import { ServerGroup } from './group';
+import { join } from 'path';
 
 const debug = createDebug('mock:http');
+
 
 const parsePassword = (req: ServerRequest): ParseAuthHeaderResult => {
   return parseAuthHeader(req.headers.authorization);
@@ -90,7 +96,10 @@ const sendDevicesKeys = async (
   });
 };
 
-export const createHandler = (server: Server): RequestHandler => {
+export const createHandler = (
+  server: Server,
+  { cdn3Path }: { cdn3Path: string | undefined },
+): RequestHandler => {
   //
   // Unauthorized requests
   //
@@ -136,6 +145,32 @@ export const createHandler = (server: Server): RequestHandler => {
   //
   // CDN
   //
+
+
+  const tusServer = new TusServer({
+    path: '/cdn3',
+    datastore: new FileStore({directory: cdn3Path ?? ''}),
+    namingFunction: (req) => {
+      assert(req.url);
+      return req.url.split('/').at(-1) as string;
+    },
+  });
+
+  const getCdn3Attachment = get('/cdn3/attachments/:key', async (req, res) => {
+    assert(cdn3Path, 'cdn3Path must be set');
+    try {
+      const data = fs.readFileSync(
+        join(cdn3Path, req.params.key),
+      );
+      return send(res, 200, data);
+    } catch (e) {
+      assert(e instanceof Error);
+      if ('code' in e && e.code === 'ENOENT') {
+        return send(res, 404);
+      }
+      return send(res, 500, e.message);
+    }
+  });
 
   const getAttachment = get('/attachments/:key/:subkey', async (req, res) => {
     const { key, subkey } = req.params;
@@ -999,12 +1034,21 @@ export const createHandler = (server: Server): RequestHandler => {
     createOrUpdateCallLink,
     deleteCallLink,
 
+    ...[ head, patch, post ].map(method => method('/cdn3/*',
+      async (req, res) => {
+        await tusServer.handle(req, res);
+      },
+    )),
+
+    getCdn3Attachment,
+
     // TODO(indutny): support this
     get('/v1/groups/token', notFound),
 
     get('/stickers/', notFound),
     get('/*', notFoundAfterAuth),
     put('/*', notFoundAfterAuth),
+    post('/*', notFoundAfterAuth),
   );
 
   return (req, res) => {

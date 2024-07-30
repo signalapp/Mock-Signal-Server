@@ -21,10 +21,12 @@ import {
   UuidCiphertext,
 } from '@signalapp/libsignal-client/zkgroup';
 import assert from 'assert';
+import https from 'https';
 import crypto from 'crypto';
 import createDebug from 'debug';
 import Long from 'long';
 import { v4 as uuidv4 } from 'uuid';
+import { AddressInfo } from 'net';
 
 import { signalservice as Proto } from '../../protos/compiled';
 import {
@@ -204,6 +206,7 @@ const debug = createDebug('mock:server:base');
 
 // NOTE: This class is currently extended only by src/api/server.ts
 export abstract class Server {
+
   private readonly devices = new Map<string, Array<Device>>();
   private readonly devicesByServiceId = new Map<ServiceIdString, Device>();
   private readonly devicesByAuth = new Map<string, AuthEntry>();
@@ -234,6 +237,20 @@ export abstract class Server {
   protected privCertificate: ServerCertificate | undefined;
   protected privZKSecret: ServerSecretParams | undefined;
   protected privGenericServerSecret: GenericServerSecretParams | undefined;
+  protected https: https.Server | undefined;
+
+  public address(): AddressInfo {
+    if (!this.https) {
+      throw new Error('Not listening');
+    }
+
+    const result = this.https.address();
+    if (!result || typeof result !== 'object' ){
+      throw new Error('Invalid .address() result');
+    }
+    return result;
+  }
+
 
   //
   // Service Ids

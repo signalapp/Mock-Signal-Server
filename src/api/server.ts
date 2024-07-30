@@ -6,7 +6,6 @@ import fs from 'fs';
 import Long from 'long';
 import path from 'path';
 import https, { ServerOptions } from 'https';
-import { AddressInfo } from 'net';
 import { parse as parseURL } from 'url';
 import {
   PrivateKey,
@@ -85,6 +84,7 @@ type StrictConfig = Readonly<{
   https: ServerOptions;
   timeout: number;
   maxStorageReadKeys?: number;
+  cdn3Path?: string;
 }>
 
 export type Config = Readonly<{
@@ -93,6 +93,7 @@ export type Config = Readonly<{
   https?: ServerOptions;
   timeout?: number;
   maxStorageReadKeys?: number;
+  cdn3Path?: string;
 }>
 
 export type CreatePrimaryDeviceOptions = Readonly<{
@@ -141,7 +142,6 @@ export class Server extends BaseServer {
   private readonly trustRoot: PrivateKey;
   private readonly primaryDevices = new Map<string, PrimaryDevice>();
   private readonly knownNumbers = new Set<string>();
-  private https: https.Server | undefined;
   private emptyAttachment: Proto.IAttachmentPointer | undefined;
 
   private provisionQueue: PromiseQueue<PendingProvision>;
@@ -199,7 +199,10 @@ export class Server extends BaseServer {
       emptyCDNKey,
       emptyData);
 
-    const httpHandler = createHTTPHandler(this);
+    const httpHandler = createHTTPHandler(
+      this,
+      { cdn3Path: this.config.cdn3Path },
+    );
 
     const server = https.createServer(this.config.https || {}, (req, res) => {
       run(req, res, httpHandler);
@@ -234,17 +237,6 @@ export class Server extends BaseServer {
     await new Promise((resolve) => https.close(resolve));
   }
 
-  public address(): AddressInfo {
-    if (!this.https) {
-      throw new Error('Not listening');
-    }
-
-    const result = this.https.address();
-    if (!result || typeof result !== 'object' ){
-      throw new Error('Invalid .address() result');
-    }
-    return result;
-  }
 
   //
   // Various queues
@@ -412,6 +404,17 @@ export class Server extends BaseServer {
     const existing = this.rateLimitCountByPair.get(key);
     this.rateLimitCountByPair.delete(key);
     return existing;
+  }
+
+  public storeAttachmentOnCdn(
+    cdnNumber: number,
+    cdnKey: string,
+    data: Uint8Array,
+  ) {
+    assert.strictEqual(cdnNumber, 3, 'Only cdn 3 currently supported');
+    const { cdn3Path } = this.config;
+    assert(cdn3Path, 'cdn3Path must be provided to store attachments');
+    fs.writeFileSync(path.join(cdn3Path,  cdnKey), data);
   }
 
   //
