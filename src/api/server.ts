@@ -208,7 +208,39 @@ export class Server extends BaseServer {
       run(req, res, httpHandler);
     });
 
-    const wss = new WebSocket.Server({ server });
+    const wss = new WebSocket.Server({
+      server,
+      verifyClient: async (info, callback) => {
+        const { url } = info.req;
+        assert(url, 'verifyClient: expected a URL on incoming request');
+        const query = parseURL(url, true).query || {};
+
+        if (!query.login && !query.password) {
+          debug('verifyClient: Allowing connection with no credentials');
+          callback(true);
+          return;
+        }
+
+        // Note: when a device has been unlinked, it will use '' as its password
+        if (!query.login
+          || Array.isArray(query.login)
+          || typeof query.password !== 'string'
+          || Array.isArray(query.password)) {
+          debug('verifyClient: Malformed credentials @ %s: %j', url, query);
+          callback(false, 403);
+          return;
+        }
+
+        const device = await this.auth(query.login, query.password);
+        if (!device) {
+          debug('verifyClient: Invalid credentials @ %s: %j', url, query);
+          callback(false, 403);
+          return;
+        }
+
+        callback(true);
+      },
+    });
 
     wss.on('connection', (ws, request) => {
       const conn = new WSConnection(request, ws, this);

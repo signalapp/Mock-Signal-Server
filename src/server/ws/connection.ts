@@ -344,7 +344,10 @@ export class Connection extends Service {
       requireAuth(async () => {
         const device = this.device;
         if (!device) {
-          throw new Error('No support for unauthorized delivery');
+          debug(
+            '/v1/certificate/delivery: No support for unauthorized delivery',
+          );
+          return [ 401, { error: 'Not authorized' } ];
         }
 
         const certificate = await this.server.getSenderCertificate(device);
@@ -424,7 +427,10 @@ export class Connection extends Service {
       async (_params, _body, _headers, query = {}) => {
         const device = this.device;
         if (!device) {
-          throw new Error('No support for unauthorized delivery');
+          debug(
+            '/v1/certificate/auth/group: No support for unauthorized delivery',
+          );
+          return [ 401, { error: 'Not authorized' } ];
         }
 
         const {
@@ -558,18 +564,20 @@ export class Connection extends Service {
 
   private async handleNormal(url: string) {
     const query = parseURL(url, true).query || {};
-    if (!query.login ||
-        Array.isArray(query.login) ||
-        !query.password ||
-        Array.isArray(query.password)) {
-      debug('Unauthorized WebSocket connection');
+
+    // Note: when a device has been unlinked, it will use '' as its password
+    if (!query.login
+       || Array.isArray(query.login)
+       || typeof query.password !== 'string'
+       || Array.isArray(query.password)) {
+      debug('Unauthorized WebSocket connection @ %s: %j', url, query);
       return;
     }
 
     const device = await this.server.auth(query.login, query.password);
     if (!device) {
-      debug('Invalid WebSocket credentials %j', query);
-      this.ws.close();
+      debug('Invalid WebSocket credentials @ %s: %j', url, query);
+      this.ws.close(3000);
       return;
     }
 

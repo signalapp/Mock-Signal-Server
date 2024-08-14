@@ -343,7 +343,7 @@ export abstract class Server {
     }
     list.push(device);
 
-    debug('registered device number=%j aci=%s', number, aci);
+    debug('registered device number=%j aci=%s pni=%s', number, aci, pni);
     return device;
   }
 
@@ -378,8 +378,8 @@ export abstract class Server {
       throw new Error('Invalid number for provisioning');
     }
 
-    const aci = entry.get(provisioningCode);
-    if (!aci) {
+    const provisionIdString = entry.get(provisioningCode);
+    if (!provisionIdString) {
       throw new Error('Invalid provisioning code');
     }
     entry.delete(provisioningCode);
@@ -410,7 +410,12 @@ export abstract class Server {
     this.devicesByAuth.set(username, authEntry);
     this.devicesByAuth.set(secondUsername, authEntry);
 
-    debug('provisioned device number=%j aci=%j', number, aci);
+    debug(
+      'provisioned device id=%j number=%j aci=%j',
+      device.deviceId,
+      number,
+      device.aci,
+    );
     return device;
   }
 
@@ -474,6 +479,7 @@ export abstract class Server {
     }
     if (entry.password !== password) {
       debug('auth failed, invalid login/password %j:%j', username, password);
+      return;
     }
     return entry.device;
   }
@@ -1180,6 +1186,36 @@ export abstract class Server {
     }
 
     return list[deviceId - 1];
+  }
+  async removeDevice(number: string, deviceId: DeviceId): Promise<void> {
+    if (deviceId === PRIMARY_DEVICE_ID) {
+      throw new Error(
+        'You cannot remove a primary device; unregister account instead',
+      );
+    }
+    const list = this.devices.get(number);
+    if (!list) {
+      throw new Error(`No devices found for number ${number}`);
+    }
+    if (deviceId < 1 || deviceId > list.length) {
+      throw new Error(
+        `Device ${deviceId} is out of range for number ${number}`,
+      );
+    }
+
+    const device = list[deviceId - 1];
+
+    debug('removeDevice %j.%j (%j)', device.aci, deviceId, number);
+
+    const copy = [ ...list ];
+    copy.splice(deviceId - 1, 1);
+    this.devices.set(number, copy);
+
+    const idByNumber = `${number}.${deviceId}`;
+    this.devicesByAuth.delete(idByNumber);
+
+    const idByAci = `${device.aci}.${deviceId}`;
+    this.devicesByAuth.delete(idByAci);
   }
 
   public async getDeviceByServiceId(
