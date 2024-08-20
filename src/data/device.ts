@@ -70,6 +70,10 @@ export class Device {
   public readonly aci: AciString;
   public readonly deviceId: DeviceId;
   public readonly address: ProtocolAddress;
+  public capabilities: {
+    deleteSync: boolean;
+    versionedExpirationTimer: boolean;
+  };
 
   public accessKey?: Buffer;
   public profileKeyCommitment?: ProfileKeyCommitment;
@@ -94,6 +98,10 @@ export class Device {
 
     this.address = ProtocolAddress.new(this.aci, this.deviceId);
     this.privPniAddress = ProtocolAddress.new(this.pni, this.deviceId);
+    this.capabilities = {
+      deleteSync: true,
+      versionedExpirationTimer: true,
+    };
   }
 
   public get debugId(): string {

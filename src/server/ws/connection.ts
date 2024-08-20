@@ -102,12 +102,7 @@ export class Connection extends Service {
         unrestrictedUnidentifiedAccess: false,
         unidentifiedAccess: target.accessKey ?
           generateAccessKeyVerifier(target.accessKey) : undefined,
-        capabilities: {
-          announcementGroup: true,
-          'gv2-3': true,
-          'gv1-migration': true,
-          senderKey: true,
-        },
+        capabilities: target.capabilities,
         credential: credential?.toString('base64'),
       } ];
     };
