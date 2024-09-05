@@ -603,6 +603,11 @@ export const createHandler = (
       return;
     }
 
+    const response = server.getResponseForChallenges();
+    if (response) {
+      return send(res, response.code, response.data);
+    }
+
     return { ok: true };
   });
 

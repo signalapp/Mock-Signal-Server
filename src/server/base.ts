@@ -93,6 +93,11 @@ export type GroupCredentials = Array<{
   redemptionTime: number;
 }>;
 
+export type ChallengeResponse = Readonly<{
+  code: number,
+  data: unknown;
+}>;
+
 export type PreparedMultiDeviceMessage = ReadonlyArray<[ Device, Message ]>;
 
 export type ProvisionDeviceOptions = Readonly<{
@@ -1362,6 +1367,8 @@ export abstract class Server {
   public abstract isUnregistered(serviceId: ServiceIdString): boolean;
 
   public abstract isSendRateLimited(options: IsSendRateLimitedOptions): boolean;
+
+  public abstract getResponseForChallenges(): ChallengeResponse | undefined;
 
   //
   // Private

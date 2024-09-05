@@ -47,6 +47,7 @@ import {
 import { signalservice as Proto } from '../../protos/compiled';
 import {
   Server as BaseServer,
+  ChallengeResponse,
   EnvelopeType,
   IsSendRateLimitedOptions,
   ModifyGroupOptions,
@@ -152,6 +153,7 @@ export class Server extends BaseServer {
   private groupQueueById = new Map<string, PromiseQueue<number>>();
   private rateLimitCountByPair =
     new Map<`${ServiceIdString}:${ServiceIdString}`, number>();
+  private responseForChallenges: ChallengeResponse | undefined;
   private unregisteredServiceIds = new Set<ServiceIdString>();
 
   constructor(config: Config = {}) {
@@ -422,6 +424,21 @@ export class Server extends BaseServer {
     this.unregisteredServiceIds.delete(
       primary.device.getServiceIdByKind(serviceIdKind),
     );
+  }
+
+  public respondToChallengesWith(code = 413, data?: unknown): void {
+    this.responseForChallenges = {
+      code,
+      data,
+    };
+  }
+  
+  public stopRespondingToChallenges(): void {
+    this.responseForChallenges = undefined;
+  }
+  
+  public getResponseForChallenges(): ChallengeResponse | undefined {
+    return this.responseForChallenges;
   }
 
   public rateLimit({ source, target }: RateLimitOptions): void {
