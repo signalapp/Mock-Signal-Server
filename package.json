@@ -19,7 +19,8 @@
     "build": "npm run build:protobuf && npm run build:protobuf-ts && npm run build:tsc",
     "mocha": "mocha test/**/*-test.js",
     "lint": "eslint --cache src test",
-    "test": "npm run mocha && npm run lint"
+    "test": "npm run mocha && npm run lint",
+    "prepublish": "npm run build"
   },
   "repository": {
     "type": "git",
