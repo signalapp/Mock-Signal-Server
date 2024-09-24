@@ -17,8 +17,7 @@ export type AbbreviatedResponse = Readonly<[
 ]>;
 
 export type Handler = (
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  params: any,
+  params: Record<string, string>,
   body: Uint8Array | undefined,
   headers: Record<string, string>,
   query?: ParsedUrlQuery,
@@ -85,8 +84,13 @@ export class Router {
         continue;
       }
 
+      const decodedParams: Record<string, string> = {};
+      for (const [key, value] of Object.entries(params)) {
+        decodedParams[String(key)] = decodeURIComponent(String(value));
+      }
+
       response = await handler(
-        params,
+        decodedParams,
         request.body ?? undefined,
         headers,
         query === null ? undefined : parseQS(query),
