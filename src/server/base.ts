@@ -511,11 +511,10 @@ export abstract class Server {
   //
 
   protected async storeAttachment(attachment: Buffer): Promise<AttachmentId> {
-    const id = (ATTACHMENT_PREFIX +
-      crypto
-        .createHash('sha256')
-        .update(attachment)
-        .digest('hex')) as AttachmentId;
+    const id = crypto
+      .createHash('sha256')
+      .update(attachment)
+      .digest('hex') as AttachmentId;
     this.attachments.set(id, attachment);
     return id;
   }
