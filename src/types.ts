@@ -17,7 +17,7 @@ export type AttachmentId = string & { __attachment_id: never };
 
 export enum ServiceIdKind {
   ACI = 'ACI',
-  PNI = 'PNI'
+  PNI = 'PNI',
 }
 
 export type SignedPreKey = Readonly<{

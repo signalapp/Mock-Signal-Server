@@ -11,10 +11,7 @@ import URLPattern from 'url-pattern';
 
 const debug = createDebug('mock:ws:router');
 
-export type AbbreviatedResponse = Readonly<[
-  number,
-  unknown
-]>;
+export type AbbreviatedResponse = Readonly<[number, unknown]>;
 
 export type Handler = (
   params: Record<string, string>,
@@ -55,12 +52,12 @@ export class Router {
   public async run(request: WSRequest): Promise<WSResponse> {
     const headers: Record<string, string> = {};
     for (const pair of request.headers ?? []) {
-      const [ field, value = '' ] = pair.split(/\s*:\s*/, 2);
+      const [field, value = ''] = pair.split(/\s*:\s*/, 2);
 
       headers[field.toLowerCase()] = value;
     }
 
-    let response: AbbreviatedResponse = [ 404, { error: 'Not found' } ];
+    let response: AbbreviatedResponse = [404, { error: 'Not found' }];
 
     debug(
       'got request %s %s %s',
@@ -69,10 +66,7 @@ export class Router {
       request.path,
     );
 
-    const {
-      pathname,
-      query,
-    } = parseURL(request.path ?? '');
+    const { pathname, query } = parseURL(request.path ?? '');
 
     for (const { method, pattern, handler } of this.routes) {
       if (method !== request.verb) {
@@ -98,21 +92,21 @@ export class Router {
       break;
     }
 
-    const [ status, json ] = response;
+    const [status, json] = response;
 
     debug('response %s %s status=%d', request.verb, request.path, status);
 
     if (json instanceof Uint8Array) {
       return {
         status,
-        headers: [ 'Content-Type:application/x-protobuf' ],
+        headers: ['Content-Type:application/x-protobuf'],
         body: Buffer.from(json),
       };
     }
 
     return {
       status,
-      headers: [ 'Content-Type:application/json' ],
+      headers: ['Content-Type:application/json'],
       body: Buffer.from(JSON.stringify(json)),
     };
   }

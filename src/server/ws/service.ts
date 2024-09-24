@@ -21,8 +21,7 @@ interface RequestOptions {
 }
 
 export abstract class Service {
-  private readonly requests: Map<number, (res: WSResponse) => void> =
-    new Map();
+  private readonly requests: Map<number, (res: WSResponse) => void> = new Map();
   private lastSentId = 0;
 
   constructor(protected readonly ws: WebSocket) {
@@ -107,9 +106,11 @@ export abstract class Service {
         console.error('handleRequest error', error.stack);
         response = {
           status: 500,
-          body: Buffer.from(JSON.stringify({
-            error: error.stack,
-          })),
+          body: Buffer.from(
+            JSON.stringify({
+              error: error.stack,
+            }),
+          ),
         };
       }
 
@@ -129,7 +130,7 @@ export abstract class Service {
   }
 
   private onClose(): void {
-    for (const [ id, resolve ] of this.requests.entries()) {
+    for (const [id, resolve] of this.requests.entries()) {
       resolve({
         id: Long.fromNumber(id),
         status: 500,

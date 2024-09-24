@@ -7,11 +7,13 @@ import Long from 'long';
 import {
   Aci,
   CiphertextMessageType,
+  DecryptionErrorMessage,
   IdentityKeyPair,
   IdentityKeyStore,
   KEMKeyPair,
   KyberPreKeyRecord,
   KyberPreKeyStore as KyberPreKeyStoreBase,
+  PlaintextContent,
   Pni,
   PreKeyBundle,
   PreKeyRecord,
@@ -131,22 +133,26 @@ export type EncryptOptions = Readonly<{
   // Sender Key
   distributionId?: string;
   group?: Group;
+  skipSkdmSend?: boolean;
 }>;
 
-export type EncryptTextOptions = EncryptOptions & Readonly<{
-  withProfileKey?: boolean;
-  withPniSignature?: boolean;
-}>;
+export type EncryptTextOptions = EncryptOptions &
+  Readonly<{
+    withProfileKey?: boolean;
+    withPniSignature?: boolean;
+  }>;
 
 export type CreateGroupOptions = Readonly<{
   title: string;
   members: ReadonlyArray<PrimaryDevice>;
 }>;
 
-export type SendUpdateToList = ReadonlyArray<Readonly<{
-  device: Device;
-  options?: EncryptOptions;
-}>>;
+export type SendUpdateToList = ReadonlyArray<
+  Readonly<{
+    device: Device;
+    options?: EncryptOptions;
+  }>
+>;
 
 export type InviteToGroupOptions = Readonly<{
   timestamp?: number;
@@ -209,22 +215,33 @@ export type ContentQueueEntry = Readonly<{
   content: Proto.IContent;
 }>;
 
-export type MessageQueueEntry = ContentQueueEntry & Readonly<{
-  body: string;
-  dataMessage: Proto.IDataMessage;
-}>;
+export type DecryptionErrorQueueEntry = ContentQueueEntry &
+  Readonly<{
+    timestamp: number;
+    ratchetKey: PublicKey | undefined;
+    senderDevice: number;
+  }>;
 
-export type ReceiptQueueEntry = ContentQueueEntry & Readonly<{
-  receiptMessage: Proto.IReceiptMessage;
-}>;
+export type MessageQueueEntry = ContentQueueEntry &
+  Readonly<{
+    body: string;
+    dataMessage: Proto.IDataMessage;
+  }>;
 
-export type StoryQueueEntry = ContentQueueEntry & Readonly<{
-  storyMessage: Proto.IStoryMessage;
-}>;
+export type ReceiptQueueEntry = ContentQueueEntry &
+  Readonly<{
+    receiptMessage: Proto.IReceiptMessage;
+  }>;
 
-export type EditMessageQueueEntry = ContentQueueEntry & Readonly<{
-  editMessage: Proto.IEditMessage;
-}>;
+export type StoryQueueEntry = ContentQueueEntry &
+  Readonly<{
+    storyMessage: Proto.IStoryMessage;
+  }>;
+
+export type EditMessageQueueEntry = ContentQueueEntry &
+  Readonly<{
+    editMessage: Proto.IEditMessage;
+  }>;
 
 export type SyncMessageQueueEntry = Readonly<{
   source: Device;
@@ -318,10 +335,13 @@ class PreKeyStore extends PreKeyStoreBase {
 
 class KyberPreKeyStore extends KyberPreKeyStoreBase {
   private lastId = 0;
-  private readonly records = new Map<number, {
-    isLastResort: boolean,
-    record: KyberPreKeyRecord
-  }>();
+  private readonly records = new Map<
+    number,
+    {
+      isLastResort: boolean;
+      record: KyberPreKeyRecord;
+    }
+  >();
 
   async saveKyberPreKey(id: number, record: KyberPreKeyRecord): Promise<void> {
     if (this.records.get(id)) {
@@ -382,10 +402,7 @@ class IdentityStore extends IdentityKeyStore {
     return this.registrationId;
   }
 
-  async saveIdentity(
-    name: ProtocolAddress,
-    key: PublicKey,
-  ): Promise<boolean> {
+  async saveIdentity(name: ProtocolAddress, key: PublicKey): Promise<boolean> {
     this.knownIdentities.set(addressToString(name), key);
     return true;
   }
@@ -396,8 +413,7 @@ class IdentityStore extends IdentityKeyStore {
   }
 
   async getIdentity(name: ProtocolAddress): Promise<PublicKey | null> {
-    return this.knownIdentities.get(addressToString(name)) ||
-      null;
+    return this.knownIdentities.get(addressToString(name)) || null;
   }
 
   // Not part of IdentityKeyStore API
@@ -446,13 +462,13 @@ export class SenderKeyStore extends SenderKeyStoreBase {
     distributionId: Uuid,
     record: SenderKeyRecord,
   ): Promise<void> {
-    this.keys.set(`${addressToString(sender)}.${distributionId}`, record);
+    this.keys.set(`${sender.serviceId}.${distributionId}`, record);
   }
   async getSenderKey(
     sender: ProtocolAddress,
     distributionId: Uuid,
   ): Promise<SenderKeyRecord | null> {
-    const key = this.keys.get(`${addressToString(sender)}.${distributionId}`);
+    const key = this.keys.get(`${sender.serviceId}.${distributionId}`);
     return key || null;
   }
 }
@@ -467,6 +483,8 @@ export class PrimaryDevice {
   private pniPrivateKey = PrivateKey.generate();
   private readonly contactsBlob: Proto.IAttachmentPointer;
   private privSenderCertificate: SenderCertificate | undefined;
+  private readonly decryptionErrorQueue =
+    new PromiseQueue<DecryptionErrorQueueEntry>();
   private readonly messageQueue = new PromiseQueue<MessageQueueEntry>();
   private readonly receiptQueue = new PromiseQueue<ReceiptQueueEntry>();
   private readonly storyQueue = new PromiseQueue<StoryQueueEntry>();
@@ -495,12 +513,16 @@ export class PrimaryDevice {
     public readonly device: Device,
     private readonly config: Config,
   ) {
-    for (const serviceIdKind of [ ServiceIdKind.ACI, ServiceIdKind.PNI ]) {
-      this.identity.set(serviceIdKind, new IdentityStore(
-        serviceIdKind === ServiceIdKind.ACI ?
-          this.privateKey : this.pniPrivateKey,
-        this.device.getRegistrationId(serviceIdKind),
-      ));
+    for (const serviceIdKind of [ServiceIdKind.ACI, ServiceIdKind.PNI]) {
+      this.identity.set(
+        serviceIdKind,
+        new IdentityStore(
+          serviceIdKind === ServiceIdKind.ACI
+            ? this.privateKey
+            : this.pniPrivateKey,
+          this.device.getRegistrationId(serviceIdKind),
+        ),
+      );
 
       this.preKeys.set(serviceIdKind, new PreKeyStore());
       this.kyberPreKeys.set(serviceIdKind, new KyberPreKeyStore());
@@ -525,7 +547,7 @@ export class PrimaryDevice {
       throw new Error('Already initialized');
     }
 
-    for (const serviceIdKind of [ ServiceIdKind.ACI, ServiceIdKind.PNI ]) {
+    for (const serviceIdKind of [ServiceIdKind.ACI, ServiceIdKind.PNI]) {
       const identity = this.identity.get(serviceIdKind);
       assert.ok(identity);
       await identity.saveIdentity(
@@ -571,42 +593,44 @@ export class PrimaryDevice {
   public async generateKeys(
     device: Device,
     serviceIdKind: ServiceIdKind,
-  ): Promise<DeviceKeys & {
-    // Note: these records are only used in the PNP change number scenario
-    signedPreKeyRecord: SignedPreKeyRecord,
-    lastResortKeyRecord: KyberPreKeyRecord
-  }> {
+  ): Promise<
+    DeviceKeys & {
+      // Note: these records are only used in the PNP change number scenario
+      signedPreKeyRecord: SignedPreKeyRecord;
+      lastResortKeyRecord: KyberPreKeyRecord;
+    }
+  > {
     const isPrimary = device === this.device;
 
     const signedPreKey = PrivateKey.generate();
     const signedPreKeySig = this.getPrivateKey(serviceIdKind).sign(
-      signedPreKey.getPublicKey().serialize());
-    const signedPreKeyId = this.signedPreKeys.get(
-      serviceIdKind,
-    )?.getNextId() || 1;
+      signedPreKey.getPublicKey().serialize(),
+    );
+    const signedPreKeyId =
+      this.signedPreKeys.get(serviceIdKind)?.getNextId() || 1;
     const signedPreKeyRecord = SignedPreKeyRecord.new(
       signedPreKeyId,
       Date.now(),
       signedPreKey.getPublicKey(),
       signedPreKey,
-      signedPreKeySig);
+      signedPreKeySig,
+    );
     if (isPrimary) {
-      await this.signedPreKeys.get(serviceIdKind)?.saveSignedPreKey(
-        signedPreKeyId,
-        signedPreKeyRecord);
+      await this.signedPreKeys
+        .get(serviceIdKind)
+        ?.saveSignedPreKey(signedPreKeyId, signedPreKeyRecord);
     }
 
-    const lastResortKeyId = this.kyberPreKeys.get(
-      serviceIdKind,
-    )?.getNextId() || 1;
+    const lastResortKeyId =
+      this.kyberPreKeys.get(serviceIdKind)?.getNextId() || 1;
     const lastResortKeyRecord = this.generateKyberPreKey(
       lastResortKeyId,
       serviceIdKind,
     );
     if (isPrimary) {
-      await this.kyberPreKeys.get(serviceIdKind)?.saveLastResortKey(
-        lastResortKeyId,
-        lastResortKeyRecord);
+      await this.kyberPreKeys
+        .get(serviceIdKind)
+        ?.saveLastResortKey(lastResortKeyId, lastResortKeyRecord);
     }
 
     return {
@@ -659,7 +683,8 @@ export class PrimaryDevice {
   ): KyberPreKeyRecord {
     const kyberPreKey = KEMKeyPair.generate();
     const kyberPreKeySig = this.getPrivateKey(serviceIdKind).sign(
-      kyberPreKey.getPublicKey().serialize());
+      kyberPreKey.getPublicKey().serialize(),
+    );
     const kyberPreKeyRecord = KyberPreKeyRecord.new(
       keyId,
       Date.now(),
@@ -706,10 +731,10 @@ export class PrimaryDevice {
 
   public getPublicKey(serviceIdKind: ServiceIdKind): PublicKey {
     switch (serviceIdKind) {
-    case ServiceIdKind.ACI:
-      return this.publicKey;
-    case ServiceIdKind.PNI:
-      return this.privPniPublicKey;
+      case ServiceIdKind.ACI:
+        return this.publicKey;
+      case ServiceIdKind.PNI:
+        return this.privPniPublicKey;
     }
   }
 
@@ -747,7 +772,8 @@ export class PrimaryDevice {
       bundle,
       target.getAddressByKind(serviceIdKind),
       this.sessions,
-      identity);
+      identity,
+    );
   }
 
   //
@@ -786,21 +812,25 @@ export class PrimaryDevice {
     );
   }
 
-  public async createGroup(
-    { title, members: memberDevices }: CreateGroupOptions,
-  ): Promise<Group> {
+  public async createGroup({
+    title,
+    members: memberDevices,
+  }: CreateGroupOptions): Promise<Group> {
     const groupParams = GroupSecretParams.generate();
 
-    const members = await Promise.all(memberDevices.map(async (member) => {
-      const presentation = await member.getProfileKeyPresentation(groupParams);
+    const members = await Promise.all(
+      memberDevices.map(async (member) => {
+        const presentation =
+          await member.getProfileKeyPresentation(groupParams);
 
-      return {
-        aci: member.device.aci,
-        profileKey: member.profileKey,
-        presentation,
-        joinedAtVersion: Long.fromNumber(0),
-      };
-    }));
+        return {
+          aci: member.device.aci,
+          profileKey: member.profileKey,
+          presentation,
+          joinedAtVersion: Long.fromNumber(0),
+        };
+      }),
+    );
 
     const clientGroup = Group.fromConfig({
       secretParams: groupParams,
@@ -833,9 +863,7 @@ export class PrimaryDevice {
     {
       timestamp = Date.now(),
       serviceIdKind = ServiceIdKind.ACI,
-      sendUpdateTo = [
-        { device: invitee, options: { serviceIdKind } },
-      ],
+      sendUpdateTo = [{ device: invitee, options: { serviceIdKind } }],
     }: InviteToGroupOptions = {},
   ): Promise<Group> {
     const serverGroup = await this.config.getGroup(
@@ -850,11 +878,13 @@ export class PrimaryDevice {
       group: serverGroup,
       actions: {
         version: group.revision + 1,
-        addPendingMembers: [ {
-          added: {
-            member: { userId, role: Proto.Member.Role.DEFAULT },
+        addPendingMembers: [
+          {
+            added: {
+              member: { userId, role: Proto.Member.Role.DEFAULT },
+            },
           },
-        } ],
+        ],
       },
       aciCiphertext: group.encryptServiceId(this.device.aci),
       pniCiphertext: group.encryptServiceId(this.device.pni),
@@ -875,25 +905,27 @@ export class PrimaryDevice {
         ).finish(),
       };
 
-      await Promise.all(sendUpdateTo.map(async ({ device, options }) => {
-        // Send the invitation
-        const encryptOptions = {
-          timestamp,
-          ...options,
-        };
+      await Promise.all(
+        sendUpdateTo.map(async ({ device, options }) => {
+          // Send the invitation
+          const encryptOptions = {
+            timestamp,
+            ...options,
+          };
 
-        const envelope = await this.encryptContent(
-          device,
-          {
-            dataMessage: {
-              groupV2,
-              timestamp: Long.fromNumber(encryptOptions.timestamp),
+          const envelope = await this.encryptContent(
+            device,
+            {
+              dataMessage: {
+                groupV2,
+                timestamp: Long.fromNumber(encryptOptions.timestamp),
+              },
             },
-          },
-          encryptOptions,
-        );
-        await this.config.send(device, envelope);
-      }));
+            encryptOptions,
+          );
+          await this.config.send(device, envelope);
+        }),
+      );
     }
 
     return updatedGroup;
@@ -901,10 +933,7 @@ export class PrimaryDevice {
 
   public async acceptPniInvite(
     group: Group,
-    {
-      timestamp = Date.now(),
-      sendUpdateTo = [],
-    }: AcceptPniInviteOptions = {},
+    { timestamp = Date.now(), sendUpdateTo = [] }: AcceptPniInviteOptions = {},
   ): Promise<Group> {
     const serverGroup = await this.config.getGroup(
       group.publicParams.serialize(),
@@ -914,16 +943,19 @@ export class PrimaryDevice {
     const aciCiphertext = group.encryptServiceId(this.device.aci);
     const pniCiphertext = group.encryptServiceId(this.device.pni);
 
-    const presentation =
-      await this.getProfileKeyPresentation(group.secretParams);
+    const presentation = await this.getProfileKeyPresentation(
+      group.secretParams,
+    );
 
     const modifyResult = await this.config.modifyGroup({
       group: serverGroup,
       actions: {
         version: group.revision + 1,
-        promoteMembersPendingPniAciProfileKey: [ {
-          presentation: presentation.serialize(),
-        } ],
+        promoteMembersPendingPniAciProfileKey: [
+          {
+            presentation: presentation.serialize(),
+          },
+        ],
       },
       aciCiphertext,
       pniCiphertext,
@@ -938,28 +970,31 @@ export class PrimaryDevice {
 
     const groupV2 = {
       ...updatedGroup.toContext(),
-      groupChange: Proto.GroupChange.encode(
-        modifyResult.signedChange,
-      ).finish(),
+      groupChange: Proto.GroupChange.encode(modifyResult.signedChange).finish(),
     };
 
-    await Promise.all(sendUpdateTo.map(async ({ device, options }) => {
-      // Send the accepted invite
-      const encryptOptions = {
-        timestamp,
-        ...options,
-      };
-      const content = {
-        dataMessage: {
-          groupV2,
-          timestamp: Long.fromNumber(encryptOptions.timestamp),
-        },
-      };
+    await Promise.all(
+      sendUpdateTo.map(async ({ device, options }) => {
+        // Send the accepted invite
+        const encryptOptions = {
+          timestamp,
+          ...options,
+        };
+        const content = {
+          dataMessage: {
+            groupV2,
+            timestamp: Long.fromNumber(encryptOptions.timestamp),
+          },
+        };
 
-      const envelope = await this.encryptContent(
-        device, content, encryptOptions);
-      await this.config.send(device, envelope);
-    }));
+        const envelope = await this.encryptContent(
+          device,
+          content,
+          encryptOptions,
+        );
+        await this.config.send(device, envelope);
+      }),
+    );
 
     return updatedGroup;
   }
@@ -968,8 +1003,10 @@ export class PrimaryDevice {
   // Storage Service
   //
 
-  public async waitForStorageState({ after }: {
-    after?: StorageState,
+  public async waitForStorageState({
+    after,
+  }: {
+    after?: StorageState;
   } = {}): Promise<StorageState> {
     debug(
       'waiting for storage manifest for device=%s after version=%d',
@@ -1038,7 +1075,7 @@ export class PrimaryDevice {
     const state = await this.convertManifestToStorageState(manifest);
     const keys = await this.config.getAllStorageKeys();
 
-    return keys.filter(key => !state.hasKey(key));
+    return keys.filter((key) => !state.hasKey(key));
   }
 
   //
@@ -1067,18 +1104,31 @@ export class PrimaryDevice {
     envelopeType: EnvelopeType,
     encrypted: Buffer,
   ): Promise<void> {
-    const { unsealedSource, content, envelopeType: unsealedType } =
-      await this.lock(async () => {
-        return await this.decrypt(
-          source,
-          serviceIdKind,
-          envelopeType,
-          encrypted,
-        );
-      });
+    const {
+      unsealedSource,
+      content,
+      envelopeType: unsealedType,
+    } = await this.lock(async () => {
+      return await this.decrypt(source, serviceIdKind, envelopeType, encrypted);
+    });
 
     let handled = true;
-    if (content.syncMessage) {
+    if (
+      content.decryptionErrorMessage &&
+      content.decryptionErrorMessage.length > 0
+    ) {
+      assert.strictEqual(
+        serviceIdKind,
+        ServiceIdKind.ACI,
+        'Got sync message on PNI',
+      );
+      await this.handleResendRequest(
+        unsealedSource,
+        serviceIdKind,
+        unsealedType,
+        content,
+      );
+    } else if (content.syncMessage) {
       assert.strictEqual(
         serviceIdKind,
         ServiceIdKind.ACI,
@@ -1118,8 +1168,10 @@ export class PrimaryDevice {
     }
 
     const { senderKeyDistributionMessage } = content;
-    if (senderKeyDistributionMessage &&
-        senderKeyDistributionMessage.length > 0) {
+    if (
+      senderKeyDistributionMessage &&
+      senderKeyDistributionMessage.length > 0
+    ) {
       handled = true;
       await this.processSenderKeyDistribution(
         unsealedSource,
@@ -1162,9 +1214,9 @@ export class PrimaryDevice {
       dataMessage: {
         groupV2: options.group?.toContext(),
         body: text,
-        profileKey: options.withProfileKey ?
-          this.profileKey.serialize() :
-          undefined,
+        profileKey: options.withProfileKey
+          ? this.profileKey.serialize()
+          : undefined,
         timestamp: Long.fromNumber(encryptOptions.timestamp),
       },
       pniSignatureMessage,
@@ -1211,9 +1263,7 @@ export class PrimaryDevice {
     return await this.encryptContent(target, content, options);
   }
 
-  public async sendFetchStorage(
-    options: FetchStorageOptions,
-  ): Promise<void> {
+  public async sendFetchStorage(options: FetchStorageOptions): Promise<void> {
     const content = {
       syncMessage: {
         fetchLatest: {
@@ -1232,11 +1282,13 @@ export class PrimaryDevice {
 
     const content = {
       syncMessage: {
-        stickerPackOperation: [ {
-          packId: options.packId,
-          packKey: options.packKey,
-          type: options.type === 'install' ? Type.INSTALL : Type.REMOVE,
-        } ],
+        stickerPackOperation: [
+          {
+            packId: options.packId,
+            packKey: options.packKey,
+            type: options.type === 'install' ? Type.INSTALL : Type.REMOVE,
+          },
+        ],
       },
     };
 
@@ -1258,8 +1310,8 @@ export class PrimaryDevice {
     const content = {
       receiptMessage: {
         type,
-        timestamp: options.messageTimestamps.map(
-          (timestamp) => Long.fromNumber(timestamp),
+        timestamp: options.messageTimestamps.map((timestamp) =>
+          Long.fromNumber(timestamp),
         ),
       },
     };
@@ -1312,16 +1364,18 @@ export class PrimaryDevice {
     this.pniPrivateKey = newPniIdentity.privateKey;
     this.privPniPublicKey = newPniIdentity.publicKey;
 
-    const allDevices = [ this.device, ...this.secondaryDevices ];
+    const allDevices = [this.device, ...this.secondaryDevices];
 
     // Update PNI
-    await Promise.all(allDevices.map(async (device) => {
-      await this.config.changeDeviceNumber(device, {
-        pni: newPni,
-        number: newNumber,
-        pniRegistrationId: newPniRegistrationId,
-      });
-    }));
+    await Promise.all(
+      allDevices.map(async (device) => {
+        await this.config.changeDeviceNumber(device, {
+          pni: newPni,
+          number: newNumber,
+          pniRegistrationId: newPniRegistrationId,
+        });
+      }),
+    );
 
     const identity = this.identity.get(ServiceIdKind.PNI);
     assert(identity, 'Should have a PNI identity');
@@ -1376,14 +1430,14 @@ export class PrimaryDevice {
   public async sendChangeNumber(
     result: PrepareChangeNumberResult,
   ): Promise<void> {
-    await Promise.all(result.map(({ device, envelope }) => {
-      return this.config.send(device, envelope);
-    }));
+    await Promise.all(
+      result.map(({ device, envelope }) => {
+        return this.config.send(device, envelope);
+      }),
+    );
   }
 
-  public async changeNumber(
-    options: EncryptOptions = {},
-  ): Promise<void> {
+  public async changeNumber(options: EncryptOptions = {}): Promise<void> {
     const result = await this.prepareChangeNumber(options);
     await this.sendChangeNumber(result);
   }
@@ -1395,7 +1449,8 @@ export class PrimaryDevice {
   ): Promise<void> {
     await this.config.send(
       target,
-      await this.encryptText(target, text, options));
+      await this.encryptText(target, text, options),
+    );
   }
 
   public async sendRaw(
@@ -1405,7 +1460,8 @@ export class PrimaryDevice {
   ): Promise<void> {
     await this.config.send(
       target,
-      await this.encryptContent(target, content, options));
+      await this.encryptContent(target, content, options),
+    );
   }
 
   public async sendSenderKey(
@@ -1423,9 +1479,15 @@ export class PrimaryDevice {
       senderKeys,
     );
 
-    this.sendRaw(target, {
-      senderKeyDistributionMessage: skdm.serialize(),
-    }, options);
+    if (!options?.skipSkdmSend) {
+      this.sendRaw(
+        target,
+        {
+          senderKeyDistributionMessage: skdm.serialize(),
+        },
+        options,
+      );
+    }
 
     return distributionId;
   }
@@ -1442,8 +1504,10 @@ export class PrimaryDevice {
     const envelope = Proto.Envelope.decode(encrypted);
 
     if (source.aci !== envelope.sourceServiceId) {
-      throw new Error(`Invalid envelope source. Expected: ${source.aci}, ` +
-        `Got: ${envelope.sourceServiceId}`);
+      throw new Error(
+        `Invalid envelope source. Expected: ${source.aci}, ` +
+          `Got: ${envelope.sourceServiceId}`,
+      );
     }
 
     let envelopeType: EnvelopeType;
@@ -1457,34 +1521,57 @@ export class PrimaryDevice {
       throw new Error('Unsupported envelope type');
     }
 
-    const serviceIdKind = envelope.destinationServiceId ?
-      this.device.getServiceIdKind(
-        envelope.destinationServiceId as ServiceIdString,
-      ) :
-      ServiceIdKind.ACI;
+    const serviceIdKind = envelope.destinationServiceId
+      ? this.device.getServiceIdKind(
+          envelope.destinationServiceId as ServiceIdString,
+        )
+      : ServiceIdKind.ACI;
 
     return await this.handleEnvelope(
-      source, serviceIdKind, envelopeType, Buffer.from(envelope.content));
+      source,
+      serviceIdKind,
+      envelopeType,
+      Buffer.from(envelope.content),
+    );
   }
 
   public async waitForMessage(): Promise<MessageQueueEntry> {
     return this.messageQueue.shift();
   }
+  public getMessageQueueSize(): number {
+    return this.messageQueue.size;
+  }
+
+  public async waitForDecryptionError(): Promise<DecryptionErrorQueueEntry> {
+    return this.decryptionErrorQueue.shift();
+  }
+  public getDecryptionErrorQueueSize(): number {
+    return this.decryptionErrorQueue.size;
+  }
 
   public async waitForReceipt(): Promise<ReceiptQueueEntry> {
     return this.receiptQueue.shift();
+  }
+  public getReceiptQueueSize(): number {
+    return this.receiptQueue.size;
   }
 
   public async waitForStory(): Promise<StoryQueueEntry> {
     return this.storyQueue.shift();
   }
+  public getStoryQueueSize(): number {
+    return this.storyQueue.size;
+  }
 
   public async waitForEditMessage(): Promise<EditMessageQueueEntry> {
     return this.editMessageQueue.shift();
   }
+  public getEditQueueSize(): number {
+    return this.editMessageQueue.size;
+  }
 
   public async waitForSyncMessage(
-    predicate: ((entry: SyncMessageQueueEntry) => boolean) = () => true,
+    predicate: (entry: SyncMessageQueueEntry) => boolean = () => true,
   ): Promise<SyncMessageQueueEntry> {
     for (;;) {
       const entry = await this.syncMessageQueue.shift();
@@ -1502,9 +1589,7 @@ export class PrimaryDevice {
   private async getProfileKeyPresentation(
     groupParams: GroupSecretParams,
   ): Promise<ProfileKeyCredentialPresentation> {
-    const ops = new ClientZkProfileOperations(
-      this.config.serverPublicParams,
-    );
+    const ops = new ClientZkProfileOperations(this.config.serverPublicParams);
 
     const ctx = ops.createProfileKeyCredentialRequestContext(
       Aci.parseFromServiceIdString(this.device.aci),
@@ -1514,10 +1599,7 @@ export class PrimaryDevice {
       this.device,
       ctx.getRequest(),
     );
-    assert.ok(
-      response,
-      `Member device ${this.device.aci} not initialized`,
-    );
+    assert.ok(response, `Member device ${this.device.aci} not initialized`);
 
     const credential = ops.receiveExpiringProfileKeyCredential(
       ctx,
@@ -1532,10 +1614,10 @@ export class PrimaryDevice {
 
   private getPrivateKey(serviceIdKind: ServiceIdKind): PrivateKey {
     switch (serviceIdKind) {
-    case ServiceIdKind.ACI:
-      return this.privateKey;
-    case ServiceIdKind.PNI:
-      return this.pniPrivateKey;
+      case ServiceIdKind.ACI:
+        return this.privateKey;
+      case ServiceIdKind.PNI:
+        return this.pniPrivateKey;
     }
   }
 
@@ -1666,6 +1748,30 @@ export class PrimaryDevice {
     }
   }
 
+  private handleResendRequest(
+    source: Device,
+    serviceIdKind: ServiceIdKind,
+    envelopeType: EnvelopeType,
+    content: Proto.IContent,
+  ): void {
+    const { decryptionErrorMessage } = content;
+    assert.ok(decryptionErrorMessage, 'decryptionErrorMessage must be present');
+
+    const request = DecryptionErrorMessage.deserialize(
+      Buffer.from(decryptionErrorMessage),
+    );
+
+    this.decryptionErrorQueue.push({
+      source,
+      serviceIdKind,
+      envelopeType,
+      content,
+      timestamp: request.timestamp(),
+      ratchetKey: request.ratchetKey(),
+      senderDevice: request.deviceId(),
+    });
+  }
+
   private handleDataMessage(
     source: Device,
     serviceIdKind: ServiceIdKind,
@@ -1755,10 +1861,7 @@ export class PrimaryDevice {
     assert.ok(this.isInitialized, 'Not initialized');
 
     // "Pad"
-    const paddedMessage = Buffer.concat([
-      message,
-      Buffer.from([ 0x80 ]),
-    ]);
+    const paddedMessage = Buffer.concat([message, Buffer.from([0x80])]);
 
     let envelopeType: Proto.Envelope.Type;
     let content: Buffer;
@@ -1770,12 +1873,10 @@ export class PrimaryDevice {
     if (sealed) {
       assert(
         serviceIdKind === ServiceIdKind.ACI,
-        'Can\'t send sealed sender to PNI',
+        "Can't send sealed sender to PNI",
       );
 
       if (distributionId) {
-        assert(group, 'Should have a Group along with distributionId');
-
         const senderKey = this.senderKeys.get(ServiceIdKind.ACI);
         assert(senderKey, 'Should have an ACI sender keys');
 
@@ -1790,12 +1891,12 @@ export class PrimaryDevice {
           ciphertext,
           this.senderCertificate,
           SignalClient.ContentHint.Implicit,
-          group.publicParams.getGroupIdentifier().serialize(),
+          group?.publicParams.getGroupIdentifier().serialize() ?? null,
         );
         const multiRecipient =
           await SignalClient.sealedSenderMultiRecipientEncrypt(
             usmc,
-            [ target.getAddressByKind(serviceIdKind) ],
+            [target.getAddressByKind(serviceIdKind)],
             identity,
             this.sessions,
           );
@@ -1810,7 +1911,8 @@ export class PrimaryDevice {
           target.getAddressByKind(serviceIdKind),
           this.senderCertificate,
           this.sessions,
-          identity);
+          identity,
+        );
       }
 
       envelopeType = Proto.Envelope.Type.UNIDENTIFIED_SENDER;
@@ -1819,13 +1921,14 @@ export class PrimaryDevice {
         paddedMessage,
         target.getAddressByKind(serviceIdKind),
         this.sessions,
-        identity);
+        identity,
+      );
       content = ciphertext.serialize();
 
       if (ciphertext.type() === CiphertextMessageType.Whisper) {
         assert(
           serviceIdKind === ServiceIdKind.ACI,
-          'Can\'t send non-prekey messages to PNI',
+          "Can't send non-prekey messages to PNI",
         );
 
         envelopeType = Proto.Envelope.Type.CIPHERTEXT;
@@ -1837,16 +1940,18 @@ export class PrimaryDevice {
       }
     }
 
-    const envelope = Buffer.from(Proto.Envelope.encode({
-      type: envelopeType,
-      sourceServiceId: this.device.aci,
-      sourceDevice: this.device.deviceId,
-      destinationServiceId: target.getServiceIdByKind(serviceIdKind),
-      updatedPni,
-      serverTimestamp: Long.fromNumber(timestamp),
-      timestamp: Long.fromNumber(timestamp),
-      content,
-    }).finish());
+    const envelope = Buffer.from(
+      Proto.Envelope.encode({
+        type: envelopeType,
+        sourceServiceId: this.device.aci,
+        sourceDevice: this.device.deviceId,
+        destinationServiceId: target.getServiceIdByKind(serviceIdKind),
+        updatedPni,
+        serverTimestamp: Long.fromNumber(timestamp),
+        timestamp: Long.fromNumber(timestamp),
+        content,
+      }).finish(),
+    );
 
     debug('encrypting envelope finish');
 
@@ -1872,14 +1977,21 @@ export class PrimaryDevice {
     );
 
     let decrypted: Buffer;
-    if (envelopeType === EnvelopeType.CipherText) {
+
+    if (envelopeType === EnvelopeType.Plaintext) {
+      assert(source !== undefined, 'Plaintext must have source');
+
+      const plaintext = PlaintextContent.deserialize(encrypted);
+      decrypted = plaintext.body();
+    } else if (envelopeType === EnvelopeType.CipherText) {
       assert(source !== undefined, 'CipherText must have source');
 
       decrypted = await SignalClient.signalDecrypt(
         SignalMessage.deserialize(encrypted),
         source.getAddressByKind(serviceIdKind),
         this.sessions,
-        identity);
+        identity,
+      );
     } else if (envelopeType === EnvelopeType.PreKey) {
       assert(source !== undefined, 'PreKey must have source');
 
@@ -1890,7 +2002,8 @@ export class PrimaryDevice {
         identity,
         preKeys,
         signedPreKeys,
-        kyberPreKeys);
+        kyberPreKeys,
+      );
     } else if (envelopeType === EnvelopeType.SenderKey) {
       assert(source !== undefined, 'SenderKey must have source');
 
@@ -1902,30 +2015,36 @@ export class PrimaryDevice {
     } else if (envelopeType === EnvelopeType.SealedSender) {
       assert(source === undefined, 'Sealed sender must have no source');
 
-      const usmc =
-        await SignalClient.sealedSenderDecryptToUsmc(encrypted, identity);
+      const usmc = await SignalClient.sealedSenderDecryptToUsmc(
+        encrypted,
+        identity,
+      );
 
       const unsealedType = usmc.msgType();
       const certificate = usmc.senderCertificate();
 
       const sender = await this.config.getDeviceByServiceId(
         certificate.senderUuid() as ServiceIdString,
-        certificate.senderDeviceId() as DeviceId);
+        certificate.senderDeviceId() as DeviceId,
+      );
       assert(sender !== undefined, 'Unsealed sender not found');
 
       let subType: EnvelopeType;
       switch (unsealedType) {
-      case CiphertextMessageType.PreKey:
-        subType = EnvelopeType.PreKey;
-        break;
-      case CiphertextMessageType.Whisper:
-        subType = EnvelopeType.CipherText;
-        break;
-      case CiphertextMessageType.SenderKey:
-        subType = EnvelopeType.SenderKey;
-        break;
-      default:
-        throw new Error(`Unsupported usmc type: ${unsealedType}`);
+        case CiphertextMessageType.PreKey:
+          subType = EnvelopeType.PreKey;
+          break;
+        case CiphertextMessageType.Whisper:
+          subType = EnvelopeType.CipherText;
+          break;
+        case CiphertextMessageType.SenderKey:
+          subType = EnvelopeType.SenderKey;
+          break;
+        case CiphertextMessageType.Plaintext:
+          subType = EnvelopeType.Plaintext;
+          break;
+        default:
+          throw new Error(`Unsupported usmc type: ${unsealedType}`);
       }
 
       // TODO(indutny): use sealedSenderDecryptMessage once it will support
@@ -2011,8 +2130,8 @@ export class PrimaryDevice {
     assert(decryptedManifest.version, 'Consistency check');
 
     const version = decryptedManifest.version.toNumber();
-    const items = await Promise.all((decryptedManifest.keys || []).map(
-      async ({ type, raw: key }) => {
+    const items = await Promise.all(
+      (decryptedManifest.keys || []).map(async ({ type, raw: key }) => {
         assert(
           type !== null && type !== undefined,
           'Missing manifestRecord.keys.type',
@@ -2033,8 +2152,8 @@ export class PrimaryDevice {
             value: item,
           }),
         };
-      },
-    ));
+      }),
+    );
 
     return new StorageState(version, items);
   }

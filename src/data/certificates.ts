@@ -12,12 +12,7 @@ export type Certificates = Readonly<{
   serverTrustRoot: string;
 }>;
 
-const CERTS_DIR = path.join(
-  __dirname,
-  '..',
-  '..',
-  'certs',
-);
+const CERTS_DIR = path.join(__dirname, '..', '..', 'certs');
 
 async function loadString(file: string): Promise<string> {
   const raw = await fs.readFile(path.join(CERTS_DIR, file));
@@ -32,10 +27,7 @@ async function loadJSONProperty(
   const obj = JSON.parse(raw.toString());
   const value = obj[property];
 
-  assert(
-    typeof value === 'string',
-    `Expected string at: ${file}/${property}`,
-  );
+  assert(typeof value === 'string', `Expected string at: ${file}/${property}`);
   return value;
 }
 
@@ -47,14 +39,8 @@ export async function load(): Promise<Certificates> {
     serverTrustRoot,
   ] = await Promise.all([
     loadString('ca-cert.pem'),
-    loadJSONProperty(
-      'zk-params.json',
-      'genericPublicParams',
-    ),
-    loadJSONProperty(
-      'zk-params.json',
-      'publicParams',
-    ),
+    loadJSONProperty('zk-params.json', 'genericPublicParams'),
+    loadJSONProperty('zk-params.json', 'publicParams'),
     loadJSONProperty('trust-root.json', 'publicKey'),
   ]);
 

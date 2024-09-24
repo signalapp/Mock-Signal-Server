@@ -25,22 +25,24 @@ export function generateRandomE164(): string {
   return number;
 }
 
-export type ParseAuthHeaderResult = {
-  username: string;
-  password: string;
-  error?: undefined;
-} | {
-  username?: undefined
-  password?: undefined;
-  error: string;
-};
+export type ParseAuthHeaderResult =
+  | {
+      username: string;
+      password: string;
+      error?: undefined;
+    }
+  | {
+      username?: undefined;
+      password?: undefined;
+      error: string;
+    };
 
 export function parseAuthHeader(header?: string): ParseAuthHeaderResult {
   if (!header) {
     return { error: 'Missing Authorization header' };
   }
 
-  const [ basic, base64 ] = header.split(/\s+/g, 2);
+  const [basic, base64] = header.split(/\s+/g, 2);
   if (basic.toLowerCase() !== 'basic') {
     return { error: `Unsupported authorization type ${basic}` };
   }
@@ -49,7 +51,7 @@ export function parseAuthHeader(header?: string): ParseAuthHeaderResult {
   let password: string;
   try {
     const decoded = Buffer.from(base64, 'base64').toString();
-    [ username, password ] = decoded.split(':', 2);
+    [username, password] = decoded.split(':', 2);
   } catch (error) {
     assert(error instanceof Error);
     return { error: error.message };
@@ -73,6 +75,10 @@ export class PromiseQueue<T> {
 
   constructor(config: PromiseQueueConfig = {}) {
     this.defaultTimeout = config.timeout;
+  }
+
+  public get size() {
+    return this.entries.length;
   }
 
   public async pushAndWait(
@@ -120,9 +126,7 @@ export class PromiseQueue<T> {
     });
   }
 
-  public push(
-    value: T,
-  ): void {
+  public push(value: T): void {
     // We were waiting for `.shift()` already
     const resolveEntry = this.resolvers.shift();
     if (resolveEntry) {

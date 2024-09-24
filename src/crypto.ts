@@ -16,10 +16,7 @@ import { signalservice as Proto } from '../protos/compiled';
 
 import { Attachment } from './data/attachment';
 import type { ServerPreKey, ServerSignedPreKey } from './data/schemas';
-import {
-  NEVER_EXPIRES,
-  SERVER_CERTIFICATE_ID,
-} from './constants';
+import { NEVER_EXPIRES, SERVER_CERTIFICATE_ID } from './constants';
 import {
   AciString,
   DeviceId,
@@ -49,7 +46,7 @@ export type Sender = {
   readonly deviceId: DeviceId;
   readonly identityKey: PublicKey;
   readonly expires?: number;
-}
+};
 
 export function encryptProvisionMessage(
   data: Buffer,
@@ -75,25 +72,15 @@ export function encryptProvisionMessage(
   const iv = crypto.randomBytes(16);
 
   const cipher = crypto.createCipheriv('aes-256-cbc', aesKey, iv);
-  const encrypted = Buffer.concat([
-    cipher.update(data),
-    cipher.final(),
-  ]);
+  const encrypted = Buffer.concat([cipher.update(data), cipher.final()]);
 
-  const version = Buffer.from([ 1 ]);
+  const version = Buffer.from([1]);
 
-  const ciphertext = Buffer.concat([
-    version,
-    iv,
-    encrypted,
-  ]);
+  const ciphertext = Buffer.concat([version, iv, encrypted]);
 
   const mac = crypto.createHmac('sha256', macKey).update(ciphertext).digest();
 
-  const body = Buffer.concat([
-    ciphertext,
-    mac,
-  ]);
+  const body = Buffer.concat([ciphertext, mac]);
 
   return {
     body,
@@ -107,23 +94,17 @@ export function encryptAttachment(cleartext: Buffer): Attachment {
   const iv = crypto.randomBytes(16);
 
   const cipher = crypto.createCipheriv('aes-256-cbc', aesKey, iv);
-  const ciphertext = Buffer.concat([
-    cipher.update(cleartext),
-    cipher.final(),
-  ]);
+  const ciphertext = Buffer.concat([cipher.update(cleartext), cipher.final()]);
 
-  const mac = crypto.createHmac('sha256', macKey)
+  const mac = crypto
+    .createHmac('sha256', macKey)
     .update(iv)
     .update(ciphertext)
     .digest();
 
-  const key = Buffer.concat([ aesKey, macKey ]);
+  const key = Buffer.concat([aesKey, macKey]);
 
-  const blob = Buffer.concat([
-    iv,
-    ciphertext,
-    mac,
-  ]);
+  const blob = Buffer.concat([iv, ciphertext, mac]);
 
   const digest = crypto.createHash('sha256').update(blob).digest();
 
@@ -140,10 +121,12 @@ export function generateServerCertificate(
 ): ServerCertificate {
   const privateKey = PrivateKey.generate();
 
-  const data = Buffer.from(Proto.ServerCertificate.Certificate.encode({
-    id: SERVER_CERTIFICATE_ID,
-    key: privateKey.getPublicKey().serialize(),
-  }).finish());
+  const data = Buffer.from(
+    Proto.ServerCertificate.Certificate.encode({
+      id: SERVER_CERTIFICATE_ID,
+      key: privateKey.getPublicKey().serialize(),
+    }).finish(),
+  );
 
   const signature = rootKey.sign(data);
 
@@ -162,70 +145,58 @@ export function generateSenderCertificate(
   serverCert: ServerCertificate,
   sender: Sender,
 ): SenderCertificate {
-  const data = Buffer.from(Proto.SenderCertificate.Certificate.encode({
-    senderE164: sender.number,
-    senderUuid: sender.aci,
-    senderDevice: sender.deviceId,
-    expires: Long.fromNumber(sender.expires || NEVER_EXPIRES),
-    identityKey: sender.identityKey.serialize(),
-    signer: serverCert.certificate,
-  }).finish());
+  const data = Buffer.from(
+    Proto.SenderCertificate.Certificate.encode({
+      senderE164: sender.number,
+      senderUuid: sender.aci,
+      senderDevice: sender.deviceId,
+      expires: Long.fromNumber(sender.expires || NEVER_EXPIRES),
+      identityKey: sender.identityKey.serialize(),
+      signer: serverCert.certificate,
+    }).finish(),
+  );
 
   const signature = serverCert.privateKey.sign(data);
 
-  const certificate = Buffer.from(Proto.SenderCertificate.encode({
-    certificate: data,
-    signature,
-  }).finish());
+  const certificate = Buffer.from(
+    Proto.SenderCertificate.encode({
+      certificate: data,
+      signature,
+    }).finish(),
+  );
 
   return SenderCertificate.deserialize(certificate);
 }
 
-export function deriveAccessKey(
-  profileKey: Buffer,
-): Buffer {
+export function deriveAccessKey(profileKey: Buffer): Buffer {
   const cipher = crypto.createCipheriv(
     'aes-256-gcm',
     profileKey,
     Buffer.alloc(12),
   );
 
-  return Buffer.concat([
-    cipher.update(Buffer.alloc(16)),
-    cipher.final(),
-  ]);
+  return Buffer.concat([cipher.update(Buffer.alloc(16)), cipher.final()]);
 }
 
-export function deriveStorageKey(
-  masterKey: Buffer,
-): Buffer {
+export function deriveStorageKey(masterKey: Buffer): Buffer {
   const hash = crypto.createHmac('sha256', masterKey);
   hash.update('Storage Service Encryption');
   return hash.digest();
 }
 
-function deriveStorageManifestKey(
-  storageKey: Buffer,
-  version: Long,
-): Buffer {
+function deriveStorageManifestKey(storageKey: Buffer, version: Long): Buffer {
   const hash = crypto.createHmac('sha256', storageKey);
   hash.update(`Manifest_${version}`);
   return hash.digest();
 }
 
-function deriveStorageItemKey(
-  storageKey: Buffer,
-  itemKey: Buffer,
-): Buffer {
+function deriveStorageItemKey(storageKey: Buffer, itemKey: Buffer): Buffer {
   const hash = crypto.createHmac('sha256', storageKey);
   hash.update(`Item_${itemKey.toString('base64')}`);
   return hash.digest();
 }
 
-function decryptAESGCM(
-  ciphertext: Buffer,
-  key: Buffer,
-): Buffer {
+function decryptAESGCM(ciphertext: Buffer, key: Buffer): Buffer {
   const iv = ciphertext.slice(0, AESGCM_IV_SIZE);
   const tag = ciphertext.slice(ciphertext.length - AUTH_TAG_SIZE);
   const rest = ciphertext.slice(iv.length, ciphertext.length - tag.length);
@@ -234,31 +205,18 @@ function decryptAESGCM(
 
   decipher.setAuthTag(tag);
 
-  return Buffer.concat([
-    decipher.update(rest),
-    decipher.final(),
-  ]);
+  return Buffer.concat([decipher.update(rest), decipher.final()]);
 }
 
-function encryptAESGCM(
-  plaintext: Buffer,
-  key: Buffer,
-): Buffer {
+function encryptAESGCM(plaintext: Buffer, key: Buffer): Buffer {
   const iv = crypto.randomBytes(AESGCM_IV_SIZE);
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
 
-  const ciphertext = [
-    cipher.update(plaintext),
-    cipher.final(),
-  ];
+  const ciphertext = [cipher.update(plaintext), cipher.final()];
 
   const tag = cipher.getAuthTag();
 
-  return Buffer.concat([
-    iv,
-    ...ciphertext,
-    tag,
-  ]);
+  return Buffer.concat([iv, ...ciphertext, tag]);
 }
 
 export function decryptStorageManifest(
@@ -274,10 +232,9 @@ export function decryptStorageManifest(
 
   const manifestKey = deriveStorageManifestKey(storageKey, manifest.version);
 
-  const decoded = Proto.ManifestRecord.decode(decryptAESGCM(
-    Buffer.from(manifest.value),
-    manifestKey,
-  ));
+  const decoded = Proto.ManifestRecord.decode(
+    decryptAESGCM(Buffer.from(manifest.value), manifestKey),
+  );
 
   if (!decoded.version) {
     throw new Error('Missing manifestRecord.version');
@@ -326,10 +283,9 @@ export function decryptStorageItem(
 
   const itemKey = deriveStorageItemKey(storageKey, Buffer.from(item.key));
 
-  return Proto.StorageRecord.decode(decryptAESGCM(
-    Buffer.from(item.value),
-    itemKey,
-  ));
+  return Proto.StorageRecord.decode(
+    decryptAESGCM(Buffer.from(item.value), itemKey),
+  );
 }
 
 export function encryptStorageItem(
@@ -350,14 +306,8 @@ export function encryptStorageItem(
   };
 }
 
-export function encryptProfileName(
-  profileKey: Buffer,
-  name: string,
-): Buffer {
-  const encrypted = encryptAESGCM(
-    Buffer.from(name),
-    profileKey,
-  );
+export function encryptProfileName(profileKey: Buffer, name: string): Buffer {
+  const encrypted = encryptAESGCM(Buffer.from(name), profileKey);
 
   return encrypted;
 }
@@ -368,11 +318,8 @@ export function generateAccessKeyVerifier(accessKey: Buffer): Buffer {
   return crypto.createHmac('sha256', accessKey).update(zeroes).digest();
 }
 
-export function decodePreKey({
-  keyId,
-  publicKey,
-}: ServerPreKey): PreKey {
-  return  {
+export function decodePreKey({ keyId, publicKey }: ServerPreKey): PreKey {
+  return {
     keyId,
     publicKey: PublicKey.deserialize(Buffer.from(publicKey, 'base64')),
   };
@@ -383,20 +330,18 @@ export function decodeSignedPreKey({
   publicKey,
   signature,
 }: ServerSignedPreKey): SignedPreKey {
-  return  {
+  return {
     keyId,
     publicKey: PublicKey.deserialize(Buffer.from(publicKey, 'base64')),
     signature: Buffer.from(signature, 'base64'),
   };
 }
 
-export function decodeKyberPreKey(
-  {
-    keyId,
-    publicKey,
-    signature,
-  }: ServerSignedPreKey,
-): KyberPreKey {
+export function decodeKyberPreKey({
+  keyId,
+  publicKey,
+  signature,
+}: ServerSignedPreKey): KyberPreKey {
   return {
     keyId,
     publicKey: KEMPublicKey.deserialize(Buffer.from(publicKey, 'base64')),

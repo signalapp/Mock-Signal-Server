@@ -7,10 +7,7 @@ import Long from 'long';
 import path from 'path';
 import https, { ServerOptions } from 'https';
 import { parse as parseURL } from 'url';
-import {
-  PrivateKey,
-  PublicKey,
-} from '@signalapp/libsignal-client';
+import { PrivateKey, PublicKey } from '@signalapp/libsignal-client';
 import {
   GenericServerSecretParams,
   ServerSecretParams,
@@ -19,12 +16,8 @@ import createDebug from 'debug';
 import WebSocket from 'ws';
 import { run } from 'micro';
 
-import {
-  attachmentToPointer,
-} from '../data/attachment';
-import {
-  PRIMARY_DEVICE_ID,
-} from '../constants';
+import { attachmentToPointer } from '../data/attachment';
+import { PRIMARY_DEVICE_ID } from '../constants';
 import {
   AciString,
   ProvisionIdString,
@@ -33,12 +26,8 @@ import {
   ServiceIdString,
   untagPni,
 } from '../types';
-import {
-  serializeContacts,
-} from '../data/contacts';
-import {
-  Group as GroupData,
-} from '../data/group';
+import { serializeContacts } from '../data/contacts';
+import { Group as GroupData } from '../data/group';
 import {
   encryptAttachment,
   encryptProvisionMessage,
@@ -70,14 +59,14 @@ import { PrimaryDevice } from './primary-device';
 type TrustRoot = Readonly<{
   privateKey: string;
   publicKey: string;
-}>
+}>;
 
 type ZKParams = Readonly<{
   secretParams: string;
   publicParams: string;
   genericSecretParams: string;
   genericPublicParams: string;
-}>
+}>;
 
 type StrictConfig = Readonly<{
   trustRoot: TrustRoot;
@@ -86,7 +75,7 @@ type StrictConfig = Readonly<{
   timeout: number;
   maxStorageReadKeys?: number;
   cdn3Path?: string;
-}>
+}>;
 
 export type Config = Readonly<{
   trustRoot?: TrustRoot;
@@ -95,22 +84,22 @@ export type Config = Readonly<{
   timeout?: number;
   maxStorageReadKeys?: number;
   cdn3Path?: string;
-}>
+}>;
 
 export type CreatePrimaryDeviceOptions = Readonly<{
   profileName: string;
   contacts?: ReadonlyArray<PrimaryDevice>;
   contactsWithoutProfileKey?: ReadonlyArray<PrimaryDevice>;
-}>
+}>;
 
 export type PendingProvision = {
   complete(response: PendingProvisionResponse): Promise<Device>;
-}
+};
 
 export type PendingProvisionResponse = Readonly<{
   provisionURL: string;
   primaryDevice: PrimaryDevice;
-}>
+}>;
 
 export type RateLimitOptions = Readonly<{
   source: ServiceIdString;
@@ -146,13 +135,17 @@ export class Server extends BaseServer {
   private emptyAttachment: Proto.IAttachmentPointer | undefined;
 
   private provisionQueue: PromiseQueue<PendingProvision>;
-  private provisionResultQueueByCode =
-    new Map<ProvisioningCode, ProvisionResultQueue>();
+  private provisionResultQueueByCode = new Map<
+    ProvisioningCode,
+    ProvisionResultQueue
+  >();
   private provisionResultQueueByKey = new Map<string, ProvisionResultQueue>();
   private manifestQueueByAci = new Map<AciString, PromiseQueue<number>>();
   private groupQueueById = new Map<string, PromiseQueue<number>>();
-  private rateLimitCountByPair =
-    new Map<`${ServiceIdString}:${ServiceIdString}`, number>();
+  private rateLimitCountByPair = new Map<
+    `${ServiceIdString}:${ServiceIdString}`,
+    number
+  >();
   private responseForChallenges: ChallengeResponse | undefined;
   private unregisteredServiceIds = new Set<ServiceIdString>();
 
@@ -173,15 +166,18 @@ export class Server extends BaseServer {
     };
 
     const trustPrivate = Buffer.from(
-      this.config.trustRoot.privateKey, 'base64');
+      this.config.trustRoot.privateKey,
+      'base64',
+    );
     this.trustRoot = PrivateKey.deserialize(trustPrivate);
 
-    const zkSecret = Buffer.from(
-      this.config.zkParams.secretParams, 'base64');
+    const zkSecret = Buffer.from(this.config.zkParams.secretParams, 'base64');
     this.zkSecret = new ServerSecretParams(zkSecret);
 
     const genericSecret = Buffer.from(
-      this.config.zkParams.genericSecretParams, 'base64');
+      this.config.zkParams.genericSecretParams,
+      'base64',
+    );
     this.genericServerSecret = new GenericServerSecretParams(genericSecret);
 
     this.certificate = generateServerCertificate(this.trustRoot);
@@ -197,14 +193,11 @@ export class Server extends BaseServer {
     const emptyData = encryptAttachment(Buffer.alloc(0));
     const emptyCDNKey = await this.storeAttachment(emptyData.blob);
 
-    this.emptyAttachment = attachmentToPointer(
-      emptyCDNKey,
-      emptyData);
+    this.emptyAttachment = attachmentToPointer(emptyCDNKey, emptyData);
 
-    const httpHandler = createHTTPHandler(
-      this,
-      { cdn3Path: this.config.cdn3Path },
-    );
+    const httpHandler = createHTTPHandler(this, {
+      cdn3Path: this.config.cdn3Path,
+    });
 
     const server = https.createServer(this.config.https || {}, (req, res) => {
       run(req, res, httpHandler);
@@ -224,10 +217,12 @@ export class Server extends BaseServer {
         }
 
         // Note: when a device has been unlinked, it will use '' as its password
-        if (!query.login
-          || Array.isArray(query.login)
-          || typeof query.password !== 'string'
-          || Array.isArray(query.password)) {
+        if (
+          !query.login ||
+          Array.isArray(query.login) ||
+          typeof query.password !== 'string' ||
+          Array.isArray(query.password)
+        ) {
           debug('verifyClient: Malformed credentials @ %s: %j', url, query);
           callback(false, 403);
           return;
@@ -270,7 +265,6 @@ export class Server extends BaseServer {
 
     await new Promise((resolve) => https.close(resolve));
   }
-
 
   //
   // Various queues
@@ -330,8 +324,11 @@ export class Server extends BaseServer {
 
     const { aci } = device;
 
-    debug('creating primary device with aci=%s registrationId=%d',
-      aci, registrationId);
+    debug(
+      'creating primary device with aci=%s registrationId=%d',
+      aci,
+      registrationId,
+    );
 
     if (!this.emptyAttachment) {
       throw new Error('Mock#init must be called before starting the server');
@@ -395,7 +392,7 @@ export class Server extends BaseServer {
       pniRegistrationId,
     });
 
-    for (const serviceIdKind of [ ServiceIdKind.ACI, ServiceIdKind.PNI ]) {
+    for (const serviceIdKind of [ServiceIdKind.ACI, ServiceIdKind.PNI]) {
       await this.updateDeviceKeys(
         device,
         serviceIdKind,
@@ -432,11 +429,11 @@ export class Server extends BaseServer {
       data,
     };
   }
-  
+
   public stopRespondingToChallenges(): void {
     this.responseForChallenges = undefined;
   }
-  
+
   public getResponseForChallenges(): ChallengeResponse | undefined {
     return this.responseForChallenges;
   }
@@ -463,7 +460,7 @@ export class Server extends BaseServer {
     assert.strictEqual(cdnNumber, 3, 'Only cdn 3 currently supported');
     const { cdn3Path } = this.config;
     assert(cdn3Path, 'cdn3Path must be provided to store attachments');
-    fs.writeFileSync(path.join(cdn3Path,  cdnKey), data);
+    fs.writeFileSync(path.join(cdn3Path, cdnKey), data);
   }
 
   //
@@ -497,7 +494,8 @@ export class Server extends BaseServer {
     }
 
     const publicKey = PublicKey.deserialize(
-      Buffer.from(query.pub_key, 'base64'));
+      Buffer.from(query.pub_key, 'base64'),
+    );
 
     const aciIdentityKey = await primaryDevice.getIdentityKey(
       ServiceIdKind.ACI,
@@ -506,7 +504,9 @@ export class Server extends BaseServer {
       ServiceIdKind.PNI,
     );
     const provisioningCode = await this.getProvisioningCode(
-      id, primaryDevice.device.number);
+      id,
+      primaryDevice.device.number,
+    );
 
     this.provisionResultQueueByCode.set(provisioningCode, {
       seenServiceIdKinds: new Set(),
@@ -531,7 +531,9 @@ export class Server extends BaseServer {
     }).finish();
 
     const { body, ephemeralKey } = encryptProvisionMessage(
-      Buffer.from(envelopeData), publicKey);
+      Buffer.from(envelopeData),
+      publicKey,
+    );
 
     const envelope = Proto.ProvisionEnvelope.encode({
       publicKey: ephemeralKey,
@@ -633,7 +635,8 @@ export class Server extends BaseServer {
     assert(
       !seenServiceIdKinds.has(serviceIdKind),
       `Duplicate service id kind ${serviceIdKind} ` +
-        `for device: ${device.debugId}`);
+        `for device: ${device.debugId}`,
+    );
     seenServiceIdKinds.add(serviceIdKind);
     if (
       !seenServiceIdKinds.has(ServiceIdKind.ACI) ||
@@ -654,12 +657,13 @@ export class Server extends BaseServer {
     const queue = this.provisionResultQueueByCode.get(provisioningCode);
     assert(
       queue !== undefined,
-      `Missing provision result queue for code: ${provisioningCode}`);
+      `Missing provision result queue for code: ${provisioningCode}`,
+    );
     this.provisionResultQueueByCode.delete(provisioningCode);
 
     const device = await super.provisionDevice(options);
 
-    for (const serviceIdKind of [ ServiceIdKind.ACI, ServiceIdKind.PNI ]) {
+    for (const serviceIdKind of [ServiceIdKind.ACI, ServiceIdKind.PNI]) {
       const key = `${device.aci}.${device.getRegistrationId(serviceIdKind)}`;
       this.provisionResultQueueByKey.set(key, queue);
     }
@@ -678,7 +682,8 @@ export class Server extends BaseServer {
   ): Promise<Array<Proto.IStorageItem> | undefined> {
     if (
       this.config.maxStorageReadKeys !== undefined &&
-      keys.length > this.config.maxStorageReadKeys) {
+      keys.length > this.config.maxStorageReadKeys
+    ) {
       debug('getStorageItems: requested more than max keys', device.debugId);
       return undefined;
     }

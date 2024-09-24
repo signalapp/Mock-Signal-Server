@@ -19,7 +19,6 @@ const AccessRequired = Proto.AccessControl.AccessRequired;
 
 export type GroupOptions = Readonly<{
   secretParams: GroupSecretParams;
-
   groupState: Proto.IGroup;
 }>;
 
@@ -71,15 +70,19 @@ export class Group extends GroupData {
     // Build group log
 
     this.privChanges = {
-      groupChanges: [ {
-        groupState,
-      } ],
+      groupChanges: [
+        {
+          groupState,
+        },
+      ],
     };
   }
 
-  public static fromConfig(
-    { secretParams, title, members }: GroupFromConfigOptions,
-  ): Group {
+  public static fromConfig({
+    secretParams,
+    title,
+    members,
+  }: GroupFromConfigOptions): Group {
     const cipher = new ClientZkGroupCipher(secretParams);
 
     const groupState = {
@@ -122,17 +125,17 @@ export class Group extends GroupData {
 
   public encryptServiceId(serviceId: ServiceIdString): Buffer {
     const cipher = new ClientZkGroupCipher(this.secretParams);
-    return cipher.encryptServiceId(
-      ServiceId.parseFromServiceIdString(serviceId),
-    ).serialize();
+    return cipher
+      .encryptServiceId(ServiceId.parseFromServiceIdString(serviceId))
+      .serialize();
   }
 
   public decryptServiceId(ciphertext: Uint8Array): ServiceIdString {
     const cipher = new ClientZkGroupCipher(this.secretParams);
     const uuidCiphertext = new UuidCiphertext(Buffer.from(ciphertext));
-    return cipher.decryptServiceId(
-      uuidCiphertext,
-    ).getServiceIdString() as ServiceIdString;
+    return cipher
+      .decryptServiceId(uuidCiphertext)
+      .getServiceIdString() as ServiceIdString;
   }
 
   public getMemberByServiceId(

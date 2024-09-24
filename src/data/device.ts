@@ -110,10 +110,10 @@ export class Device {
 
   public getRegistrationId(serviceIdKind: ServiceIdKind): number {
     switch (serviceIdKind) {
-    case ServiceIdKind.ACI:
-      return this.registrationId;
-    case ServiceIdKind.PNI:
-      return this.pniRegistrationId;
+      case ServiceIdKind.ACI:
+        return this.registrationId;
+      case ServiceIdKind.PNI:
+        return this.pniRegistrationId;
     }
   }
 
@@ -251,13 +251,12 @@ export class Device {
     return keys.kyberPreKeys.length;
   }
 
-
   public getServiceIdByKind(serviceIdKind: ServiceIdKind): ServiceIdString {
     switch (serviceIdKind) {
-    case ServiceIdKind.ACI:
-      return this.aci;
-    case ServiceIdKind.PNI:
-      return this.pni;
+      case ServiceIdKind.ACI:
+        return this.aci;
+      case ServiceIdKind.PNI:
+        return this.pni;
     }
   }
 
@@ -273,10 +272,10 @@ export class Device {
 
   public getAddressByKind(serviceIdKind: ServiceIdKind): ProtocolAddress {
     switch (serviceIdKind) {
-    case ServiceIdKind.ACI:
-      return this.address;
-    case ServiceIdKind.PNI:
-      return this.pniAddress;
+      case ServiceIdKind.ACI:
+        return this.address;
+      case ServiceIdKind.PNI:
+        return this.pniAddress;
     }
   }
 }

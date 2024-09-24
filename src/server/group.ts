@@ -16,24 +16,24 @@ import Long from 'long';
 import { signalservice as Proto } from '../../protos/compiled';
 import { Group } from '../data/group';
 import { GroupStateSchema } from '../data/schemas';
-import {
-  daysToSeconds,
-  getTodayInSeconds,
-} from '../util';
+import { daysToSeconds, getTodayInSeconds } from '../util';
 
 export type ServerGroupOptions = Readonly<{
   profileOps: ServerZkProfileOperations;
   zkSecret: ServerSecretParams;
-  state: Proto.IGroup,
+  state: Proto.IGroup;
 }>;
 
-export type ModifyGroupResult = Readonly<{
-  conflict: false;
-  signedChange: Proto.IGroupChange;
-} | {
-  conflict: true;
-  signedChange: undefined;
-}>;
+export type ModifyGroupResult = Readonly<
+  | {
+      conflict: false;
+      signedChange: Proto.IGroupChange;
+    }
+  | {
+      conflict: true;
+      signedChange: undefined;
+    }
+>;
 
 const { AccessRequired } = Proto.AccessControl;
 const { Role } = Proto.Member;
@@ -64,14 +64,16 @@ export class ServerGroup extends Group {
 
     const unrolledState = { ...state };
 
-    unrolledState.members = (state.members ?? []).map(
-      (member) => this.unrollMember(member),
+    unrolledState.members = (state.members ?? []).map((member) =>
+      this.unrollMember(member),
     );
 
     this.privChanges = {
-      groupChanges: [ {
-        groupState: unrolledState,
-      } ],
+      groupChanges: [
+        {
+          groupState: unrolledState,
+        },
+      ],
     };
   }
 
@@ -85,7 +87,7 @@ export class ServerGroup extends Group {
 
     const members = this.state.members ?? [];
 
-    const groupCiphertexts = members.map(member => {
+    const groupCiphertexts = members.map((member) => {
       assert(member.userId, 'Member must have a user ID');
       return new UuidCiphertext(Buffer.from(member.userId));
     });
@@ -149,7 +151,7 @@ export class ServerGroup extends Group {
       assert.ok(member, 'Pending member not found for deletion');
 
       newState.members = (newState.members ?? []).filter(
-        entry => entry !== member,
+        (entry) => entry !== member,
       );
 
       appliedActions.deleteMembers = [
@@ -207,10 +209,9 @@ export class ServerGroup extends Group {
       );
       assert.ok(pendingMember, 'Pending member not found for deletion');
 
-      newState.membersPendingProfileKey =
-        (newState.membersPendingProfileKey ?? []).filter(
-          entry => entry !== pendingMember,
-        );
+      newState.membersPendingProfileKey = (
+        newState.membersPendingProfileKey ?? []
+      ).filter((entry) => entry !== pendingMember);
 
       appliedActions.deletePendingMembers = [
         ...(appliedActions.deletePendingMembers ?? []),
@@ -220,10 +221,7 @@ export class ServerGroup extends Group {
 
     const promotePendingMembers = actions.promotePendingMembers ?? [];
     for (const { presentation } of promotePendingMembers) {
-      assert.ok(
-        presentation,
-        'Missing presentation in promotePendingMembers',
-      );
+      assert.ok(presentation, 'Missing presentation in promotePendingMembers');
       const presentationFFI = new ProfileKeyCredentialPresentation(
         Buffer.from(presentation),
       );
@@ -233,9 +231,10 @@ export class ServerGroup extends Group {
       );
 
       assert.ok(
-        presentationFFI.getUuidCiphertext().serialize().equals(
-          sourceAci.serialize(),
-        ),
+        presentationFFI
+          .getUuidCiphertext()
+          .serialize()
+          .equals(sourceAci.serialize()),
         'Not a pending member',
       );
 
@@ -248,10 +247,9 @@ export class ServerGroup extends Group {
         'Member is both pending and active',
       );
 
-      newState.membersPendingProfileKey =
-        (newState.membersPendingProfileKey ?? []).filter(
-          entry => entry !== pendingMember,
-        );
+      newState.membersPendingProfileKey = (
+        newState.membersPendingProfileKey ?? []
+      ).filter((entry) => entry !== pendingMember);
 
       const userId = presentationFFI.getUuidCiphertext().serialize();
       const profileKey = presentationFFI.getProfileKeyCiphertext().serialize();
@@ -299,10 +297,9 @@ export class ServerGroup extends Group {
       assert.ok(pendingMember, 'No pending pni member');
       assert.ok(!this.getMember(aci), 'ACI is already a member');
 
-      newState.membersPendingProfileKey =
-        (newState.membersPendingProfileKey ?? []).filter(
-          entry => entry !== pendingMember,
-        );
+      newState.membersPendingProfileKey = (
+        newState.membersPendingProfileKey ?? []
+      ).filter((entry) => entry !== pendingMember);
 
       newState.members = [
         ...(newState.members ?? []),
@@ -334,12 +331,11 @@ export class ServerGroup extends Group {
       return { conflict: true, signedChange: undefined };
     }
 
-    const encodedActions = Proto.GroupChange.Actions.encode(
-      appliedActions,
-    ).finish();
-    const serverSignature = this.zkSecret.sign(
-      Buffer.from(encodedActions),
-    ).serialize();
+    const encodedActions =
+      Proto.GroupChange.Actions.encode(appliedActions).finish();
+    const serverSignature = this.zkSecret
+      .sign(Buffer.from(encodedActions))
+      .serialize();
 
     const groupChange: Proto.IGroupChange = {
       actions: encodedActions,
@@ -381,39 +377,32 @@ export class ServerGroup extends Group {
     }
 
     switch (access) {
-    case AccessRequired.ANY:
-      break;
+      case AccessRequired.ANY:
+        break;
 
-    case AccessRequired.MEMBER:
-      assert.ok(member, `Must be a member to access: ${attribute}`);
-      break;
+      case AccessRequired.MEMBER:
+        assert.ok(member, `Must be a member to access: ${attribute}`);
+        break;
 
-    case AccessRequired.ADMINISTRATOR:
-      assert.strictEqual(
-        member?.role,
-        Role.ADMINISTRATOR,
-        `Must be an administrator to modify: ${attribute}`,
-      );
-      break;
+      case AccessRequired.ADMINISTRATOR:
+        assert.strictEqual(
+          member?.role,
+          Role.ADMINISTRATOR,
+          `Must be an administrator to modify: ${attribute}`,
+        );
+        break;
 
-    case AccessRequired.UNSATISFIABLE:
-      throw new Error(`Unsatisfiable access attribute: ${attribute}`);
+      case AccessRequired.UNSATISFIABLE:
+        throw new Error(`Unsatisfiable access attribute: ${attribute}`);
 
-    case AccessRequired.UNKNOWN:
-      throw new Error(`Unknown access for attribute: ${attribute}`);
+      case AccessRequired.UNKNOWN:
+        throw new Error(`Unknown access for attribute: ${attribute}`);
     }
   }
 
   private unrollMember({ role, presentation }: Proto.IMember): Proto.IMember {
-    assert.strictEqual(
-      typeof role,
-      'number',
-      'Group member role is undefined',
-    );
-    assert.ok(
-      presentation,
-      'Group member presentation is undefined',
-    );
+    assert.strictEqual(typeof role, 'number', 'Group member role is undefined');
+    assert.ok(presentation, 'Group member presentation is undefined');
 
     const presentationFFI = new ProfileKeyCredentialPresentation(
       Buffer.from(presentation),

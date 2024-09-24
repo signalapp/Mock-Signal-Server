@@ -7,11 +7,8 @@ import { IncomingMessage } from 'http';
 import { parse as parseURL } from 'url';
 import { timingSafeEqual } from 'crypto';
 import createDebug from 'debug';
-import {
-  ProfileKeyCredentialRequest,
-} from '@signalapp/libsignal-client/zkgroup';
-import SealedSenderMultiRecipientMessage from
-  '@signalapp/libsignal-client/dist/SealedSenderMultiRecipientMessage';
+import { ProfileKeyCredentialRequest } from '@signalapp/libsignal-client/zkgroup';
+import SealedSenderMultiRecipientMessage from '@signalapp/libsignal-client/dist/SealedSenderMultiRecipientMessage';
 
 import WebSocket from 'ws';
 import { v4 as uuidv4 } from 'uuid';
@@ -66,16 +63,16 @@ export class Connection extends Service {
 
       const target = await this.server.getDeviceByServiceId(serviceId);
       if (!target) {
-        return [ 404, { error: 'Device not found' } ];
+        return [404, { error: 'Device not found' }];
       }
 
       if (this.server.isUnregistered(serviceId)) {
-        return [ 404, { error: 'Unregistered' } ];
+        return [404, { error: 'Unregistered' }];
       }
 
       const accessError = this.checkAccessKey(target, headers);
       if (accessError !== undefined) {
-        return [ 401, { error: accessError } ];
+        return [401, { error: accessError }];
       }
 
       let credential: Buffer | undefined;
@@ -89,22 +86,26 @@ export class Connection extends Service {
             request,
           );
         } else {
-          return [ 400, { error: 'Unsupported credential type' } ];
+          return [400, { error: 'Unsupported credential type' }];
         }
       }
 
       const serviceIdKind = target.getServiceIdKind(serviceId);
       const identityKey = await target.getIdentityKey(serviceIdKind);
 
-      return [ 200, {
-        name: target.profileName,
-        identityKey: identityKey.serialize().toString('base64'),
-        unrestrictedUnidentifiedAccess: false,
-        unidentifiedAccess: target.accessKey ?
-          generateAccessKeyVerifier(target.accessKey) : undefined,
-        capabilities: target.capabilities,
-        credential: credential?.toString('base64'),
-      } ];
+      return [
+        200,
+        {
+          name: target.profileName,
+          identityKey: identityKey.serialize().toString('base64'),
+          unrestrictedUnidentifiedAccess: false,
+          unidentifiedAccess: target.accessKey
+            ? generateAccessKeyVerifier(target.accessKey)
+            : undefined,
+          capabilities: target.capabilities,
+          credential: credential?.toString('base64'),
+        },
+      ];
     };
     this.router.get('/v1/profile/:serviceId', getProfile);
     this.router.get('/v1/profile/:serviceId/:version', getProfile);
@@ -113,88 +114,85 @@ export class Connection extends Service {
     const requireAuth = (handler: Handler): Handler => {
       return async (params, body, headers) => {
         if (!this.device) {
-          return [ 401, { error: 'Not authorized' } ];
+          return [401, { error: 'Not authorized' }];
         }
 
         return handler(params, body, headers);
       };
     };
 
-    this.router.get('/v1/config', requireAuth(async () => {
-      return [ 200, {
-        config: [
-          { name: 'desktop.gv2', enabled: true },
-          { name: 'desktop.gv2Admin', enabled: true },
-          { name: 'desktop.internalUser', enabled: true },
-          { name: 'desktop.sendSenderKey2', enabled: true },
-          { name: 'desktop.sendSenderKey3', enabled: true },
-          { name: 'desktop.senderKey.retry', enabled: true },
-          { name: 'desktop.senderKey.send', enabled: true },
-          { name: 'desktop.storage', enabled: true },
-          { name: 'desktop.storageWrite3', enabled: true },
-          { name: 'desktop.messageRequests', enabled: true },
-          { name: 'desktop.pnp', enabled: true },
-          { name: 'desktop.usernames', enabled: true },
+    this.router.get(
+      '/v1/config',
+      requireAuth(async () => {
+        return [
+          200,
           {
-            name: 'global.groupsv2.maxGroupSize',
-            value: '32',
-            enabled: true,
+            config: [
+              { name: 'desktop.gv2', enabled: true },
+              { name: 'desktop.gv2Admin', enabled: true },
+              { name: 'desktop.internalUser', enabled: true },
+              { name: 'desktop.sendSenderKey2', enabled: true },
+              { name: 'desktop.sendSenderKey3', enabled: true },
+              { name: 'desktop.senderKey.retry', enabled: true },
+              { name: 'desktop.senderKey.send', enabled: true },
+              { name: 'desktop.storage', enabled: true },
+              { name: 'desktop.storageWrite3', enabled: true },
+              { name: 'desktop.messageRequests', enabled: true },
+              { name: 'desktop.pnp', enabled: true },
+              { name: 'desktop.usernames', enabled: true },
+              {
+                name: 'global.groupsv2.maxGroupSize',
+                value: '32',
+                enabled: true,
+              },
+              {
+                name: 'global.groupsv2.groupSizeHardLimit',
+                value: '64',
+                enabled: true,
+              },
+            ],
+            serverEpochTime: Date.now() / 1000,
           },
-          {
-            name: 'global.groupsv2.groupSizeHardLimit',
-            value: '64',
-            enabled: true,
-          },
-        ],
-        serverEpochTime: Date.now() / 1000,
-      } ];
-    }));
+        ];
+      }),
+    );
 
-    this.router.put(
-      '/v1/messages/multi_recipient',
-      async (_params, body) => {
-        if (!body) {
-          return [ 400, { error: 'Missing body' } ];
-        }
+    this.router.put('/v1/messages/multi_recipient', async (_params, body) => {
+      if (!body) {
+        return [400, { error: 'Missing body' }];
+      }
 
-        const message = new SealedSenderMultiRecipientMessage(
-          Buffer.from(body),
+      const message = new SealedSenderMultiRecipientMessage(Buffer.from(body));
+
+      const listByServiceId = new Map<ServiceIdString, Array<Message>>();
+
+      const recipients = message.recipientsByServiceIdString();
+      for (const [serviceId, recipient] of Object.entries(recipients)) {
+        let list: Array<Message> | undefined = listByServiceId.get(
+          serviceId as ServiceIdString,
         );
-
-        const listByServiceId = new Map<ServiceIdString, Array<Message>>();
-
-        const recipients = message.recipientsByServiceIdString();
-        for (
-          const [ serviceId, recipient ] of Object.entries(recipients)
-        ) {
-          let list: Array<Message> | undefined = listByServiceId.get(
-            serviceId as ServiceIdString,
-          );
-          if (!list) {
-            list = [];
-            listByServiceId.set(serviceId as ServiceIdString, list);
-          }
-
-          for (const [ i, deviceId ] of recipient.deviceIds.entries()) {
-            const registrationId = recipient.registrationIds.at(i);
-
-            list.push({
-              type: Proto.Envelope.Type.UNIDENTIFIED_SENDER,
-              destinationDeviceId: deviceId as DeviceId,
-              destinationRegistrationId: registrationId as RegistrationId,
-              content: message.messageForRecipient(
-                recipient,
-              ).toString('base64'),
-            });
-          }
+        if (!list) {
+          list = [];
+          listByServiceId.set(serviceId as ServiceIdString, list);
         }
 
-        // TODO(indutny): verify access key xor
+        for (const [i, deviceId] of recipient.deviceIds.entries()) {
+          const registrationId = recipient.registrationIds.at(i);
 
-        const results = await Promise.all(
-          Array.from(listByServiceId.entries()).map(async (
-            [ serviceId, messages ],
-          ) => {
+          list.push({
+            type: Proto.Envelope.Type.UNIDENTIFIED_SENDER,
+            destinationDeviceId: deviceId as DeviceId,
+            destinationRegistrationId: registrationId as RegistrationId,
+            content: message.messageForRecipient(recipient).toString('base64'),
+          });
+        }
+      }
+
+      // TODO(indutny): verify access key xor
+
+      const results = await Promise.all(
+        Array.from(listByServiceId.entries()).map(
+          async ([serviceId, messages]) => {
             return {
               uuid: serviceId,
               prepared: await this.server.prepareMultiDeviceMessage(
@@ -203,134 +201,143 @@ export class Connection extends Service {
                 messages,
               ),
             };
+          },
+        ),
+      );
+
+      const incomplete = results.filter(
+        ({ prepared }) => prepared.status === 'incomplete',
+      );
+
+      if (incomplete.length !== 0) {
+        return [
+          409,
+          incomplete.map(({ uuid, prepared }) => {
+            assert.ok(prepared.status === 'incomplete');
+            return {
+              uuid,
+              devices: {
+                missingDevices: prepared.missingDevices,
+                extraDevices: prepared.extraDevices,
+              },
+            };
           }),
-        );
+        ];
+      }
 
-        const incomplete = results.filter(
-          ({ prepared }) => prepared.status === 'incomplete',
-        );
+      const stale = results.filter(
+        ({ prepared }) => prepared.status === 'stale',
+      );
 
-        if (incomplete.length !== 0) {
-          return [
-            409,
-            incomplete.map(({ uuid, prepared }) => {
-              assert.ok(prepared.status === 'incomplete');
-              return {
-                uuid,
-                devices: {
-                  missingDevices: prepared.missingDevices,
-                  extraDevices: prepared.extraDevices,
-                },
-              };
-            }),
-          ];
-        }
+      if (stale.length !== 0) {
+        return [
+          410,
+          stale.map(({ uuid, prepared }) => {
+            assert.ok(prepared.status === 'stale');
+            return { uuid, devices: { staleDevices: prepared.staleDevices } };
+          }),
+        ];
+      }
 
-        const stale = results.filter(
-          ({ prepared }) => prepared.status === 'stale',
-        );
+      const uuids404 = results
+        .filter(({ prepared }) => prepared.status === 'unknown')
+        .map(({ uuid }) => uuid);
 
-        if (stale.length !== 0) {
-          return [
-            410,
-            stale.map(({ uuid, prepared }) => {
-              assert.ok(prepared.status === 'stale');
-              return { uuid, devices: { staleDevices: prepared.staleDevices } };
-            }),
-          ];
-        }
+      const ok = results.filter(({ prepared }) => prepared.status === 'ok');
 
-        const uuids404 = results.filter(
-          ({ prepared }) => prepared.status === 'unknown',
-        ).map(({ uuid }) => uuid);
-
-        const ok = results.filter(({ prepared }) => prepared.status === 'ok');
-
-        await Promise.all(ok.map(({ prepared }) => {
+      await Promise.all(
+        ok.map(({ prepared }) => {
           assert.ok(prepared.status === 'ok');
           return this.server.handlePreparedMultiDeviceMessage(
             undefined,
             prepared.targetServiceId,
             prepared.result,
           );
-        }));
+        }),
+      );
 
-        return [ 200, { uuids404 } ];
+      return [200, { uuids404 }];
+    });
+
+    this.router.put(
+      '/v1/messages/:serviceId',
+      async (params, body, headers, query = {}) => {
+        if (!body) {
+          return [400, { error: 'Missing body' }];
+        }
+
+        const { messages } = MessageListSchema.parse(
+          JSON.parse(Buffer.from(body).toString()),
+        );
+
+        const targetServiceId = params.serviceId as ServiceIdString;
+        const target = await this.server.getDeviceByServiceId(targetServiceId);
+        if (!target) {
+          return [404, { error: 'Device not found' }];
+        }
+
+        if (query.story !== 'true') {
+          const accessError = this.checkAccessKey(target, headers);
+          if (accessError !== undefined) {
+            return [401, { error: accessError }];
+          }
+        }
+
+        if (this.server.isUnregistered(targetServiceId)) {
+          return [404, { error: 'Unregistered' }];
+        }
+
+        if (
+          this.device &&
+          this.server.isSendRateLimited({
+            source: this.device.aci,
+            target: targetServiceId,
+          })
+        ) {
+          return [428, { token: 'token', options: ['recaptcha'] }];
+        }
+
+        const prepared = await this.server.prepareMultiDeviceMessage(
+          this.device,
+          params.serviceId as ServiceIdString,
+          messages,
+        );
+
+        switch (prepared.status) {
+          case 'ok':
+            await this.server.handlePreparedMultiDeviceMessage(
+              this.device,
+              prepared.targetServiceId,
+              prepared.result,
+            );
+            return [200, { ok: true }];
+          case 'unknown':
+            return [404, { error: 'Not found' }];
+          case 'incomplete':
+            return [
+              409,
+              {
+                missingDevices: prepared.missingDevices,
+                extraDevices: prepared.extraDevices,
+              },
+            ];
+          case 'stale':
+            return [410, { staleDevices: prepared.staleDevices }];
+        }
       },
     );
 
-    this.router.put('/v1/messages/:serviceId', async (
-      params, body, headers, query = {},
-    ) => {
-      if (!body) {
-        return [ 400, { error: 'Missing body' } ];
-      }
-
-      const { messages } = MessageListSchema.parse(JSON.parse(
-        Buffer.from(body).toString(),
-      ));
-
-      const targetServiceId = params.serviceId as ServiceIdString;
-      const target = await this.server.getDeviceByServiceId(targetServiceId);
-      if (!target) {
-        return [ 404, { error: 'Device not found' } ];
-      }
-
-      if (query.story !== 'true') {
-        const accessError = this.checkAccessKey(target, headers);
-        if (accessError !== undefined) {
-          return [ 401, { error: accessError } ];
-        }
-      }
-
-      if (this.server.isUnregistered(targetServiceId)) {
-        return [ 404, { error: 'Unregistered' } ];
-      }
-
-      if (
-        this.device &&
-        this.server.isSendRateLimited({
-          source: this.device.aci,
-          target: targetServiceId,
-        })
-      ) {
-        return [ 428, { token: 'token', options: [ 'recaptcha' ] } ];
-      }
-
-      const prepared = await this.server.prepareMultiDeviceMessage(
-        this.device,
-        params.serviceId as ServiceIdString,
-        messages,
-      );
-
-      switch (prepared.status) {
-      case 'ok':
-        await this.server.handlePreparedMultiDeviceMessage(
-          this.device,
-          prepared.targetServiceId,
-          prepared.result,
-        );
-        return [ 200, { ok: true } ];
-      case 'unknown':
-        return [ 404, { error: 'Not found' } ];
-      case 'incomplete':
-        return [ 409, {
-          missingDevices: prepared.missingDevices,
-          extraDevices: prepared.extraDevices,
-        } ];
-      case 'stale':
-        return [ 410, { staleDevices: prepared.staleDevices } ];
-      }
-    });
-
-    this.router.put('/v1/devices/capabilities', requireAuth(async () => {
-      return [ 200, { ok: true } ];
-    }));
+    this.router.put(
+      '/v1/devices/capabilities',
+      requireAuth(async () => {
+        return [200, { ok: true }];
+      }),
+    );
 
     this.router.put(
       '/v1/devices/unauthenticated_delivery',
       requireAuth(async () => {
-        return [ 200, { ok: true } ];
+        return [200, { ok: true }];
       }),
     );
 
@@ -342,7 +349,7 @@ export class Connection extends Service {
           debug(
             '/v1/certificate/delivery: No support for unauthorized delivery',
           );
-          return [ 401, { error: 'Not authorized' } ];
+          return [401, { error: 'Not authorized' }];
         }
 
         const certificate = await this.server.getSenderCertificate(device);
@@ -359,13 +366,13 @@ export class Connection extends Service {
         headers.authorization,
       );
       if (error) {
-        return [ 400, { error } ];
+        return [400, { error }];
       }
       if (!username || !password) {
-        return [ 400, { error: 'Invalid authorization header' } ];
+        return [400, { error: 'Invalid authorization header' }];
       }
       if (!body) {
-        return [ 400, { error: 'Missing body' } ];
+        return [400, { error: 'Missing body' }];
       }
 
       const {
@@ -379,10 +386,7 @@ export class Connection extends Service {
         JSON.parse(Buffer.from(body).toString()),
       );
 
-      const {
-        registrationId,
-        pniRegistrationId,
-      } = accountAttributes;
+      const { registrationId, pniRegistrationId } = accountAttributes;
 
       const device = await server.provisionDevice({
         number: username,
@@ -406,11 +410,14 @@ export class Connection extends Service {
         signedPreKey: decodeSignedPreKey(pniSignedPreKey),
       });
 
-      return [ 200, {
-        deviceId: device.deviceId,
-        uuid: device.aci,
-        pni: untagPni(device.pni),
-      } ];
+      return [
+        200,
+        {
+          deviceId: device.deviceId,
+          uuid: device.aci,
+          pni: untagPni(device.pni),
+        },
+      ];
     });
 
     //
@@ -425,7 +432,7 @@ export class Connection extends Service {
           debug(
             '/v1/certificate/auth/group: No support for unauthorized delivery',
           );
-          return [ 401, { error: 'Not authorized' } ];
+          return [401, { error: 'Not authorized' }];
         }
 
         const {
@@ -437,10 +444,14 @@ export class Connection extends Service {
         return [
           200,
           {
-            credentials:  await this.server.getGroupCredentials(device, {
-              from: parseInt(from as string, 10),
-              to: parseInt(to as string, 10),
-            }, { zkc: zkcCredential === 'true' }),
+            credentials: await this.server.getGroupCredentials(
+              device,
+              {
+                from: parseInt(from as string, 10),
+                to: parseInt(to as string, 10),
+              },
+              { zkc: zkcCredential === 'true' },
+            ),
             callLinkAuthCredentials:
               await this.server.getCallLinkAuthCredentials(device, {
                 from: parseInt(from as string, 10),
@@ -462,7 +473,7 @@ export class Connection extends Service {
         throw new Error('Storage credentials require authorization');
       }
 
-      return [ 200, await server.getStorageAuth(device) ];
+      return [200, await server.getStorageAuth(device)];
     });
 
     //
@@ -470,7 +481,7 @@ export class Connection extends Service {
     //
 
     this.router.get('/v1/keepalive', async () => {
-      return [ 200, { ok: true } ];
+      return [200, { ok: true }];
     });
 
     //
@@ -478,12 +489,11 @@ export class Connection extends Service {
     //
     this.router.get('/v4/attachments/form/upload', async () => {
       const key = uuidv4();
-      const headers = {expectedHeaders: uuidv4()};
+      const headers = { expectedHeaders: uuidv4() };
       const address = this.server.address();
-      const signedUploadLocation =
-        `https://127.0.0.1:${address.port}/cdn3/${key}`;
+      const signedUploadLocation = `https://127.0.0.1:${address.port}/cdn3/${key}`;
 
-      return [ 200, { cdn: 3, key, headers, signedUploadLocation } ];
+      return [200, { cdn: 3, key, headers, signedUploadLocation }];
     });
   }
 
@@ -520,17 +530,18 @@ export class Connection extends Service {
       });
     }
 
-    assert.strictEqual(response.status, 200,
-      `WebSocket send error ${response.status} ${response.message}`);
+    assert.strictEqual(
+      response.status,
+      200,
+      `WebSocket send error ${response.status} ${response.message}`,
+    );
   }
 
   //
   // Service implementation
   //
 
-  protected async handleRequest(
-    request: WSRequest,
-  ): Promise<WSResponse> {
+  protected async handleRequest(request: WSRequest): Promise<WSResponse> {
     return this.router.run(request);
   }
 
@@ -561,10 +572,12 @@ export class Connection extends Service {
     const query = parseURL(url, true).query || {};
 
     // Note: when a device has been unlinked, it will use '' as its password
-    if (!query.login
-       || Array.isArray(query.login)
-       || typeof query.password !== 'string'
-       || Array.isArray(query.password)) {
+    if (
+      !query.login ||
+      Array.isArray(query.login) ||
+      typeof query.password !== 'string' ||
+      Array.isArray(query.password)
+    ) {
       debug('Unauthorized WebSocket connection @ %s: %j', url, query);
       return;
     }

@@ -8,7 +8,7 @@ export type Attachment = {
   blob: Buffer;
   digest: Buffer;
   size: number;
-}
+};
 
 export function attachmentToPointer(
   cdnKey: string,

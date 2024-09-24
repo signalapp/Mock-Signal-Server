@@ -47,9 +47,12 @@ describe('util', () => {
     it('should timeout on push', async () => {
       const q = new PromiseQueue<number>();
 
-      await assert.rejects(async () => {
-        await q.pushAndWait(23, 10);
-      }, { message: 'PromiseQueue pushAndWait timeout' });
+      await assert.rejects(
+        async () => {
+          await q.pushAndWait(23, 10);
+        },
+        { message: 'PromiseQueue pushAndWait timeout' },
+      );
     });
 
     it('should not timeout on push', async () => {
@@ -64,9 +67,12 @@ describe('util', () => {
     it('should timeout on shift', async () => {
       const q = new PromiseQueue<number>();
 
-      await assert.rejects(async () => {
-        await q.shift(10);
-      }, { message: 'PromiseQueue shift timeout' });
+      await assert.rejects(
+        async () => {
+          await q.shift(10);
+        },
+        { message: 'PromiseQueue shift timeout' },
+      );
     });
 
     it('should not timeout on shift', async () => {
@@ -81,17 +87,23 @@ describe('util', () => {
     it('should apply default timeouts on push', async () => {
       const q = new PromiseQueue<number>({ timeout: 10 });
 
-      await assert.rejects(async () => {
-        await q.pushAndWait(23);
-      }, { message: 'PromiseQueue pushAndWait timeout' });
+      await assert.rejects(
+        async () => {
+          await q.pushAndWait(23);
+        },
+        { message: 'PromiseQueue pushAndWait timeout' },
+      );
     });
 
     it('should apply default timeouts on shift', async () => {
       const q = new PromiseQueue<number>({ timeout: 10 });
 
-      await assert.rejects(async () => {
-        await q.shift();
-      }, { message: 'PromiseQueue shift timeout' });
+      await assert.rejects(
+        async () => {
+          await q.shift();
+        },
+        { message: 'PromiseQueue shift timeout' },
+      );
     });
   });
 });

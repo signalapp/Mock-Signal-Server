@@ -35,10 +35,7 @@ import {
   PRIMARY_DEVICE_ID,
   PROFILE_KEY_CREDENTIAL_EXPIRATION,
 } from '../constants';
-import {
-  ServerCertificate,
-  generateSenderCertificate,
-} from '../crypto';
+import { ServerCertificate, generateSenderCertificate } from '../crypto';
 import { ChangeNumberOptions, Device, DeviceKeys } from '../data/device';
 import {
   CreateCallLink,
@@ -64,6 +61,7 @@ import { ModifyGroupResult, ServerGroup } from './group';
 
 export enum EnvelopeType {
   CipherText = 'CipherText',
+  Plaintext = 'Plaintext',
   PreKey = 'PreKey',
   SealedSender = 'SealedSender',
   SenderKey = 'SenderKey',
@@ -79,7 +77,7 @@ export type GroupCredentialsRange = Readonly<{
 }>;
 
 export type GroupCredentialsFlags = Readonly<{
-  zkc: boolean | undefined
+  zkc: boolean | undefined;
 }>;
 
 export type StorageCredentials = Readonly<{
@@ -93,11 +91,11 @@ export type GroupCredentials = Array<{
 }>;
 
 export type ChallengeResponse = Readonly<{
-  code: number,
+  code: number;
   data: unknown;
 }>;
 
-export type PreparedMultiDeviceMessage = ReadonlyArray<[ Device, Message ]>;
+export type PreparedMultiDeviceMessage = ReadonlyArray<[Device, Message]>;
 
 export type ProvisionDeviceOptions = Readonly<{
   number: string;
@@ -107,33 +105,43 @@ export type ProvisionDeviceOptions = Readonly<{
   pniRegistrationId: RegistrationId;
 }>;
 
-export type RegisterDeviceOptions = Readonly<({
-  primary?: undefined;
-  provisionId?: ProvisionIdString;
-  number: string;
-} | {
-  primary: Device;
-  provisionId?: undefined;
-  number?: undefined;
-}) & {
-  registrationId: RegistrationId;
-  pniRegistrationId: RegistrationId;
-}>
+export type RegisterDeviceOptions = Readonly<
+  (
+    | {
+        primary?: undefined;
+        provisionId?: ProvisionIdString;
+        number: string;
+      }
+    | {
+        primary: Device;
+        provisionId?: undefined;
+        number?: undefined;
+      }
+  ) & {
+    registrationId: RegistrationId;
+    pniRegistrationId: RegistrationId;
+  }
+>;
 
-export type PrepareMultiDeviceMessageResult = Readonly<{
-  status: 'stale';
-  staleDevices: ReadonlyArray<number>;
-} | {
-  status: 'incomplete';
-  missingDevices: ReadonlyArray<number>;
-  extraDevices: ReadonlyArray<number>;
-} | {
-  status: 'unknown';
-} | {
-  status: 'ok';
-  targetServiceId: ServiceIdString;
-  result: PreparedMultiDeviceMessage;
-}>;
+export type PrepareMultiDeviceMessageResult = Readonly<
+  | {
+      status: 'stale';
+      staleDevices: ReadonlyArray<number>;
+    }
+  | {
+      status: 'incomplete';
+      missingDevices: ReadonlyArray<number>;
+      extraDevices: ReadonlyArray<number>;
+    }
+  | {
+      status: 'unknown';
+    }
+  | {
+      status: 'ok';
+      targetServiceId: ServiceIdString;
+      result: PreparedMultiDeviceMessage;
+    }
+>;
 
 export type ConfirmUsernameResult = Readonly<{
   usernameLinkHandle?: string;
@@ -144,18 +152,22 @@ export type SetUsernameLinkResult = Readonly<{
   serverId: string;
 }>;
 
-export type StorageWriteResult = Readonly<{
-  updated: false;
-  manifest: Proto.IStorageManifest;
-  error?: void;
-} | {
-  updated: true;
-  manifest?: void;
-  error?: void;
-} | {
-  updated?: void;
-  error: string;
-}>;
+export type StorageWriteResult = Readonly<
+  | {
+      updated: false;
+      manifest: Proto.IStorageManifest;
+      error?: void;
+    }
+  | {
+      updated: true;
+      manifest?: void;
+      error?: void;
+    }
+  | {
+      updated?: void;
+      error: string;
+    }
+>;
 
 export type ModifyGroupOptions = Readonly<{
   group: ServerGroup;
@@ -199,18 +211,17 @@ type MessageQueueEntry = {
 };
 
 export type CallLinkEntry = Readonly<{
-  adminPasskey: Buffer,
-  encryptedName: string,
-  restrictions: 'none' | 'adminApproval',
-  revoked: boolean,
-  expiration: number,
+  adminPasskey: Buffer;
+  encryptedName: string;
+  restrictions: 'none' | 'adminApproval';
+  revoked: boolean;
+  expiration: number;
 }>;
 
 const debug = createDebug('mock:server:base');
 
 // NOTE: This class is currently extended only by src/api/server.ts
 export abstract class Server {
-
   private readonly devices = new Map<string, Array<Device>>();
   private readonly devicesByServiceId = new Map<ServiceIdString, Device>();
   private readonly devicesByAuth = new Map<string, AuthEntry>();
@@ -218,24 +229,34 @@ export abstract class Server {
   private readonly usedProvisionIds = new Set<ProvisionIdString>();
   private readonly storageAuthByUsername = new Map<string, StorageAuthEntry>();
   private readonly storageAuthByDevice = new Map<Device, StorageAuthEntry>();
-  private readonly storageManifestByAci =
-    new Map<AciString, Proto.IStorageManifest>();
-  private readonly storageItemsByAci =
-    new Map<AciString, Map<string, Buffer>>();
-  private readonly provisioningCodes =
-    new Map<string, Map<ProvisioningCode, ProvisionIdString>>();
+  private readonly storageManifestByAci = new Map<
+    AciString,
+    Proto.IStorageManifest
+  >();
+  private readonly storageItemsByAci = new Map<
+    AciString,
+    Map<string, Buffer>
+  >();
+  private readonly provisioningCodes = new Map<
+    string,
+    Map<ProvisioningCode, ProvisionIdString>
+  >();
   private readonly attachments = new Map<AttachmentId, Buffer>();
   private readonly stickerPacks = new Map<string, EncryptedStickerPack>();
   private readonly webSockets = new Map<Device, Set<WebSocket>>();
-  private readonly messageQueue =
-    new WeakMap<Device, Array<MessageQueueEntry>>();
+  private readonly messageQueue = new WeakMap<
+    Device,
+    Array<MessageQueueEntry>
+  >();
   private readonly groups = new Map<string, ServerGroup>();
   private readonly aciByUsername = new Map<string, AciString>();
   private readonly aciByReservedUsername = new Map<string, AciString>();
   private readonly usernameByAci = new Map<AciString, string>();
   private readonly reservedUsernameByAci = new Map<AciString, string>();
-  private readonly usernameLinkIdByServiceId =
-    new Map<ServiceIdString, string>();
+  private readonly usernameLinkIdByServiceId = new Map<
+    ServiceIdString,
+    string
+  >();
   private readonly usernameLinkById = new Map<string, Buffer>();
   private readonly callLinksByRoomId = new Map<string, CallLinkEntry>();
   protected privCertificate: ServerCertificate | undefined;
@@ -249,12 +270,11 @@ export abstract class Server {
     }
 
     const result = this.https.address();
-    if (!result || typeof result !== 'object' ){
+    if (!result || typeof result !== 'object') {
       throw new Error('Invalid .address() result');
     }
     return result;
   }
-
 
   //
   // Service Ids
@@ -296,7 +316,7 @@ export abstract class Server {
   }
 
   public abstract getProvisioningResponse(
-    id: ProvisionIdString
+    id: ProvisionIdString,
   ): Promise<ProvisioningResponse>;
 
   public async registerDevice({
@@ -316,10 +336,7 @@ export abstract class Server {
     if (primary) {
       ({ aci, pni, number } = primary);
     } else {
-      [ aci, pni ] = await Promise.all([
-        this.generateAci(),
-        this.generatePni(),
-      ]);
+      [aci, pni] = await Promise.all([this.generateAci(), this.generatePni()]);
       number = maybeNumber;
     }
 
@@ -388,7 +405,7 @@ export abstract class Server {
     }
     entry.delete(provisioningCode);
 
-    const [ primary ] = this.devices.get(number) || [];
+    const [primary] = this.devices.get(number) || [];
     assert(primary !== undefined, 'Missing primary device when provisioning');
 
     const device = await this.registerDevice({
@@ -405,8 +422,9 @@ export abstract class Server {
     // Add auth only after successfully registering the device
     assert(
       !this.devicesByAuth.has(username) &&
-      !this.devicesByAuth.has(secondUsername),
-      'Duplicate username in `provisionDevice`');
+        !this.devicesByAuth.has(secondUsername),
+      'Duplicate username in `provisionDevice`',
+    );
     const authEntry = {
       password,
       device,
@@ -493,9 +511,11 @@ export abstract class Server {
   //
 
   protected async storeAttachment(attachment: Buffer): Promise<AttachmentId> {
-    const id = (
-      crypto.createHash('sha256').update(attachment).digest('hex')
-    ) as AttachmentId;
+    const id = (ATTACHMENT_PREFIX +
+      crypto
+        .createHash('sha256')
+        .update(attachment)
+        .digest('hex')) as AttachmentId;
     this.attachments.set(id, attachment);
     return id;
   }
@@ -542,15 +562,12 @@ export abstract class Server {
       deviceById.set(device.deviceId, device);
     }
 
-    const result = new Array<[ Device, Message ]>();
+    const result = new Array<[Device, Message]>();
 
     const extraDevices = new Set<DeviceId>();
     const staleDevices = new Set<DeviceId>();
     for (const message of messages) {
-      const {
-        destinationDeviceId,
-        destinationRegistrationId,
-      } = message;
+      const { destinationDeviceId, destinationRegistrationId } = message;
 
       const target = deviceById.get(destinationDeviceId);
       if (!target) {
@@ -569,7 +586,7 @@ export abstract class Server {
         continue;
       }
 
-      result.push([ target, message ]);
+      result.push([target, message]);
     }
 
     if (source && source.aci === targetServiceId) {
@@ -596,7 +613,7 @@ export abstract class Server {
     targetServiceId: ServiceIdString,
     prepared: PreparedMultiDeviceMessage,
   ): Promise<void> {
-    for (const [ target, message ] of prepared) {
+    for (const [target, message] of prepared) {
       let envelopeType: EnvelopeType;
       if (message.type === Proto.Envelope.Type.CIPHERTEXT) {
         envelopeType = EnvelopeType.CipherText;
@@ -604,6 +621,8 @@ export abstract class Server {
         envelopeType = EnvelopeType.PreKey;
       } else if (message.type === Proto.Envelope.Type.UNIDENTIFIED_SENDER) {
         envelopeType = EnvelopeType.SealedSender;
+      } else if (message.type === Proto.Envelope.Type.PLAINTEXT_CONTENT) {
+        envelopeType = EnvelopeType.Plaintext;
       } else {
         throw new Error(`Unsupported envelope type: ${message.type}`);
       }
@@ -653,37 +672,37 @@ export abstract class Server {
   }
 
   // TODO(indutny): timeout
-  public async send(
-    target: Device,
-    message: Buffer,
-  ): Promise<void> {
+  public async send(target: Device, message: Buffer): Promise<void> {
     const sockets = this.webSockets.get(target);
     if (sockets) {
       debug(
         'sending message to %d sockets of %s',
         sockets.size,
-        target.debugId);
+        target.debugId,
+      );
       let success = false;
-      await Promise.all<void>(Array.from(sockets).map(async (socket) => {
-        try {
-          await socket.sendMessage(message);
-          success = true;
-        } catch (error) {
-          assert(error instanceof Error);
-          debug('failed to send message to socket of %s, error %s',
-            target.debugId, error.message);
-        }
-      }));
+      await Promise.all<void>(
+        Array.from(sockets).map(async (socket) => {
+          try {
+            await socket.sendMessage(message);
+            success = true;
+          } catch (error) {
+            assert(error instanceof Error);
+            debug(
+              'failed to send message to socket of %s, error %s',
+              target.debugId,
+              error.message,
+            );
+          }
+        }),
+      );
 
       // At least one send should succeed, if not - queue
       if (success) {
         return;
       }
 
-      debug(
-        'message couldn\'t be sent to %s',
-        sockets.size,
-        target.debugId);
+      debug("message couldn't be sent to %s", sockets.size, target.debugId);
     }
 
     debug('queueing message for device=%s', target.debugId);
@@ -799,12 +818,7 @@ export abstract class Server {
 
   public async applyStorageWrite(
     device: Device,
-    {
-      manifest,
-      clearAll,
-      insertItem,
-      deleteKey,
-    }: Proto.IWriteOperation,
+    { manifest, clearAll, insertItem, deleteKey }: Proto.IWriteOperation,
     shouldNotify = true,
   ): Promise<StorageWriteResult> {
     if (!manifest) {
@@ -813,7 +827,8 @@ export abstract class Server {
 
     if (!manifest.version) {
       return {
-        error: 'not updating storage manifest, ' +
+        error:
+          'not updating storage manifest, ' +
           'missing `writeOperation.manifest.version`',
       };
     }
@@ -900,15 +915,13 @@ export abstract class Server {
     return map.get(key.toString('hex'));
   }
 
-  public async getAllStorageKeys(
-    device: Device,
-  ): Promise<Array<Buffer>> {
+  public async getAllStorageKeys(device: Device): Promise<Array<Buffer>> {
     const map = this.storageItemsByAci.get(device.aci);
     if (!map) {
       return [];
     }
 
-    return Array.from(map.keys()).map(hex => Buffer.from(hex, 'hex'));
+    return Array.from(map.keys()).map((hex) => Buffer.from(hex, 'hex'));
   }
 
   public async getStorageItems(
@@ -917,20 +930,19 @@ export abstract class Server {
   ): Promise<Array<Proto.IStorageItem> | undefined> {
     const result = new Array<Proto.IStorageItem>();
 
-    await Promise.all(keys.map(async (key) => {
-      const value = await this.getStorageItem(device, key);
-      if (value !== undefined) {
-        result.push({ key, value });
-      }
-    }));
+    await Promise.all(
+      keys.map(async (key) => {
+        const value = await this.getStorageItem(device, key);
+        if (value !== undefined) {
+          result.push({ key, value });
+        }
+      }),
+    );
 
     return result;
   }
 
-  public async deleteStorageItem(
-    device: Device,
-    key: Buffer,
-  ): Promise<void> {
+  public async deleteStorageItem(device: Device, key: Buffer): Promise<void> {
     const map = this.storageItemsByAci.get(device.aci);
     if (!map) {
       return;
@@ -978,11 +990,7 @@ export abstract class Server {
 
   public async confirmUsername(
     aci: AciString,
-    {
-      usernameHash,
-      zkProof,
-      encryptedUsername,
-    }: UsernameConfirmation,
+    { usernameHash, zkProof, encryptedUsername }: UsernameConfirmation,
   ): Promise<ConfirmUsernameResult | undefined> {
     // Clear previously reserved usernames
     const reserved = this.reservedUsernameByAci.get(aci);
@@ -1014,9 +1022,7 @@ export abstract class Server {
     return { usernameLinkHandle };
   }
 
-  public async deleteUsername(
-    aci: AciString,
-  ): Promise<void> {
+  public async deleteUsername(aci: AciString): Promise<void> {
     const hash = this.usernameByAci.get(aci);
     if (!hash) {
       return;
@@ -1080,15 +1086,10 @@ export abstract class Server {
     aci: AciString,
     username: string,
   ): Promise<SetUsernameLinkResult> {
-    const {
-      entropy,
-      encryptedUsername,
-    } = usernames.createUsernameLink(username);
+    const { entropy, encryptedUsername } =
+      usernames.createUsernameLink(username);
 
-    const serverId = await this.replaceUsernameLink(
-      aci,
-      encryptedUsername,
-    );
+    const serverId = await this.replaceUsernameLink(aci, encryptedUsername);
 
     return {
       entropy,
@@ -1130,9 +1131,7 @@ export abstract class Server {
     return callLink;
   }
 
-  public async getCallLink(
-    roomId: string,
-  ): Promise<CallLinkEntry | undefined> {
+  public async getCallLink(roomId: string): Promise<CallLinkEntry | undefined> {
     return this.callLinksByRoomId.get(roomId);
   }
 
@@ -1210,7 +1209,7 @@ export abstract class Server {
 
     debug('removeDevice %j.%j (%j)', device.aci, deviceId, number);
 
-    const copy = [ ...list ];
+    const copy = [...list];
     copy.splice(deviceId - 1, 1);
     this.devices.set(number, copy);
 
@@ -1275,9 +1274,9 @@ export abstract class Server {
     const result: GroupCredentials = [];
     const { zkc } = flags;
 
-    const issueCredential = zkc ?
-      auth.issueAuthCredentialWithPniZkc.bind(auth) :
-      auth.issueAuthCredentialWithPniAsServiceId.bind(auth);
+    const issueCredential = zkc
+      ? auth.issueAuthCredentialWithPniZkc.bind(auth)
+      : auth.issueAuthCredentialWithPniAsServiceId.bind(auth);
 
     for (
       let redemptionTime = from;
@@ -1287,8 +1286,11 @@ export abstract class Server {
       result.push({
         credential: issueCredential(
           Aci.parseFromServiceIdString(aci),
-          Pni.parseFromServiceIdString(pni), redemptionTime)
-          .serialize().toString('base64'),
+          Pni.parseFromServiceIdString(pni),
+          redemptionTime,
+        )
+          .serialize()
+          .toString('base64'),
         redemptionTime,
       });
     }
@@ -1335,8 +1337,10 @@ export abstract class Server {
         credential: CallLinkAuthCredentialResponse.issueCredential(
           Aci.parseFromServiceIdString(aci),
           redemptionTime,
-          this.genericServerSecret)
-          .serialize().toString('base64'),
+          this.genericServerSecret,
+        )
+          .serialize()
+          .toString('base64'),
         redemptionTime,
       });
     }
@@ -1354,12 +1358,14 @@ export abstract class Server {
     const today = getTodayInSeconds();
 
     const profile = new ServerZkProfileOperations(this.zkSecret);
-    return profile.issueExpiringProfileKeyCredential(
-      request,
-      Aci.parseFromServiceIdString(aci),
-      profileKeyCommitment,
-      today + PROFILE_KEY_CREDENTIAL_EXPIRATION,
-    ).serialize();
+    return profile
+      .issueExpiringProfileKeyCredential(
+        request,
+        Aci.parseFromServiceIdString(aci),
+        profileKeyCommitment,
+        today + PROFILE_KEY_CREDENTIAL_EXPIRATION,
+      )
+      .serialize();
   }
 
   public abstract isUnregistered(serviceId: ServiceIdString): boolean;
@@ -1423,19 +1429,21 @@ export abstract class Server {
     }
 
     debug('sending queued %d messages to %s', queue.length, device.debugId);
-    await Promise.all(queue.map(async (entry) => {
-      const { message, resolve, reject } = entry;
+    await Promise.all(
+      queue.map(async (entry) => {
+        const { message, resolve, reject } = entry;
 
-      try {
-        await socket.sendMessage(message);
-      } catch (error) {
-        assert(error instanceof Error);
-        reject(error);
-        return;
-      }
+        try {
+          await socket.sendMessage(message);
+        } catch (error) {
+          assert(error instanceof Error);
+          reject(error);
+          return;
+        }
 
-      resolve();
-    }));
+        resolve();
+      }),
+    );
 
     debug('queue for %s is empty', device.debugId);
     await socket.sendMessage('empty');

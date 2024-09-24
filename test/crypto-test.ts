@@ -11,18 +11,20 @@ describe('crypto', () => {
   it('should create ServerCertificate', () => {
     const root = PrivateKey.generate();
 
-    const {
-      certificate,
-    } = generateServerCertificate(root);
+    const { certificate } = generateServerCertificate(root);
 
     if (!certificate.signature || !certificate.certificate) {
       throw new Error('Invalid cert');
     }
 
-    assert.ok(root.getPublicKey().verify(
-      Buffer.from(certificate.certificate),
-      Buffer.from(certificate.signature),
-    ));
+    assert.ok(
+      root
+        .getPublicKey()
+        .verify(
+          Buffer.from(certificate.certificate),
+          Buffer.from(certificate.signature),
+        ),
+    );
   });
 
   // Make sure that access key has correct value when derived from a constant

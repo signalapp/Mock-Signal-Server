@@ -23,8 +23,8 @@ import {
   router,
 } from 'microrouter';
 import * as fs from 'fs';
-import { Server as TusServer} from '@tus/server';
-import { FileStore} from '@tus/file-store';
+import { Server as TusServer } from '@tus/server';
+import { FileStore } from '@tus/file-store';
 
 import { signalservice as Proto } from '../../protos/compiled';
 import { decodeKyberPreKey, decodePreKey, decodeSignedPreKey } from '../crypto';
@@ -59,7 +59,6 @@ import { join } from 'path';
 
 const debug = createDebug('mock:http');
 
-
 const parsePassword = (req: ServerRequest): ParseAuthHeaderResult => {
   return parseAuthHeader(req.headers.authorization);
 };
@@ -69,30 +68,32 @@ const sendDevicesKeys = async (
   serviceIdKind: ServiceIdKind,
   devices: ReadonlyArray<Device>,
 ): Promise<void> => {
-  const [ primary ] = devices;
+  const [primary] = devices;
   assert(primary !== undefined, 'Empty device list');
 
   const identityKey = await primary.getIdentityKey(serviceIdKind);
 
   send(res, 200, {
     identityKey: identityKey.serialize().toString('base64'),
-    devices: await Promise.all(devices.map(async (device) => {
-      const { signedPreKey, preKey } =
-        await device.popSingleUseKey(serviceIdKind);
-      return {
-        deviceId: device.deviceId,
-        registrationId: device.getRegistrationId(serviceIdKind),
-        signedPreKey: {
-          keyId: signedPreKey.keyId,
-          publicKey: signedPreKey.publicKey.serialize().toString('base64'),
-          signature: signedPreKey.signature.toString('base64'),
-        },
-        preKey: preKey && {
-          keyId: preKey.keyId,
-          publicKey: preKey.publicKey.serialize().toString('base64'),
-        },
-      };
-    })),
+    devices: await Promise.all(
+      devices.map(async (device) => {
+        const { signedPreKey, preKey } =
+          await device.popSingleUseKey(serviceIdKind);
+        return {
+          deviceId: device.deviceId,
+          registrationId: device.getRegistrationId(serviceIdKind),
+          signedPreKey: {
+            keyId: signedPreKey.keyId,
+            publicKey: signedPreKey.publicKey.serialize().toString('base64'),
+            signature: signedPreKey.signature.toString('base64'),
+          },
+          preKey: preKey && {
+            keyId: preKey.keyId,
+            publicKey: preKey.publicKey.serialize().toString('base64'),
+          },
+        };
+      }),
+    ),
   });
 };
 
@@ -120,7 +121,7 @@ export const createHandler = (
       }
 
       const serviceIdKind = device.getServiceIdKind(serviceId);
-      return await sendDevicesKeys(res, serviceIdKind, [ device ]);
+      return await sendDevicesKeys(res, serviceIdKind, [device]);
     },
   );
 
@@ -146,10 +147,9 @@ export const createHandler = (
   // CDN
   //
 
-
   const tusServer = new TusServer({
     path: '/cdn3',
-    datastore: new FileStore({directory: cdn3Path ?? ''}),
+    datastore: new FileStore({ directory: cdn3Path ?? '' }),
     namingFunction: (req) => {
       assert(req.url);
       return req.url.split('/').at(-1) as string;
@@ -159,9 +159,7 @@ export const createHandler = (
   const getCdn3Attachment = get('/cdn3/attachments/:key', async (req, res) => {
     assert(cdn3Path, 'cdn3Path must be set');
     try {
-      const data = fs.readFileSync(
-        join(cdn3Path, req.params.key),
-      );
+      const data = fs.readFileSync(join(cdn3Path, req.params.key));
       return send(res, 200, data);
     } catch (e) {
       assert(e instanceof Error);
@@ -220,58 +218,49 @@ export const createHandler = (
     };
   }
 
-  const getCallLink = get(
-    '/v1/call-link/',
-    async (req, res) => {
-      const roomId = req.headers['x-room-id'];
-      if (typeof roomId !== 'string') {
-        return send(res, 400, { error: 'Missing room ID' });
-      }
+  const getCallLink = get('/v1/call-link/', async (req, res) => {
+    const roomId = req.headers['x-room-id'];
+    if (typeof roomId !== 'string') {
+      return send(res, 400, { error: 'Missing room ID' });
+    }
 
-      const callLink = await server.getCallLink(roomId);
-      if (!callLink) {
-        return send(res, 404, { error: 'Call link not found' });
-      }
+    const callLink = await server.getCallLink(roomId);
+    if (!callLink) {
+      return send(res, 404, { error: 'Call link not found' });
+    }
 
-      return toCallLinkResponse(callLink);
-    },
-  );
+    return toCallLinkResponse(callLink);
+  });
 
-  const createOrUpdateCallLink = put(
-    '/v1/call-link',
-    async (req, res) => {
-      const roomId = req.headers['x-room-id'];
-      if (typeof roomId !== 'string') {
-        return send(res, 400, { error: 'Missing room ID' });
-      }
+  const createOrUpdateCallLink = put('/v1/call-link', async (req, res) => {
+    const roomId = req.headers['x-room-id'];
+    if (typeof roomId !== 'string') {
+      return send(res, 400, { error: 'Missing room ID' });
+    }
 
-      const body = await json(req);
+    const body = await json(req);
 
-      let callLink: CallLinkEntry;
-      if (!server.hasCallLink(roomId)) {
-        const createParams = CreateCallLinkSchema.parse(body);
-        callLink = await server.createCallLink(roomId, createParams);
-      } else {
-        const updateParams = UpdateCallLinkSchema.parse(body);
-        callLink = await server.updateCallLink(roomId, updateParams);
-      }
+    let callLink: CallLinkEntry;
+    if (!server.hasCallLink(roomId)) {
+      const createParams = CreateCallLinkSchema.parse(body);
+      callLink = await server.createCallLink(roomId, createParams);
+    } else {
+      const updateParams = UpdateCallLinkSchema.parse(body);
+      callLink = await server.updateCallLink(roomId, updateParams);
+    }
 
-      return toCallLinkResponse(callLink);
-    },
-  );
+    return toCallLinkResponse(callLink);
+  });
 
-  const deleteCallLink = del(
-    '/v1/call-link',
-    async (req, res) => {
-      const roomId = req.headers['x-room-id'];
-      if (typeof roomId !== 'string') {
-        return send(res, 400, { error: 'Missing room ID' });
-      }
-      const deleteParams = DeleteCallLinkSchema.parse(await json(req));
-      await server.deleteCallLink(roomId, deleteParams);
-      return null;
-    },
-  );
+  const deleteCallLink = del('/v1/call-link', async (req, res) => {
+    const roomId = req.headers['x-room-id'];
+    if (typeof roomId !== 'string') {
+      return send(res, 400, { error: 'Missing room ID' });
+    }
+    const deleteParams = DeleteCallLinkSchema.parse(await json(req));
+    await server.deleteCallLink(roomId, deleteParams);
+    return null;
+  });
 
   //
   // Authorized requests
@@ -533,8 +522,7 @@ export const createHandler = (
     async (req, res) => {
       const { uuid: linkUuid = '' } = req.params;
 
-      const encryptedValue =
-        await server.lookupByUsernameLink(linkUuid);
+      const encryptedValue = await server.lookupByUsernameLink(linkUuid);
 
       if (!encryptedValue) {
         return send(res, 404);
@@ -552,9 +540,9 @@ export const createHandler = (
         return;
       }
 
-      const {
-        usernameLinkEncryptedValue,
-      } = PutUsernameLinkSchema.parse(await json(req));
+      const { usernameLinkEncryptedValue } = PutUsernameLinkSchema.parse(
+        await json(req),
+      );
 
       const usernameLinkHandle = await server.replaceUsernameLink(
         device.aci,
@@ -589,7 +577,6 @@ export const createHandler = (
       };
     },
   );
-
 
   //
   // Captcha
@@ -631,10 +618,14 @@ export const createHandler = (
     const groupSendEndorsementResponse = group.getGroupSendEndorsementResponse(
       auth.aciCiphertext,
     );
-    return send(res, 200, Proto.GroupResponse.encode({
-      group: group.state,
-      groupSendEndorsementResponse,
-    }).finish());
+    return send(
+      res,
+      200,
+      Proto.GroupResponse.encode({
+        group: group.state,
+        groupSendEndorsementResponse,
+      }).finish(),
+    );
   });
 
   const getGroupVersion = get(
@@ -653,9 +644,13 @@ export const createHandler = (
         return send(res, 403, { error: 'Not a member of this group' });
       }
 
-      return send(res, 200, Proto.Member.encode({
-        joinedAtVersion: member.joinedAtVersion,
-      }).finish());
+      return send(
+        res,
+        200,
+        Proto.Member.encode({
+          joinedAtVersion: member.joinedAtVersion,
+        }).finish(),
+      );
     },
   );
 
@@ -710,7 +705,10 @@ export const createHandler = (
       return;
     }
 
-    const { groupChanges: { groupChanges }, auth } = result;
+    const {
+      groupChanges: { groupChanges },
+      auth,
+    } = result;
     const { group } = auth;
 
     const expirationResult = PositiveInt.safeParse(
@@ -724,9 +722,9 @@ export const createHandler = (
     const expirationTime = expirationResult.data;
     const currentTime = Math.floor(Date.now() / 1000);
     const expiresInLessThanSixHours =
-      expirationTime < (currentTime + SECONDS_IN_SIX_HOURS);
+      expirationTime < currentTime + SECONDS_IN_SIX_HOURS;
 
-    const membershipChange = groupChanges?.find(change => {
+    const membershipChange = groupChanges?.find((change) => {
       const encodedActions = change.groupChange?.actions;
       if (!encodedActions) {
         return false;
@@ -767,14 +765,13 @@ export const createHandler = (
       return;
     }
 
-    const groupData = Proto.Group.decode(
-      Buffer.from(await buffer(req)),
-    );
+    const groupData = Proto.Group.decode(Buffer.from(await buffer(req)));
     if (!groupData.title) {
       return send(res, 400, { error: 'Missing group title' });
     }
     if (
-      !groupData.publicKey || !auth.publicParams.equals(groupData.publicKey)
+      !groupData.publicKey ||
+      !auth.publicParams.equals(groupData.publicKey)
     ) {
       return send(res, 400, { error: 'Invalid group public key' });
     }
@@ -800,11 +797,16 @@ export const createHandler = (
       return;
     }
     const { group, auth } = result;
-    return send(res, 200, Proto.GroupResponse.encode({
-      group: group.state,
-      groupSendEndorsementResponse: group
-        .getGroupSendEndorsementResponse(auth.aciCiphertext),
-    }).finish());
+    return send(
+      res,
+      200,
+      Proto.GroupResponse.encode({
+        group: group.state,
+        groupSendEndorsementResponse: group.getGroupSendEndorsementResponse(
+          auth.aciCiphertext,
+        ),
+      }).finish(),
+    );
   });
 
   async function modifyGroupInner(
@@ -857,11 +859,7 @@ export const createHandler = (
       return;
     }
     const { signedChange } = result;
-    return send(
-      res,
-      200,
-      Proto.GroupChange.encode(signedChange).finish(),
-    );
+    return send(res, 200, Proto.GroupChange.encode(signedChange).finish());
   });
 
   const modifyGroup = patch('/v2/groups', async (req, res) => {
@@ -876,8 +874,8 @@ export const createHandler = (
       200,
       Proto.GroupChangeResponse.encode({
         groupChange: signedChange,
-        groupSendEndorsementResponse: group
-          .getGroupSendEndorsementResponse(aciCiphertext),
+        groupSendEndorsementResponse:
+          group.getGroupSendEndorsementResponse(aciCiphertext),
       }).finish(),
     );
   });
@@ -961,9 +959,13 @@ export const createHandler = (
       return send(res, 413, { error: 'Requested too many items' });
     }
 
-    return send(res, 200, Proto.StorageItems.encode({
-      items,
-    }).finish());
+    return send(
+      res,
+      200,
+      Proto.StorageItems.encode({
+        items,
+      }).finish(),
+    );
   });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1037,11 +1039,11 @@ export const createHandler = (
     createOrUpdateCallLink,
     deleteCallLink,
 
-    ...[ head, patch, post ].map(method => method('/cdn3/*',
-      async (req, res) => {
+    ...[head, patch, post].map((method) =>
+      method('/cdn3/*', async (req, res) => {
         await tusServer.handle(req, res);
-      },
-    )),
+      }),
+    ),
 
     getCdn3Attachment,
 

@@ -12,32 +12,33 @@ export type Contact = Readonly<{
 }>;
 
 export function serializeContacts(contacts: ReadonlyArray<Contact>): Buffer {
-  const chunks = contacts.map((contact) => {
-    const { aci, number, profileName: name } = contact;
-    return Buffer.from(Proto.ContactDetails.encode({
-      aci,
-      number,
-      name,
-    }).finish());
-  }).map((chunk) => {
-    const size: Array<number> = [];
+  const chunks = contacts
+    .map((contact) => {
+      const { aci, number, profileName: name } = contact;
+      return Buffer.from(
+        Proto.ContactDetails.encode({
+          aci,
+          number,
+          name,
+        }).finish(),
+      );
+    })
+    .map((chunk) => {
+      const size: Array<number> = [];
 
-    let remaining = chunk.length;
-    do {
-      let element = remaining & 0x7f;
-      remaining >>>= 7;
+      let remaining = chunk.length;
+      do {
+        let element = remaining & 0x7f;
+        remaining >>>= 7;
 
-      if (remaining !== 0) {
-        element |= 0x80;
-      }
-      size.push(element);
-    } while (remaining !== 0);
+        if (remaining !== 0) {
+          element |= 0x80;
+        }
+        size.push(element);
+      } while (remaining !== 0);
 
-    return [
-      Buffer.from(size),
-      chunk,
-    ];
-  });
+      return [Buffer.from(size), chunk];
+    });
 
   return Buffer.concat(chunks.flat());
 }

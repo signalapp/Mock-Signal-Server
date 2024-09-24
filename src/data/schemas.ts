@@ -14,14 +14,18 @@ import { fromBase64, fromURLSafeBase64 } from '../util';
 
 export const PositiveInt = z.coerce.number().int().nonnegative();
 
-export const AciSchema = z.string().transform(x => x as AciString);
-export const PniSchema = z.string()
-  .refine(x => x.startsWith('PNI:'))
-  .transform(x => x as PniString);
-export const ServiceIdSchema = z.string().transform(x => x as ServiceIdString);
-export const RegistrationIdSchema = z.number()
-  .transform(x => x as RegistrationId);
-export const DeviceIdSchema = z.number().transform(x => x as DeviceId);
+export const AciSchema = z.string().transform((x) => x as AciString);
+export const PniSchema = z
+  .string()
+  .refine((x) => x.startsWith('PNI:'))
+  .transform((x) => x as PniString);
+export const ServiceIdSchema = z
+  .string()
+  .transform((x) => x as ServiceIdString);
+export const RegistrationIdSchema = z
+  .number()
+  .transform((x) => x as RegistrationId);
+export const DeviceIdSchema = z.number().transform((x) => x as DeviceId);
 
 const PreKeySchema = z.object({
   keyId: z.number(),
@@ -88,9 +92,12 @@ export const GroupStateSchema = z.object({
 });
 
 export const UsernameReservationSchema = z.object({
-  usernameHashes: z.string().transform(
-    fromURLSafeBase64,
-  ).array().min(1).max(20),
+  usernameHashes: z
+    .string()
+    .transform(fromURLSafeBase64)
+    .array()
+    .min(1)
+    .max(20),
 });
 
 export type UsernameReservation = z.infer<typeof UsernameReservationSchema>;
@@ -125,7 +132,7 @@ export type CreateCallLink = z.infer<typeof CreateCallLinkSchema>;
 export const UpdateCallLinkSchema = z.object({
   adminPasskey: z.string().transform(fromBase64),
   name: z.string().optional(),
-  restrictions: z.enum([ 'none', 'adminApproval' ]).optional(),
+  restrictions: z.enum(['none', 'adminApproval']).optional(),
   revoked: z.boolean().optional(),
 });
 

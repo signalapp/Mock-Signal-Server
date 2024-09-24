@@ -47,18 +47,18 @@ export abstract class Group {
     };
   }
 
-  public getMember(
-    uuidCiphertext: UuidCiphertext,
-  ): Proto.IMember | undefined {
+  public getMember(uuidCiphertext: UuidCiphertext): Proto.IMember | undefined {
     const state = this.state;
     const userId = uuidCiphertext.serialize();
-    return state.members?.find((member) => {
-      if (!member.userId) {
-        return false;
-      }
+    return (
+      state.members?.find((member) => {
+        if (!member.userId) {
+          return false;
+        }
 
-      return userId.equals(member.userId);
-    }) ?? undefined;
+        return userId.equals(member.userId);
+      }) ?? undefined
+    );
   }
 
   public getPendingMember(
@@ -66,12 +66,14 @@ export abstract class Group {
   ): Proto.IMemberPendingProfileKey | undefined {
     const state = this.state;
     const userId = uuidCiphertext.serialize();
-    return state.membersPendingProfileKey?.find(({ member }) => {
-      if (!member?.userId) {
-        return false;
-      }
+    return (
+      state.membersPendingProfileKey?.find(({ member }) => {
+        if (!member?.userId) {
+          return false;
+        }
 
-      return userId.equals(member.userId);
-    }) ?? undefined;
+        return userId.equals(member.userId);
+      }) ?? undefined
+    );
   }
 }

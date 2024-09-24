@@ -11,18 +11,14 @@ parserOptions:
 plugins:
   - '@typescript-eslint'
 rules:
-  indent:
-    - error
-    - 2
-  max-len:
-    - error
-    - code: 80
   linebreak-style:
     - error
     - unix
   quotes:
     - error
     - single
+    -
+      avoidEscape: true
   semi:
     - error
     - always
@@ -58,9 +54,6 @@ rules:
     - error
     -
       ignoreDeclarationSort: true
-  array-bracket-spacing:
-    - error
-    - always
   arrow-spacing:
     - error
     -
