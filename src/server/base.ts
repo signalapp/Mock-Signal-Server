@@ -30,7 +30,6 @@ import { AddressInfo } from 'net';
 
 import { signalservice as Proto } from '../../protos/compiled';
 import {
-  ATTACHMENT_PREFIX,
   DAY_IN_SECONDS,
   MAX_GROUP_CREDENTIALS_DAYS,
   PRIMARY_DEVICE_ID,
@@ -495,7 +494,6 @@ export abstract class Server {
 
   protected async storeAttachment(attachment: Buffer): Promise<AttachmentId> {
     const id = (
-      ATTACHMENT_PREFIX +
       crypto.createHash('sha256').update(attachment).digest('hex')
     ) as AttachmentId;
     this.attachments.set(id, attachment);

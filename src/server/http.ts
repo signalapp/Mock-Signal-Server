@@ -172,11 +172,9 @@ export const createHandler = (
     }
   });
 
-  const getAttachment = get('/attachments/:key/:subkey', async (req, res) => {
-    const { key, subkey } = req.params;
-    const result = await server.fetchAttachment(
-      `${key}/${subkey}` as AttachmentId,
-    );
+  const getAttachment = get('/attachments/:key', async (req, res) => {
+    const { key } = req.params;
+    const result = await server.fetchAttachment(key as AttachmentId);
     if (!result) {
       return send(res, 404, { error: 'Attachment not found' });
     }
