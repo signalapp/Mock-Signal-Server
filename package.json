@@ -21,7 +21,7 @@
     "mocha": "mocha test/**/*-test.js",
     "lint": "eslint --cache src test && pprettier --check '**/*.ts'",
     "test": "npm run mocha && npm run lint",
-    "prepublish": "npm run build"
+    "prepare": "npm run build"
   },
   "repository": {
     "type": "git",
