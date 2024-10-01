@@ -37,7 +37,10 @@ export type ParseAuthHeaderResult =
       error: string;
     };
 
-export function parseAuthHeader(header?: string): ParseAuthHeaderResult {
+export function parseAuthHeader(
+  header?: string,
+  options?: { allowEmptyPassword?: boolean },
+): ParseAuthHeaderResult {
   if (!header) {
     return { error: 'Missing Authorization header' };
   }
@@ -61,7 +64,7 @@ export function parseAuthHeader(header?: string): ParseAuthHeaderResult {
     return { error: 'Missing username' };
   }
 
-  if (!password) {
+  if (!password && !options?.allowEmptyPassword) {
     return { error: 'Missing password' };
   }
 

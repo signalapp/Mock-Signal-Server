@@ -4,7 +4,6 @@
 import assert from 'assert';
 import { Buffer } from 'buffer';
 import { IncomingMessage } from 'http';
-import { parse as parseURL } from 'url';
 import { timingSafeEqual } from 'crypto';
 import createDebug from 'debug';
 import { ProfileKeyCredentialRequest } from '@signalapp/libsignal-client/zkgroup';
@@ -516,7 +515,7 @@ export class Connection extends Service {
     }
 
     if (url.startsWith('/v1/websocket/?')) {
-      return await this.handleNormal(url);
+      return await this.handleNormal(this.request);
     }
   }
 
@@ -568,23 +567,31 @@ export class Connection extends Service {
     }
   }
 
-  private async handleNormal(url: string) {
-    const query = parseURL(url, true).query || {};
+  private async handleNormal(incomingMessage: IncomingMessage) {
+    const authHeaders = incomingMessage.headers.authorization;
+    if (!authHeaders) {
+      debug('Websocket connection does not include Authorization header');
+      return;
+    }
+    const { error, username, password } = parseAuthHeader(authHeaders, {
+      allowEmptyPassword: true,
+    });
 
-    // Note: when a device has been unlinked, it will use '' as its password
-    if (
-      !query.login ||
-      Array.isArray(query.login) ||
-      typeof query.password !== 'string' ||
-      Array.isArray(query.password)
-    ) {
-      debug('Unauthorized WebSocket connection @ %s: %j', url, query);
+    if (error || !username) {
+      debug(
+        'Invalid Authorization header for websocket connection @ %s: %s',
+        error,
+        authHeaders
+      );
       return;
     }
 
-    const device = await this.server.auth(query.login, query.password);
+    const device = await this.server.auth(username, password);
     if (!device) {
-      debug('Invalid WebSocket credentials @ %s: %j', url, query);
+      debug('Invalid WebSocket credentials @ %s: %j', incomingMessage.url, {
+        username,
+        password,
+      });
       this.ws.close(3000);
       return;
     }
