@@ -127,17 +127,8 @@ export class Connection extends Service {
           200,
           {
             config: [
-              { name: 'desktop.gv2', enabled: true },
-              { name: 'desktop.gv2Admin', enabled: true },
               { name: 'desktop.internalUser', enabled: true },
-              { name: 'desktop.sendSenderKey2', enabled: true },
-              { name: 'desktop.sendSenderKey3', enabled: true },
               { name: 'desktop.senderKey.retry', enabled: true },
-              { name: 'desktop.senderKey.send', enabled: true },
-              { name: 'desktop.storage', enabled: true },
-              { name: 'desktop.storageWrite3', enabled: true },
-              { name: 'desktop.messageRequests', enabled: true },
-              { name: 'desktop.pnp', enabled: true },
               { name: 'desktop.usernames', enabled: true },
               {
                 name: 'global.groupsv2.maxGroupSize',
