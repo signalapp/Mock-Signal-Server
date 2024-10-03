@@ -7,11 +7,13 @@ import { ParsedUrlQuery, parse as parseQS } from 'querystring';
 
 import { WSRequest, WSResponse } from './service';
 
+import { JsonValue, PartialDeep } from 'type-fest';
 import URLPattern from 'url-pattern';
+import { assertJsonValue } from '../../util';
 
 const debug = createDebug('mock:ws:router');
 
-export type AbbreviatedResponse = Readonly<[number, unknown]>;
+export type AbbreviatedResponse = Readonly<[number, PartialDeep<JsonValue>]>;
 
 export type Handler = (
   params: Record<string, string>,
@@ -104,6 +106,7 @@ export class Router {
       };
     }
 
+    assertJsonValue(json);
     return {
       status,
       headers: ['Content-Type:application/json'],

@@ -95,11 +95,11 @@ export class Connection extends Service {
       return [
         200,
         {
-          name: target.profileName,
+          name: target.profileName?.toString('base64'),
           identityKey: identityKey.serialize().toString('base64'),
           unrestrictedUnidentifiedAccess: false,
           unidentifiedAccess: target.accessKey
-            ? generateAccessKeyVerifier(target.accessKey)
+            ? generateAccessKeyVerifier(target.accessKey).toString('base64')
             : undefined,
           capabilities: target.capabilities,
           credential: credential?.toString('base64'),
@@ -152,7 +152,7 @@ export class Connection extends Service {
             ],
             serverEpochTime: Date.now() / 1000,
           },
-        ];
+        ] as const;
       }),
     );
 
@@ -581,7 +581,7 @@ export class Connection extends Service {
       debug(
         'Invalid Authorization header for websocket connection @ %s: %s',
         error,
-        authHeaders
+        authHeaders,
       );
       return;
     }

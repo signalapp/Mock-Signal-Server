@@ -3,6 +3,9 @@
 
 import { ProtocolAddress } from '@signalapp/libsignal-client';
 import assert from 'assert';
+import isPlainObject from 'is-plain-obj';
+import util from 'node:util';
+import type { JsonValue } from 'type-fest';
 
 import { DAY_IN_SECONDS } from './constants';
 import type { RegistrationId } from './types';
@@ -222,4 +225,39 @@ export function fromURLSafeBase64(base64: string): Buffer {
   // Note that `Buffer.from()` ignores padding anyway so we don't need to
   // restore it.
   return fromBase64(source);
+}
+
+export function assertJsonValue(root: unknown): asserts root is JsonValue {
+  const issues: string[] = [];
+
+  function visit(node: unknown, path: ReadonlyArray<PropertyKey>) {
+    if (
+      node === null ||
+      typeof node === 'boolean' ||
+      (typeof node === 'number' && Number.isFinite(node)) ||
+      typeof node === 'string'
+    ) {
+      return;
+    } else if (Array.isArray(node)) {
+      node.forEach((item, index) => {
+        visit(item, path.concat(index));
+      });
+      return;
+    } else if (isPlainObject(node)) {
+      Object.entries(node).forEach(([key, item]) => {
+        // ignore undefined properties
+        if (typeof item !== 'undefined') {
+          visit(item, path.concat(key));
+        }
+      });
+    } else {
+      issues.push(`${path.join('.')}: ${util.inspect(node)}`);
+    }
+  }
+
+  visit(root, ['value']);
+
+  if (issues.length > 0) {
+    throw new TypeError(`Invalid JsonValue:\n${issues.join('\n')}`);
+  }
 }

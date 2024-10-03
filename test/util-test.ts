@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import assert from 'assert';
+import Long from 'long';
 
-import { PromiseQueue } from '../src/util';
+import { PromiseQueue, assertJsonValue } from '../src/util';
 
 describe('util', () => {
   describe('PromiseQueue', () => {
@@ -103,6 +104,71 @@ describe('util', () => {
           await q.shift();
         },
         { message: 'PromiseQueue shift timeout' },
+      );
+    });
+  });
+
+  describe('assertJsonValue', () => {
+    function valid(value: unknown) {
+      assert.doesNotThrow(() => assertJsonValue(value));
+    }
+
+    function invalid(value: unknown, predicate: RegExp) {
+      assert.throws(() => assertJsonValue(value), predicate);
+    }
+
+    it('should accept valid json', () => {
+      valid(null);
+      valid(true);
+      valid(false);
+      valid(0);
+      valid(42);
+      valid(-42);
+      valid('');
+      valid('hi');
+      valid([]);
+      valid([null, true, 42, 'hi', [1, 2, 3], { a: 'b' }]);
+      valid([1, [2, [3, 4], 5], 6]);
+      valid({});
+      valid({ a: null, b: true, c: 42, d: 'hi', e: [1, 2, 3], f: { a: 'b' } });
+      valid({ a: undefined, b: { c: undefined } });
+    });
+
+    it('should not accept invalid json', () => {
+      invalid(undefined, /value: undefined/);
+      invalid(Number.NEGATIVE_INFINITY, /value: -Infinity/);
+      invalid(Number.POSITIVE_INFINITY, /value: Infinity/);
+      invalid(Number.NaN, /value: NaN/);
+      invalid(0n, /value: 0n/);
+      invalid(24n, /value: 24n/);
+      invalid([undefined], /value\.0: undefined/);
+      invalid([1, [42n]], /value\.1\.0: 42n/);
+      invalid({ a: 42n }, /value\.a: 42n/);
+      invalid({ a: { b: 42n } }, /value\.a\.b: 42n/);
+      invalid(() => 'hi', /value: \[Function \(anonymous\)\]/);
+      invalid(Buffer.from('hi'), /value: <Buffer 68 69>/);
+      invalid(new Uint8Array([68, 69]), /value: Uint8Array\(2\) \[ 68, 69 \]/);
+      invalid(class Foo {}, /value: \[class Foo\]/);
+      invalid(new (class Foo {})(), /value: Foo {}/);
+      invalid(
+        Long.fromNumber(42),
+        /value: Long { low: 42, high: 0, unsigned: false }/,
+      );
+    });
+
+    it('should report multiple errors', () => {
+      assert.throws(
+        () => {
+          assertJsonValue({ a: 42n, b: { c: 42n, d: [42n, 42n] } });
+        },
+        (error) => {
+          assert(error instanceof TypeError);
+          assert.match(error.message, /value\.a: 42n/);
+          assert.match(error.message, /value\.b\.c: 42n/);
+          assert.match(error.message, /value\.b\.d\.0: 42n/);
+          assert.match(error.message, /value\.b\.d\.1: 42n/);
+          return true;
+        },
       );
     });
   });
