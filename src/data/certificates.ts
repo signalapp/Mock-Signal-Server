@@ -8,6 +8,7 @@ import path from 'path';
 export type Certificates = Readonly<{
   certificateAuthority: string;
   genericServerPublicParams: string;
+  backupServerPublicParams: string;
   serverPublicParams: string;
   serverTrustRoot: string;
 }>;
@@ -35,11 +36,13 @@ export async function load(): Promise<Certificates> {
   const [
     certificateAuthority,
     genericServerPublicParams,
+    backupServerPublicParams,
     serverPublicParams,
     serverTrustRoot,
   ] = await Promise.all([
     loadString('ca-cert.pem'),
     loadJSONProperty('zk-params.json', 'genericPublicParams'),
+    loadJSONProperty('zk-params.json', 'backupPublicParams'),
     loadJSONProperty('zk-params.json', 'publicParams'),
     loadJSONProperty('trust-root.json', 'publicKey'),
   ]);
@@ -47,6 +50,7 @@ export async function load(): Promise<Certificates> {
   return {
     certificateAuthority,
     genericServerPublicParams,
+    backupServerPublicParams,
     serverPublicParams,
     serverTrustRoot,
   };
