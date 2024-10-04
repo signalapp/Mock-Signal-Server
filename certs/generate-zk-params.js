@@ -8,7 +8,7 @@ const publicParams = secretParams.getPublicParams();
 const genericSecretParams = GenericServerSecretParams.generate();
 const genericPublicParams = genericSecretParams.getPublicParams();
 const backupSecretParams = GenericServerSecretParams.generate();
-const backupPublicParams = genericSecretParams.getPublicParams();
+const backupPublicParams = backupSecretParams.getPublicParams();
 
 fs.writeFileSync(process.argv[2], JSON.stringify({
   secretParams: secretParams.serialize().toString('base64'),
