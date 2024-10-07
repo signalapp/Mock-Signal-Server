@@ -600,7 +600,7 @@ export class Connection extends Service {
     //
 
     this.router.get('/v4/attachments/form/upload', async () => {
-      const key = uuidv4();
+      const key = `attachments/${uuidv4()}`;
       return [200, await this.server.getAttachmentUploadForm(key)];
     });
   }
