@@ -66,6 +66,8 @@ type ZKParams = Readonly<{
   publicParams: string;
   genericSecretParams: string;
   genericPublicParams: string;
+  backupSecretParams: string;
+  backupPublicParams: string;
 }>;
 
 type StrictConfig = Readonly<{
@@ -179,6 +181,12 @@ export class Server extends BaseServer {
       'base64',
     );
     this.genericServerSecret = new GenericServerSecretParams(genericSecret);
+
+    const backupSecret = Buffer.from(
+      this.config.zkParams.backupSecretParams,
+      'base64',
+    );
+    this.backupServerSecret = new GenericServerSecretParams(backupSecret);
 
     this.certificate = generateServerCertificate(this.trustRoot);
 

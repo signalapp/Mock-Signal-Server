@@ -143,3 +143,22 @@ export const DeleteCallLinkSchema = z.object({
 });
 
 export type DeleteCallLink = z.infer<typeof DeleteCallLinkSchema>;
+
+export const SetBackupIdSchema = z.object({
+  backupAuthCredentialRequest: z.string().transform(fromBase64),
+});
+
+export type SetBackupId = z.infer<typeof SetBackupIdSchema>;
+
+export const BackupHeadersSchema = z.object({
+  'x-signal-zk-auth': z.string().transform(fromBase64),
+  'x-signal-zk-auth-signature': z.string().transform(fromBase64),
+});
+
+export type BackupHeaders = z.infer<typeof BackupHeadersSchema>;
+
+export const SetBackupKeySchema = z.object({
+  backupIdPublicKey: z.string().transform(fromBase64),
+});
+
+export type SetBackupKey = z.infer<typeof SetBackupKeySchema>;

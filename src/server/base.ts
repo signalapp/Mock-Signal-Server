@@ -4,11 +4,15 @@
 import {
   Aci,
   Pni,
+  PublicKey,
   SenderCertificate,
   usernames,
 } from '@signalapp/libsignal-client';
 import {
   AuthCredentialPresentation,
+  BackupAuthCredentialPresentation,
+  BackupAuthCredentialRequest,
+  BackupLevel,
   CallLinkAuthCredentialResponse,
   CreateCallLinkCredentialRequest,
   CreateCallLinkCredentialResponse,
@@ -38,9 +42,12 @@ import {
 import { ServerCertificate, generateSenderCertificate } from '../crypto';
 import { ChangeNumberOptions, Device, DeviceKeys } from '../data/device';
 import {
+  BackupHeaders,
   CreateCallLink,
   DeleteCallLink,
   Message,
+  SetBackupId,
+  SetBackupKey,
   UpdateCallLink,
   UsernameConfirmation,
   UsernameReservation,
@@ -71,7 +78,7 @@ export type ProvisioningResponse = Readonly<{
   envelope: Buffer;
 }>;
 
-export type GroupCredentialsRange = Readonly<{
+export type CredentialsRange = Readonly<{
   from: number;
   to: number;
 }>;
@@ -85,7 +92,7 @@ export type StorageCredentials = Readonly<{
   password: string;
 }>;
 
-export type GroupCredentials = Array<{
+export type Credentials = Array<{
   credential: string;
   redemptionTime: number;
 }>;
@@ -193,6 +200,10 @@ interface WebSocket {
   sendMessage(message: Buffer | 'empty'): Promise<void>;
 }
 
+interface SerializableCredential {
+  serialize(): Buffer;
+}
+
 type AuthEntry = Readonly<{
   readonly password: string;
   readonly device: Device;
@@ -216,6 +227,21 @@ export type CallLinkEntry = Readonly<{
   restrictions: 'none' | 'adminApproval';
   revoked: boolean;
   expiration: number;
+}>;
+
+export type BackupInfo = Readonly<{
+  cdn: 3;
+  backupDir: string;
+  mediaDir: string;
+  backupName: string;
+  usedSpace?: number;
+}>;
+
+export type AttachmentUploadForm = Readonly<{
+  cdn: 3;
+  key: string;
+  headers: Record<string, string>;
+  signedUploadLocation: string;
 }>;
 
 const debug = createDebug('mock:server:base');
@@ -259,9 +285,16 @@ export abstract class Server {
   >();
   private readonly usernameLinkById = new Map<string, Buffer>();
   private readonly callLinksByRoomId = new Map<string, CallLinkEntry>();
+  private readonly backupAuthReqByAci = new Map<
+    AciString,
+    BackupAuthCredentialRequest
+  >();
+  private readonly backupKeyById = new Map<string, PublicKey>();
+  private readonly backupCDNPasswordById = new Map<string, string>();
   protected privCertificate: ServerCertificate | undefined;
   protected privZKSecret: ServerSecretParams | undefined;
   protected privGenericServerSecret: GenericServerSecretParams | undefined;
+  protected privBackupServerSecret: GenericServerSecretParams | undefined;
   protected https: https.Server | undefined;
 
   public address(): AddressInfo {
@@ -536,6 +569,25 @@ export abstract class Server {
 
   public async storeStickerPack(pack: EncryptedStickerPack): Promise<void> {
     this.stickerPacks.set(pack.id.toString('hex'), pack);
+  }
+
+  public async getAttachmentUploadForm(
+    key: string,
+  ): Promise<AttachmentUploadForm> {
+    const { port, family } = this.address();
+
+    // These are the only two in the TLS certificate
+    const host = family === 'IPv6' ? '[::1]' : '127.0.0.1';
+    const signedUploadLocation = `https://${host}:${port}/cdn3/${key}`;
+    return {
+      cdn: 3,
+      key,
+      headers: {
+        // TODO(indutny): verify on request
+        expectedHeaders: crypto.randomBytes(16).toString('hex'),
+      },
+      signedUploadLocation,
+    };
   }
 
   //
@@ -1257,43 +1309,23 @@ export abstract class Server {
 
   public async getGroupCredentials(
     { aci, pni }: Device,
-    { from, to }: GroupCredentialsRange,
+    range: CredentialsRange,
     flags: GroupCredentialsFlags = { zkc: false },
-  ): Promise<GroupCredentials> {
-    const today = getTodayInSeconds();
-    if (
-      from > to ||
-      from < today ||
-      to > today + DAY_IN_SECONDS * MAX_GROUP_CREDENTIALS_DAYS
-    ) {
-      throw new Error('Invalid redemption range');
-    }
-
+  ): Promise<Credentials> {
     const auth = new ServerZkAuthOperations(this.zkSecret);
-    const result: GroupCredentials = [];
     const { zkc } = flags;
 
     const issueCredential = zkc
       ? auth.issueAuthCredentialWithPniZkc.bind(auth)
       : auth.issueAuthCredentialWithPniAsServiceId.bind(auth);
 
-    for (
-      let redemptionTime = from;
-      redemptionTime <= to;
-      redemptionTime += DAY_IN_SECONDS
-    ) {
-      result.push({
-        credential: issueCredential(
-          Aci.parseFromServiceIdString(aci),
-          Pni.parseFromServiceIdString(pni),
-          redemptionTime,
-        )
-          .serialize()
-          .toString('base64'),
+    return this.issueCredentials(range, (redemptionTime) => {
+      return issueCredential(
+        Aci.parseFromServiceIdString(aci),
+        Pni.parseFromServiceIdString(pni),
         redemptionTime,
-      });
-    }
-    return result;
+      );
+    });
   }
 
   public async verifyGroupCredentials(
@@ -1314,36 +1346,15 @@ export abstract class Server {
 
   public async getCallLinkAuthCredentials(
     { aci }: Device,
-    { from, to }: GroupCredentialsRange,
-  ): Promise<GroupCredentials> {
-    const today = getTodayInSeconds();
-    if (
-      from > to ||
-      from < today ||
-      to > today + DAY_IN_SECONDS * MAX_GROUP_CREDENTIALS_DAYS
-    ) {
-      throw new Error('Invalid redemption range');
-    }
-
-    const result: GroupCredentials = [];
-
-    for (
-      let redemptionTime = from;
-      redemptionTime <= to;
-      redemptionTime += DAY_IN_SECONDS
-    ) {
-      result.push({
-        credential: CallLinkAuthCredentialResponse.issueCredential(
-          Aci.parseFromServiceIdString(aci),
-          redemptionTime,
-          this.genericServerSecret,
-        )
-          .serialize()
-          .toString('base64'),
+    range: CredentialsRange,
+  ): Promise<Credentials> {
+    return this.issueCredentials(range, (redemptionTime) => {
+      return CallLinkAuthCredentialResponse.issueCredential(
+        Aci.parseFromServiceIdString(aci),
         redemptionTime,
-      });
-    }
-    return result;
+        this.genericServerSecret,
+      );
+    });
   }
 
   public async issueExpiringProfileKeyCredential(
@@ -1365,6 +1376,104 @@ export abstract class Server {
         today + PROFILE_KEY_CREDENTIAL_EXPIRATION,
       )
       .serialize();
+  }
+
+  public async setBackupId(
+    { aci }: Device,
+    { backupAuthCredentialRequest }: SetBackupId,
+  ): Promise<void> {
+    const req = new BackupAuthCredentialRequest(backupAuthCredentialRequest);
+    this.backupAuthReqByAci.set(aci, req);
+  }
+
+  public async setBackupKey(
+    headers: BackupHeaders,
+    { backupIdPublicKey }: SetBackupKey,
+  ): Promise<void> {
+    const publicKey = PublicKey.deserialize(backupIdPublicKey);
+    const backupId = this.authenticateBackup(headers, publicKey);
+    this.backupKeyById.set(backupId, publicKey);
+    if (!this.backupCDNPasswordById.get(backupId)) {
+      const password = crypto.randomBytes(16).toString('hex');
+      this.backupCDNPasswordById.set(backupId, password);
+    }
+  }
+
+  public async refreshBackup(headers: BackupHeaders): Promise<void> {
+    this.authenticateBackup(headers);
+
+    // No-op for tests
+  }
+
+  public async getBackupInfo(headers: BackupHeaders): Promise<BackupInfo> {
+    const backupId = this.authenticateBackup(headers);
+
+    return {
+      cdn: 3,
+      backupDir: backupId,
+      mediaDir: `media_${backupId}`,
+      backupName: 'backup',
+    };
+  }
+
+  public async getBackupUploadForm(
+    headers: BackupHeaders,
+  ): Promise<AttachmentUploadForm> {
+    const backupId = this.authenticateBackup(headers);
+    const form = await this.getAttachmentUploadForm(
+      `backups/${backupId}/backup`,
+    );
+    return form;
+  }
+
+  public async getBackupCDNAuth(
+    headers: BackupHeaders,
+  ): Promise<Record<string, string>> {
+    const backupId = this.authenticateBackup(headers);
+    const password = this.backupCDNPasswordById.get(backupId);
+    assert(password !== undefined);
+
+    const basic = Buffer.from(`${backupId}:${password}`);
+    const authorization = `Basic ${basic.toString('base64')}`;
+
+    return {
+      authorization,
+    };
+  }
+
+  public async authorizeBackupCDN(
+    backupId: string,
+    password: string,
+  ): Promise<boolean> {
+    const expected = this.backupCDNPasswordById.get(backupId);
+    if (expected === undefined) {
+      return false;
+    }
+
+    if (!crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(password))) {
+      return false;
+    }
+
+    return true;
+  }
+
+  public async getBackupCredentials(
+    { aci }: Device,
+    range: CredentialsRange,
+  ): Promise<Credentials | undefined> {
+    const req = this.backupAuthReqByAci.get(aci);
+    if (req === undefined) {
+      return undefined;
+    }
+
+    return this.issueCredentials(range, (redemptionTime) => {
+      return req.issueCredential(
+        redemptionTime,
+        // TODO(indutny): offer different levels
+        BackupLevel.Messages,
+        this.backupServerSecret,
+      );
+    });
   }
 
   public abstract isUnregistered(serviceId: ServiceIdString): boolean;
@@ -1403,6 +1512,20 @@ export abstract class Server {
       throw new Error('zkgroup generic secret not set');
     }
     return this.privGenericServerSecret;
+  }
+
+  protected set backupServerSecret(value: GenericServerSecretParams) {
+    if (this.privBackupServerSecret) {
+      throw new Error('zkgroup backup secret already set');
+    }
+    this.privBackupServerSecret = value;
+  }
+
+  protected get backupServerSecret(): GenericServerSecretParams {
+    if (!this.privBackupServerSecret) {
+      throw new Error('zkgroup backup secret not set');
+    }
+    return this.privBackupServerSecret;
   }
 
   protected set zkSecret(value: ServerSecretParams) {
@@ -1446,5 +1569,61 @@ export abstract class Server {
 
     debug('queue for %s is empty', device.debugId);
     await socket.sendMessage('empty');
+  }
+
+  private issueCredentials(
+    { from, to }: CredentialsRange,
+    issueOne: (redemptionTime: number) => SerializableCredential,
+  ): Credentials {
+    const today = getTodayInSeconds();
+    if (
+      from > to ||
+      from < today ||
+      to > today + DAY_IN_SECONDS * MAX_GROUP_CREDENTIALS_DAYS
+    ) {
+      throw new Error('Invalid redemption range');
+    }
+
+    const result: Credentials = [];
+
+    for (
+      let redemptionTime = from;
+      redemptionTime <= to;
+      redemptionTime += DAY_IN_SECONDS
+    ) {
+      result.push({
+        credential: issueOne(redemptionTime).serialize().toString('base64'),
+        redemptionTime,
+      });
+    }
+    return result;
+  }
+
+  private authenticateBackup(
+    headers: BackupHeaders,
+    newPublicKey?: PublicKey,
+  ): string {
+    const presentation = new BackupAuthCredentialPresentation(
+      headers['x-signal-zk-auth'],
+    );
+    presentation.verify(this.backupServerSecret);
+
+    // Backup id is used in urls, so encode it properly
+    const backupId = presentation.getBackupId().toString('base64url');
+
+    const validatingKey = this.backupKeyById.get(backupId) || newPublicKey;
+    if (!validatingKey) {
+      throw new Error('No backup public key to validate against');
+    }
+
+    const isValid = validatingKey.verify(
+      headers['x-signal-zk-auth'],
+      headers['x-signal-zk-auth-signature'],
+    );
+    if (!isValid) {
+      throw new Error('Invalid signature');
+    }
+
+    return backupId;
   }
 }

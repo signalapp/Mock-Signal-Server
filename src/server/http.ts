@@ -152,14 +152,40 @@ export const createHandler = (
     datastore: new FileStore({ directory: cdn3Path ?? '' }),
     namingFunction: (req) => {
       assert(req.url);
-      return req.url.split('/').at(-1) as string;
+      return req.url.replace(/^(\/cdn3)?\/+/, '');
     },
   });
 
-  const getCdn3Attachment = get('/cdn3/attachments/:key', async (req, res) => {
+  const getCdn3Attachment = get('/cdn3/:folder/*', async (req, res) => {
     assert(cdn3Path, 'cdn3Path must be set');
+
+    if (req.params.folder === 'backups') {
+      const { username, password, error } = parsePassword(req);
+      if (error) {
+        debug(
+          '%s %s backup cdn auth failed, error %j',
+          req.method,
+          req.url,
+          error,
+        );
+        send(res, 401, { error });
+        return;
+      }
+      if (!username || !password) {
+        send(res, 401, { error: 'Missing username and/or password' });
+        return;
+      }
+      const authorized = await server.authorizeBackupCDN(username, password);
+      if (!authorized) {
+        send(res, 403, { error: 'Invalid password' });
+        return;
+      }
+    }
+
     try {
-      const data = fs.readFileSync(join(cdn3Path, req.params.key));
+      const data = fs.readFileSync(
+        join(cdn3Path, req.params.folder, req.params._),
+      );
       return send(res, 200, data);
     } catch (e) {
       assert(e instanceof Error);
@@ -171,6 +197,7 @@ export const createHandler = (
   });
 
   const getAttachment = get('/attachments/:key', async (req, res) => {
+    // TODO(indutny): range requests
     const { key } = req.params;
     const result = await server.fetchAttachment(key as AttachmentId);
     if (!result) {
@@ -1058,6 +1085,12 @@ export const createHandler = (
 
   return (req, res) => {
     debug('got request %s %s', req.method, req.url);
-    return routes(req, res);
+    try {
+      return routes(req, res);
+    } catch (error) {
+      assert(error instanceof Error);
+      debug('request failure %s %s', req.method, req.url, error.stack);
+      return send(res, 500, error.message);
+    }
   };
 };

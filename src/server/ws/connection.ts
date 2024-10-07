@@ -16,8 +16,11 @@ import { signalservice as Proto } from '../../../protos/compiled';
 import { Device } from '../../data/device';
 import {
   AtomicLinkingDataSchema,
+  BackupHeadersSchema,
   Message,
   MessageListSchema,
+  SetBackupIdSchema,
+  SetBackupKeySchema,
 } from '../../data/schemas';
 import {
   DeviceId,
@@ -111,12 +114,12 @@ export class Connection extends Service {
     this.router.get('/v1/profile/:serviceId/:version/:request', getProfile);
 
     const requireAuth = (handler: Handler): Handler => {
-      return async (params, body, headers) => {
+      return async (params, body, headers, query) => {
         if (!this.device) {
           return [401, { error: 'Not authorized' }];
         }
 
-        return handler(params, body, headers);
+        return handler(params, body, headers, query);
       };
     };
 
@@ -129,7 +132,7 @@ export class Connection extends Service {
             config: [
               { name: 'desktop.internalUser', enabled: true },
               { name: 'desktop.senderKey.retry', enabled: true },
-              { name: 'desktop.usernames', enabled: true },
+              { name: 'desktop.backup.credentialFetch', enabled: true },
               {
                 name: 'global.groupsv2.maxGroupSize',
                 value: '32',
@@ -467,6 +470,124 @@ export class Connection extends Service {
     });
 
     //
+    // Backups
+    //
+
+    this.router.put(
+      '/v1/archives/backupid',
+      requireAuth(async (_params, body) => {
+        const device = this.device;
+        assert(device);
+
+        if (!body) {
+          return [400, { error: 'Missing body' }];
+        }
+
+        const backupId = SetBackupIdSchema.parse(JSON.parse(body.toString()));
+        await server.setBackupId(device, backupId);
+        return [200, { ok: true }];
+      }),
+    );
+
+    this.router.get(
+      '/v1/archives/auth',
+      requireAuth(async (_params, _body, _headers, query = {}) => {
+        const device = this.device;
+        assert(device);
+
+        const { redemptionStartSeconds: from, redemptionEndSeconds: to } =
+          query;
+
+        const credentials = await this.server.getBackupCredentials(device, {
+          from: parseInt(from as string, 10),
+          to: parseInt(to as string, 10),
+        });
+        if (credentials === undefined) {
+          return [404, { error: 'backup id not set' }];
+        }
+
+        return [
+          200,
+          {
+            credentials,
+          },
+        ];
+      }),
+    );
+
+    this.router.put('/v1/archives/keys', async (_params, body, headers) => {
+      if (this.device) {
+        return [400, { error: 'Extraneous authentication' }];
+      }
+
+      if (!body) {
+        return [400, { error: 'Missing body' }];
+      }
+
+      const backupKey = SetBackupKeySchema.parse(JSON.parse(body.toString()));
+      await server.setBackupKey(BackupHeadersSchema.parse(headers), backupKey);
+      return [200, { ok: true }];
+    });
+
+    this.router.post('/v1/archives', async (_params, _body, headers) => {
+      if (this.device) {
+        return [400, { error: 'Extraneous authentication' }];
+      }
+
+      await server.refreshBackup(BackupHeadersSchema.parse(headers));
+      return [200, { ok: true }];
+    });
+
+    this.router.get('/v1/archives', async (_params, _body, headers) => {
+      if (this.device) {
+        return [400, { error: 'Extraneous authentication' }];
+      }
+
+      return [
+        200,
+        await server.getBackupInfo(BackupHeadersSchema.parse(headers)),
+      ];
+    });
+
+    this.router.get(
+      '/v1/archives/auth/read',
+      async (_params, _body, headers, params = {}) => {
+        if (this.device) {
+          return [400, { error: 'Extraneous authentication' }];
+        }
+
+        if (params.cdn !== '3') {
+          return [400, { error: 'Invalid cdn query param' }];
+        }
+
+        return [
+          200,
+          {
+            headers: await server.getBackupCDNAuth(
+              BackupHeadersSchema.parse(headers),
+            ),
+          },
+        ];
+      },
+    );
+
+    this.router.get(
+      '/v1/archives/upload/form',
+      async (_params, _body, headers) => {
+        if (this.device) {
+          return [400, { error: 'Extraneous authentication' }];
+        }
+
+        return [
+          200,
+          await this.server.getBackupUploadForm(
+            BackupHeadersSchema.parse(headers),
+          ),
+        ];
+      },
+    );
+
+    //
     // Keepalive
     //
 
@@ -477,13 +598,10 @@ export class Connection extends Service {
     //
     // Attachment upload forms
     //
+
     this.router.get('/v4/attachments/form/upload', async () => {
       const key = uuidv4();
-      const headers = { expectedHeaders: uuidv4() };
-      const address = this.server.address();
-      const signedUploadLocation = `https://127.0.0.1:${address.port}/cdn3/${key}`;
-
-      return [200, { cdn: 3, key, headers, signedUploadLocation }];
+      return [200, await this.server.getAttachmentUploadForm(key)];
     });
   }
 

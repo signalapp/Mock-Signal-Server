@@ -51,6 +51,10 @@ export class Router {
     this.register('PUT', pattern, handler);
   }
 
+  public post(pattern: string, handler: Handler): void {
+    this.register('POST', pattern, handler);
+  }
+
   public async run(request: WSRequest): Promise<WSResponse> {
     const headers: Record<string, string> = {};
     for (const pair of request.headers ?? []) {
