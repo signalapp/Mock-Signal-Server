@@ -468,7 +468,8 @@ export class Server extends BaseServer {
     assert.strictEqual(cdnNumber, 3, 'Only cdn 3 currently supported');
     const { cdn3Path } = this.config;
     assert(cdn3Path, 'cdn3Path must be provided to store attachments');
-    fs.writeFileSync(path.join(cdn3Path, cdnKey), data);
+    fs.mkdirSync(path.join(cdn3Path, 'attachments'), { recursive: true });
+    fs.writeFileSync(path.join(cdn3Path, 'attachments', cdnKey), data);
   }
 
   //

@@ -572,13 +572,14 @@ export abstract class Server {
   }
 
   public async getAttachmentUploadForm(
+    folder: string,
     key: string,
   ): Promise<AttachmentUploadForm> {
     const { port, family } = this.address();
 
     // These are the only two in the TLS certificate
     const host = family === 'IPv6' ? '[::1]' : '127.0.0.1';
-    const signedUploadLocation = `https://${host}:${port}/cdn3/${key}`;
+    const signedUploadLocation = `https://${host}:${port}/cdn3/${folder}/${key}`;
     return {
       cdn: 3,
       key,
@@ -1421,7 +1422,8 @@ export abstract class Server {
   ): Promise<AttachmentUploadForm> {
     const backupId = this.authenticateBackup(headers);
     const form = await this.getAttachmentUploadForm(
-      `backups/${backupId}/backup`,
+      'backups',
+      `${backupId}/backup`,
     );
     return form;
   }
