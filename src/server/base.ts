@@ -578,7 +578,7 @@ export abstract class Server {
 
     // These are the only two in the TLS certificate
     const host = family === 'IPv6' ? '[::1]' : '127.0.0.1';
-    const signedUploadLocation = `https://${host}:${port}/cdn3/${key}`;
+    const signedUploadLocation = `https://${host}:${port}/cdn3/attachments/${key}`;
     return {
       cdn: 3,
       key,
