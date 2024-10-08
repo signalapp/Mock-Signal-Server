@@ -3,6 +3,9 @@
 
 import assert from 'assert';
 import fs from 'fs';
+import fsPromises from 'fs/promises';
+import { type Readable } from 'stream';
+import { pipeline } from 'stream/promises';
 import Long from 'long';
 import path from 'path';
 import https, { ServerOptions } from 'https';
@@ -460,16 +463,39 @@ export class Server extends BaseServer {
     return existing;
   }
 
-  public storeAttachmentOnCdn(
+  public async storeAttachmentOnCdn(
     cdnNumber: number,
     cdnKey: string,
     data: Uint8Array,
-  ) {
+  ): Promise<void> {
     assert.strictEqual(cdnNumber, 3, 'Only cdn 3 currently supported');
     const { cdn3Path } = this.config;
     assert(cdn3Path, 'cdn3Path must be provided to store attachments');
-    fs.mkdirSync(path.join(cdn3Path, 'attachments'), { recursive: true });
-    fs.writeFileSync(path.join(cdn3Path, 'attachments', cdnKey), data);
+
+    const dir = path.join(cdn3Path, 'attachments');
+    await fsPromises.mkdir(dir, {
+      recursive: true,
+    });
+    await fsPromises.writeFile(path.join(dir, cdnKey), data);
+  }
+
+  public async storeBackupOnCdn(
+    backupId: Uint8Array,
+    stream: Readable,
+  ): Promise<void> {
+    const { cdn3Path } = this.config;
+    assert(cdn3Path, 'cdn3Path must be provided to store attachments');
+
+    const dir = path.join(
+      cdn3Path,
+      'backups',
+      Buffer.from(backupId).toString('base64url'),
+    );
+
+    await fsPromises.mkdir(dir, {
+      recursive: true,
+    });
+    await pipeline(stream, fs.createWriteStream(path.join(dir, 'backup')));
   }
 
   //
