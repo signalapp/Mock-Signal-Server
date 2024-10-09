@@ -162,3 +162,21 @@ export const SetBackupKeySchema = z.object({
 });
 
 export type SetBackupKey = z.infer<typeof SetBackupKeySchema>;
+
+export const BackupMediaBatchSchema = z.object({
+  items: z
+    .object({
+      sourceAttachment: z.object({
+        cdn: z.number(),
+        key: z.string(),
+      }),
+      objectLength: z.number(),
+      mediaId: z.string(),
+      hmacKey: z.string().transform(fromBase64),
+      encryptionKey: z.string().transform(fromBase64),
+      iv: z.string().transform(fromBase64),
+    })
+    .array(),
+});
+
+export type BackupMediaBatch = z.infer<typeof BackupMediaBatchSchema>;

@@ -17,6 +17,7 @@ import { Device } from '../../data/device';
 import {
   AtomicLinkingDataSchema,
   BackupHeadersSchema,
+  BackupMediaBatchSchema,
   Message,
   MessageListSchema,
   SetBackupIdSchema,
@@ -551,12 +552,12 @@ export class Connection extends Service {
 
     this.router.get(
       '/v1/archives/auth/read',
-      async (_params, _body, headers, params = {}) => {
+      async (_params, _body, headers, query = {}) => {
         if (this.device) {
           return [400, { error: 'Extraneous authentication' }];
         }
 
-        if (params.cdn !== '3') {
+        if (query.cdn !== '3') {
           return [400, { error: 'Invalid cdn query param' }];
         }
 
@@ -582,6 +583,73 @@ export class Connection extends Service {
           200,
           await this.server.getBackupUploadForm(
             BackupHeadersSchema.parse(headers),
+          ),
+        ];
+      },
+    );
+
+    this.router.get(
+      '/v1/archives/media',
+      async (_params, _body, headers, query = {}) => {
+        if (this.device) {
+          return [400, { error: 'Extraneous authentication' }];
+        }
+
+        if (typeof query.limit !== 'string') {
+          return [400, { error: 'Missing limit param' }];
+        }
+
+        const limit = parseInt(query.limit, 10);
+        if (limit <= 0) {
+          return [400, { error: 'Invalid limit' }];
+        }
+
+        const cursor = query.cursor;
+
+        return [
+          200,
+          await this.server.listBackupMedia(
+            BackupHeadersSchema.parse(headers),
+            { cursor: cursor ? String(cursor) : undefined, limit },
+          ),
+        ];
+      },
+    );
+
+    this.router.get(
+      '/v1/archives/media/upload/form',
+      async (_params, _body, headers) => {
+        if (this.device) {
+          return [400, { error: 'Extraneous authentication' }];
+        }
+
+        return [
+          200,
+          await this.server.getBackupMediaUploadForm(
+            BackupHeadersSchema.parse(headers),
+          ),
+        ];
+      },
+    );
+
+    this.router.put(
+      '/v1/archives/media/batch',
+      async (_params, body, headers) => {
+        if (this.device) {
+          return [400, { error: 'Extraneous authentication' }];
+        }
+
+        if (!body) {
+          return [400, { error: 'Missing body' }];
+        }
+
+        const batch = BackupMediaBatchSchema.parse(JSON.parse(body.toString()));
+
+        return [
+          200,
+          await this.server.backupMediaBatch(
+            BackupHeadersSchema.parse(headers),
+            batch,
           ),
         ];
       },

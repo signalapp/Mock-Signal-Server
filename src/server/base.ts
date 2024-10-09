@@ -12,7 +12,6 @@ import {
   AuthCredentialPresentation,
   BackupAuthCredentialPresentation,
   BackupAuthCredentialRequest,
-  BackupLevel,
   CallLinkAuthCredentialResponse,
   CreateCallLinkCredentialRequest,
   CreateCallLinkCredentialResponse,
@@ -43,6 +42,7 @@ import { ServerCertificate, generateSenderCertificate } from '../crypto';
 import { ChangeNumberOptions, Device, DeviceKeys } from '../data/device';
 import {
   BackupHeaders,
+  BackupMediaBatch,
   CreateCallLink,
   DeleteCallLink,
   Message,
@@ -237,6 +237,40 @@ export type BackupInfo = Readonly<{
   usedSpace?: number;
 }>;
 
+export type BackupMediaObject = Readonly<{
+  cdn: 3;
+  mediaId: string;
+  objectLength: number;
+}>;
+
+export type BackupMediaList = Readonly<{
+  storedMediaObjects: ReadonlyArray<BackupMediaObject>;
+  backupDir: string;
+  mediaDir: string;
+  cursor: string | undefined;
+}>;
+
+export type BackupMediaCursor = {
+  readonly backupId: string;
+  remainingMedia: ReadonlyArray<BackupMediaObject>;
+};
+
+export type ListBackupMediaOptions = Readonly<{
+  cursor: string | undefined;
+  limit: number;
+}>;
+
+export type BackupMediaBatchResponse = Readonly<{
+  status: number;
+  failureReason?: string;
+  cdn: 3;
+  mediaId: string;
+}>;
+
+export type BackupMediaBatchResult = Readonly<{
+  responses: ReadonlyArray<BackupMediaBatchResponse>;
+}>;
+
 export type AttachmentUploadForm = Readonly<{
   cdn: 3;
   key: string;
@@ -291,6 +325,11 @@ export abstract class Server {
   >();
   private readonly backupKeyById = new Map<string, PublicKey>();
   private readonly backupCDNPasswordById = new Map<string, string>();
+  private readonly backupMediaById = new Map<
+    string,
+    Array<BackupMediaObject>
+  >();
+  private readonly backupMediaCursorById = new Map<string, BackupMediaCursor>();
   protected privCertificate: ServerCertificate | undefined;
   protected privZKSecret: ServerSecretParams | undefined;
   protected privGenericServerSecret: GenericServerSecretParams | undefined;
@@ -1412,9 +1451,62 @@ export abstract class Server {
     return {
       cdn: 3,
       backupDir: backupId,
-      mediaDir: `media_${backupId}`,
+      mediaDir: 'media',
       backupName: 'backup',
     };
+  }
+
+  public async listBackupMedia(
+    headers: BackupHeaders,
+    { cursor, limit }: ListBackupMediaOptions,
+  ): Promise<BackupMediaList> {
+    const backupId = this.authenticateBackup(headers);
+
+    let cursorData: BackupMediaCursor | undefined;
+    let newCursor: string | undefined;
+    if (cursor !== undefined) {
+      cursorData = this.backupMediaCursorById.get(cursor);
+    }
+    if (cursorData === undefined) {
+      newCursor = crypto.randomBytes(8).toString('hex');
+      cursorData = {
+        backupId,
+        remainingMedia: this.backupMediaById.get(backupId)?.slice() ?? [],
+      };
+      this.backupMediaCursorById.set(newCursor, cursorData);
+    } else {
+      assert.strictEqual(cursorData.backupId, backupId);
+    }
+
+    const storedMediaObjects = cursorData.remainingMedia.slice(0, limit);
+
+    // End of list
+    if (storedMediaObjects.length < limit) {
+      assert(newCursor !== undefined);
+
+      this.backupMediaCursorById.delete(newCursor);
+      newCursor = undefined;
+    } else {
+      cursorData.remainingMedia = cursorData.remainingMedia.slice(limit);
+    }
+
+    return {
+      storedMediaObjects,
+      backupDir: backupId,
+      mediaDir: 'media',
+      cursor: newCursor,
+    };
+  }
+
+  public async getBackupMediaUploadForm(
+    headers: BackupHeaders,
+  ): Promise<AttachmentUploadForm> {
+    const backupId = this.authenticateBackup(headers);
+    const form = await this.getAttachmentUploadForm(
+      'backups',
+      `transit_${backupId}/${uuidv4()}`,
+    );
+    return form;
   }
 
   public async getBackupUploadForm(
@@ -1426,6 +1518,15 @@ export abstract class Server {
       `${backupId}/backup`,
     );
     return form;
+  }
+
+  public async backupMediaBatch(
+    headers: BackupHeaders,
+    batch: BackupMediaBatch,
+  ): Promise<BackupMediaBatchResult> {
+    const backupId = this.authenticateBackup(headers);
+    const responses = await this.backupTransitAttachments(backupId, batch);
+    return { responses };
   }
 
   public async getBackupCDNAuth(
@@ -1460,7 +1561,7 @@ export abstract class Server {
   }
 
   public async getBackupCredentials(
-    { aci }: Device,
+    { aci, backupLevel }: Device,
     range: CredentialsRange,
   ): Promise<Credentials | undefined> {
     const req = this.backupAuthReqByAci.get(aci);
@@ -1471,12 +1572,28 @@ export abstract class Server {
     return this.issueCredentials(range, (redemptionTime) => {
       return req.issueCredential(
         redemptionTime,
-        // TODO(indutny): offer different levels
-        BackupLevel.Messages,
+        backupLevel,
         this.backupServerSecret,
       );
     });
   }
+
+  protected async onNewBackupMediaObject(
+    backupId: string,
+    media: BackupMediaObject,
+  ): Promise<void> {
+    let list = this.backupMediaById.get(backupId);
+    if (list === undefined) {
+      list = [];
+      this.backupMediaById.set(backupId, list);
+    }
+    list.push(media);
+  }
+
+  protected abstract backupTransitAttachments(
+    backupId: string,
+    batch: BackupMediaBatch,
+  ): Promise<Array<BackupMediaBatchResponse>>;
 
   public abstract isUnregistered(serviceId: ServiceIdString): boolean;
 

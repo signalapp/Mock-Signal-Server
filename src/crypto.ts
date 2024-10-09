@@ -88,11 +88,20 @@ export function encryptProvisionMessage(
   };
 }
 
-export function encryptAttachment(cleartext: Buffer): Attachment {
-  const aesKey = crypto.randomBytes(32);
-  const macKey = crypto.randomBytes(32);
-  const iv = crypto.randomBytes(16);
+export type EncryptAttachmentOptions = Readonly<{
+  aesKey: Buffer;
+  macKey: Buffer;
+  iv: Buffer;
+}>;
 
+export function encryptAttachment(
+  cleartext: Buffer,
+  { aesKey, macKey, iv }: EncryptAttachmentOptions = {
+    aesKey: crypto.randomBytes(32),
+    macKey: crypto.randomBytes(32),
+    iv: crypto.randomBytes(16),
+  },
+): Attachment {
   const cipher = crypto.createCipheriv('aes-256-cbc', aesKey, iv);
   const ciphertext = Buffer.concat([cipher.update(cleartext), cipher.final()]);
 

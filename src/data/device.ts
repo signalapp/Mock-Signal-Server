@@ -3,7 +3,10 @@
 
 import createDebug from 'debug';
 import { ProtocolAddress, PublicKey } from '@signalapp/libsignal-client';
-import { ProfileKeyCommitment } from '@signalapp/libsignal-client/zkgroup';
+import {
+  BackupLevel,
+  ProfileKeyCommitment,
+} from '@signalapp/libsignal-client/zkgroup';
 
 import {
   AciString,
@@ -75,6 +78,7 @@ export class Device {
     versionedExpirationTimer: boolean;
   };
 
+  public backupLevel = BackupLevel.Media;
   public accessKey?: Buffer;
   public profileKeyCommitment?: ProfileKeyCommitment;
   public profileName?: Buffer;

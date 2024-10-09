@@ -20,6 +20,7 @@ import WebSocket from 'ws';
 import { run } from 'micro';
 
 import { attachmentToPointer } from '../data/attachment';
+import { BackupMediaBatch } from '../data/schemas';
 import { PRIMARY_DEVICE_ID } from '../constants';
 import {
   AciString,
@@ -38,6 +39,7 @@ import {
 } from '../crypto';
 import { signalservice as Proto } from '../../protos/compiled';
 import {
+  BackupMediaBatchResponse,
   Server as BaseServer,
   ChallengeResponse,
   EnvelopeType,
@@ -463,6 +465,16 @@ export class Server extends BaseServer {
     return existing;
   }
 
+  public async removeAllCDNAttachments(): Promise<void> {
+    const { cdn3Path } = this.config;
+    assert(cdn3Path, 'cdn3Path must be provided to store attachments');
+
+    const dir = path.join(cdn3Path, 'attachments');
+    await fsPromises.rm(dir, {
+      recursive: true,
+    });
+  }
+
   public async storeAttachmentOnCdn(
     cdnNumber: number,
     cdnKey: string,
@@ -746,7 +758,7 @@ export class Server extends BaseServer {
     return result;
   }
 
-  protected async onStorageManifestUpdate(
+  protected override async onStorageManifestUpdate(
     device: Device,
     version: Long,
   ): Promise<void> {
@@ -759,6 +771,71 @@ export class Server extends BaseServer {
     }
 
     queue.push(version.toNumber());
+  }
+
+  protected override async backupTransitAttachments(
+    backupId: string,
+    batch: BackupMediaBatch,
+  ): Promise<Array<BackupMediaBatchResponse>> {
+    const { cdn3Path } = this.config;
+    assert(cdn3Path, 'cdn3Path must be provided to store attachments');
+
+    const dir = path.join(cdn3Path, 'backups');
+    const mediaDir = path.join(dir, backupId, 'media');
+
+    await fsPromises.mkdir(mediaDir, {
+      recursive: true,
+    });
+
+    return Promise.all(
+      batch.items.map(async (item) => {
+        assert.strictEqual(item.sourceAttachment.cdn, 3, 'Invalid object CDN');
+        const transitPath = path.join(dir, item.sourceAttachment.key);
+        const finalPath = path.join(mediaDir, item.mediaId);
+
+        // TODO(indutny): streams
+        let data: Buffer;
+        try {
+          data = await fsPromises.readFile(transitPath);
+        } catch (error) {
+          assert(error instanceof Error);
+          if ('code' in error && error.code === 'ENOENT') {
+            return {
+              cdn: 3,
+              status: 404,
+              mediaId: item.mediaId,
+            };
+          }
+          throw error;
+        }
+
+        assert.strictEqual(
+          data.byteLength,
+          item.objectLength,
+          'Invalid objectLength',
+        );
+
+        const reencrypted = encryptAttachment(data, {
+          aesKey: item.encryptionKey,
+          macKey: item.hmacKey,
+          iv: item.iv,
+        });
+
+        await fsPromises.writeFile(finalPath, reencrypted.blob);
+
+        this.onNewBackupMediaObject(backupId, {
+          cdn: 3,
+          mediaId: item.mediaId,
+          objectLength: reencrypted.blob.length,
+        });
+
+        return {
+          cdn: 3,
+          status: 200,
+          mediaId: item.mediaId,
+        };
+      }),
+    );
   }
 
   //
