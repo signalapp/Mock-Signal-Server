@@ -506,7 +506,7 @@ export class Server extends BaseServer {
     await fsPromises.mkdir(dir, {
       recursive: true,
     });
-    await fsPromises.writeFile(path.join(dir, 'backups'), data);
+    await fsPromises.writeFile(path.join(dir, 'backup'), data);
   }
 
   //
