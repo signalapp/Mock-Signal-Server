@@ -22,7 +22,8 @@ import {
   put,
   router,
 } from 'microrouter';
-import * as fs from 'fs';
+import { type FileHandle, open } from 'node:fs/promises';
+import { pipeline } from 'node:stream/promises';
 import { Server as TusServer } from '@tus/server';
 import { FileStore } from '@tus/file-store';
 
@@ -182,12 +183,19 @@ export const createHandler = (
       }
     }
 
+    let file: FileHandle | undefined;
     try {
-      const data = fs.readFileSync(
-        join(cdn3Path, req.params.folder, req.params._),
-      );
-      return send(res, 200, data);
+      file = await open(join(cdn3Path, req.params.folder, req.params._), 'r');
+
+      const { size } = await file.stat();
+
+      res.writeHead(200, {
+        'Content-Length': size,
+      });
+      await pipeline(file.createReadStream(), res);
     } catch (e) {
+      await file?.close();
+
       assert(e instanceof Error);
       if ('code' in e && e.code === 'ENOENT') {
         return send(res, 404);
@@ -1086,6 +1094,9 @@ export const createHandler = (
   return (req, res) => {
     debug('got request %s %s', req.method, req.url);
     try {
+      res.once('finish', () => {
+        debug('response %s %s', req.method, req.url, res.statusCode);
+      });
       return routes(req, res);
     } catch (error) {
       assert(error instanceof Error);
