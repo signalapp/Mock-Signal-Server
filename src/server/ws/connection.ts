@@ -792,6 +792,9 @@ export class Connection extends Service {
   ): string | undefined {
     if (this.device) {
       // Authenticated
+    } else if (headers['group-send-token']) {
+      // Unchecked
+      return undefined;
     } else if (!target.accessKey || !headers['unidentified-access-key']) {
       return 'Not authenticated';
     } else {
