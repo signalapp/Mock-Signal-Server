@@ -5,7 +5,6 @@ import assert from 'assert';
 import fs from 'fs';
 import fsPromises from 'fs/promises';
 import { type Readable } from 'stream';
-import { pipeline } from 'stream/promises';
 import Long from 'long';
 import path from 'path';
 import https, { ServerOptions } from 'https';
@@ -478,7 +477,7 @@ export class Server extends BaseServer {
   public async storeAttachmentOnCdn(
     cdnNumber: number,
     cdnKey: string,
-    data: Uint8Array,
+    data: Uint8Array | Readable,
   ): Promise<void> {
     assert.strictEqual(cdnNumber, 3, 'Only cdn 3 currently supported');
     const { cdn3Path } = this.config;
@@ -493,7 +492,7 @@ export class Server extends BaseServer {
 
   public async storeBackupOnCdn(
     backupId: Uint8Array,
-    stream: Readable,
+    data: Uint8Array | Readable,
   ): Promise<void> {
     const { cdn3Path } = this.config;
     assert(cdn3Path, 'cdn3Path must be provided to store attachments');
@@ -507,7 +506,7 @@ export class Server extends BaseServer {
     await fsPromises.mkdir(dir, {
       recursive: true,
     });
-    await pipeline(stream, fs.createWriteStream(path.join(dir, 'backup')));
+    await fsPromises.writeFile(path.join(dir, 'backups'), data);
   }
 
   //
@@ -780,8 +779,8 @@ export class Server extends BaseServer {
     const { cdn3Path } = this.config;
     assert(cdn3Path, 'cdn3Path must be provided to store attachments');
 
-    const dir = path.join(cdn3Path, 'backups');
-    const mediaDir = path.join(dir, backupId, 'media');
+    const dir = path.join(cdn3Path, 'attachments');
+    const mediaDir = path.join(cdn3Path, 'backups', backupId, 'media');
 
     await fsPromises.mkdir(mediaDir, {
       recursive: true,
@@ -802,7 +801,7 @@ export class Server extends BaseServer {
           if ('code' in error && error.code === 'ENOENT') {
             return {
               cdn: 3,
-              status: 404,
+              status: 410,
               mediaId: item.mediaId,
             };
           }

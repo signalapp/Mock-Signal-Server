@@ -194,7 +194,7 @@ export type IsSendRateLimitedOptions = Readonly<{
   target: ServiceIdString;
 }>;
 
-export { ModifyGroupResult };
+export { type ModifyGroupResult };
 
 interface WebSocket {
   sendMessage(message: Buffer | 'empty'): Promise<void>;
@@ -1501,11 +1501,8 @@ export abstract class Server {
   public async getBackupMediaUploadForm(
     headers: BackupHeaders,
   ): Promise<AttachmentUploadForm> {
-    const backupId = this.authenticateBackup(headers);
-    const form = await this.getAttachmentUploadForm(
-      'backups',
-      `transit_${backupId}/${uuidv4()}`,
-    );
+    this.authenticateBackup(headers);
+    const form = await this.getAttachmentUploadForm('attachments', uuidv4());
     return form;
   }
 
