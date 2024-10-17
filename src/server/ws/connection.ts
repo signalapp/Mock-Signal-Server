@@ -414,6 +414,16 @@ export class Connection extends Service {
       ];
     });
 
+    this.router.get(
+      '/v1/devices/transfer_archive',
+      requireAuth(async () => {
+        const device = this.device;
+        assert(device);
+
+        return [200, await server.getTransferArchive(device)];
+      }),
+    );
+
     //
     // Groups
     //

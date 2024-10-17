@@ -1028,8 +1028,6 @@ export const createHandler = (
   const routes = router(
     // Sure, why not
     get('/v1/config', dummyAuth({ config: [] })),
-    put('/v1/devices/unauthenticated_delivery', dummyAuth({ ok: true })),
-    put('/v1/devices/capabilities', dummyAuth({ ok: true })),
 
     // TODO(indutny): support nameless devices? They use different route
     getDeviceKeys,

@@ -506,6 +506,9 @@ export class PrimaryDevice {
   public readonly secondaryDevices = new Array<Device>();
   public readonly masterKey = crypto.randomBytes(32);
 
+  // Forwarded in provisioning envelope
+  public ephemeralBackupKey: Buffer | undefined;
+
   // TODO(indutny): make primary device type configurable
   public readonly userAgent = 'OWI';
 

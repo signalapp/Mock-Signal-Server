@@ -47,6 +47,7 @@ import {
   ModifyGroupResult,
   ProvisionDeviceOptions,
   ProvisioningResponse,
+  TransferArchiveResponse,
 } from '../server/base';
 import { Device, DeviceKeys } from '../data/device';
 import {
@@ -148,6 +149,11 @@ export class Server extends BaseServer {
   private provisionResultQueueByKey = new Map<string, ProvisionResultQueue>();
   private manifestQueueByAci = new Map<AciString, PromiseQueue<number>>();
   private groupQueueById = new Map<string, PromiseQueue<number>>();
+  private transferArchiveByDevice = new Map<Device, TransferArchiveResponse>();
+  private transferCallbacksByDevice = new Map<
+    Device,
+    Array<(response: TransferArchiveResponse) => void>
+  >();
   private rateLimitCountByPair = new Map<
     `${ServiceIdString}:${ServiceIdString}`,
     number
@@ -527,7 +533,7 @@ export class Server extends BaseServer {
     });
 
     const {
-      // tsdevice:/?uuid=<uuid>&pub_key=<base64>
+      // tsdevice:/?uuid=<uuid>&pub_key=<base64>&capabilities=<...>
       provisionURL,
       primaryDevice,
     } = await responseQueue.shift();
@@ -574,6 +580,7 @@ export class Server extends BaseServer {
       // TODO(indutny): is it correct?
       ProvisioningVersion: Proto.ProvisioningVersion.CURRENT,
       masterKey: primaryDevice.masterKey,
+      ephemeralBackupKey: primaryDevice.ephemeralBackupKey,
     }).finish();
 
     const { body, ephemeralKey } = encryptProvisionMessage(
@@ -835,6 +842,37 @@ export class Server extends BaseServer {
         };
       }),
     );
+  }
+
+  public async provideTransferArchive(
+    device: Device,
+    archive: TransferArchiveResponse,
+  ): Promise<void> {
+    const callbacks = this.transferCallbacksByDevice.get(device) ?? [];
+    this.transferCallbacksByDevice.delete(device);
+
+    this.transferArchiveByDevice.set(device, archive);
+    for (const callback of callbacks) {
+      callback(archive);
+    }
+  }
+
+  public override async getTransferArchive(
+    device: Device,
+  ): Promise<TransferArchiveResponse> {
+    const existing = this.transferArchiveByDevice.get(device);
+    if (existing !== undefined) {
+      return existing;
+    }
+
+    return new Promise((resolve) => {
+      let list = this.transferCallbacksByDevice.get(device);
+      if (list === undefined) {
+        list = [];
+        this.transferCallbacksByDevice.set(device, list);
+      }
+      list.push(resolve);
+    });
   }
 
   //

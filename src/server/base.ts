@@ -271,6 +271,11 @@ export type BackupMediaBatchResult = Readonly<{
   responses: ReadonlyArray<BackupMediaBatchResponse>;
 }>;
 
+export type TransferArchiveResponse = Readonly<{
+  cdn: 3;
+  key: string;
+}>;
+
 export type AttachmentUploadForm = Readonly<{
   cdn: 3;
   key: string;
@@ -1591,6 +1596,10 @@ export abstract class Server {
     backupId: string,
     batch: BackupMediaBatch,
   ): Promise<Array<BackupMediaBatchResponse>>;
+
+  public abstract getTransferArchive(
+    device: Device,
+  ): Promise<TransferArchiveResponse>;
 
   public abstract isUnregistered(serviceId: ServiceIdString): boolean;
 
