@@ -294,7 +294,7 @@ export const createHandler = (
     }
     const deleteParams = DeleteCallLinkSchema.parse(await json(req));
     await server.deleteCallLink(roomId, deleteParams);
-    return null;
+    return {};
   });
 
   //
