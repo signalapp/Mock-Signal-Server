@@ -175,7 +175,6 @@ export const BackupMediaBatchSchema = z.object({
       mediaId: z.string(),
       hmacKey: z.string().transform(fromBase64),
       encryptionKey: z.string().transform(fromBase64),
-      iv: z.string().transform(fromBase64),
     })
     .array(),
 });

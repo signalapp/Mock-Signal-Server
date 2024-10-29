@@ -826,7 +826,9 @@ export class Server extends BaseServer {
         const reencrypted = encryptAttachment(data, {
           aesKey: item.encryptionKey,
           macKey: item.hmacKey,
-          iv: item.iv,
+
+          // Deterministic value
+          iv: Buffer.alloc(16),
         });
 
         await fsPromises.writeFile(finalPath, reencrypted.blob);
