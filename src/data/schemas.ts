@@ -145,7 +145,8 @@ export const DeleteCallLinkSchema = z.object({
 export type DeleteCallLink = z.infer<typeof DeleteCallLinkSchema>;
 
 export const SetBackupIdSchema = z.object({
-  backupAuthCredentialRequest: z.string().transform(fromBase64),
+  messagesBackupAuthCredentialRequest: z.string().transform(fromBase64),
+  mediaBackupAuthCredentialRequest: z.string().transform(fromBase64),
 });
 
 export type SetBackupId = z.infer<typeof SetBackupIdSchema>;

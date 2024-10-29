@@ -76,9 +76,10 @@ export class Device {
   public capabilities: {
     deleteSync: boolean;
     versionedExpirationTimer: boolean;
+    ssre2: boolean;
   };
 
-  public backupLevel = BackupLevel.Media;
+  public backupLevel = BackupLevel.Paid;
   public accessKey?: Buffer;
   public profileKeyCommitment?: ProfileKeyCommitment;
   public profileName?: Buffer;
@@ -105,6 +106,7 @@ export class Device {
     this.capabilities = {
       deleteSync: true,
       versionedExpirationTimer: true,
+      ssre2: true,
     };
   }
 

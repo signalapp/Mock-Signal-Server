@@ -29,6 +29,7 @@ const AES_KEY_SIZE = 32;
 const MAC_KEY_SIZE = 32;
 const AESGCM_IV_SIZE = 12;
 const AUTH_TAG_SIZE = 16;
+const MASTER_KEY_SIZE = 32;
 
 export type EncryptedProvisionMessage = {
   body: Buffer;
@@ -187,6 +188,17 @@ export function deriveAccessKey(profileKey: Buffer): Buffer {
   return Buffer.concat([cipher.update(Buffer.alloc(16)), cipher.final()]);
 }
 
+export function deriveMasterKey(accountEntropyPool: string): Buffer {
+  const hkdf = HKDF.new(3);
+
+  return hkdf.deriveSecrets(
+    MASTER_KEY_SIZE,
+    Buffer.from(accountEntropyPool),
+    Buffer.from('20240801_SIGNAL_SVR_MASTER_KEY'),
+    null,
+  );
+}
+
 export function deriveStorageKey(masterKey: Buffer): Buffer {
   const hash = crypto.createHmac('sha256', masterKey);
   hash.update('Storage Service Encryption');
@@ -199,10 +211,34 @@ function deriveStorageManifestKey(storageKey: Buffer, version: Long): Buffer {
   return hash.digest();
 }
 
-function deriveStorageItemKey(storageKey: Buffer, itemKey: Buffer): Buffer {
-  const hash = crypto.createHmac('sha256', storageKey);
-  hash.update(`Item_${itemKey.toString('base64')}`);
-  return hash.digest();
+const STORAGE_SERVICE_ITEM_KEY_INFO_PREFIX =
+  '20240801_SIGNAL_STORAGE_SERVICE_ITEM_';
+const STORAGE_SERVICE_ITEM_KEY_LEN = 32;
+
+export type DeriveStorageItemKeyOptions = Readonly<{
+  storageKey: Buffer;
+  recordIkm: Buffer | undefined;
+  key: Buffer;
+}>;
+
+export function deriveStorageItemKey({
+  storageKey,
+  recordIkm,
+  key,
+}: DeriveStorageItemKeyOptions): Buffer {
+  if (recordIkm === undefined) {
+    const hash = crypto.createHmac('sha256', storageKey);
+    hash.update(`Item_${key.toString('base64')}`);
+    return hash.digest();
+  }
+
+  const hkdf = HKDF.new(3);
+  return hkdf.deriveSecrets(
+    STORAGE_SERVICE_ITEM_KEY_LEN,
+    recordIkm,
+    Buffer.concat([Buffer.from(STORAGE_SERVICE_ITEM_KEY_INFO_PREFIX), key]),
+    Buffer.alloc(0),
+  );
 }
 
 function decryptAESGCM(ciphertext: Buffer, key: Buffer): Buffer {
@@ -279,10 +315,17 @@ export function encryptStorageManifest(
   };
 }
 
-export function decryptStorageItem(
-  storageKey: Buffer,
-  item: Proto.IStorageItem,
-): Proto.IStorageRecord {
+export type DecryptStorageItemOptions = Readonly<{
+  storageKey: Buffer;
+  recordIkm: Buffer | undefined;
+  item: Proto.IStorageItem;
+}>;
+
+export function decryptStorageItem({
+  storageKey,
+  recordIkm,
+  item,
+}: DecryptStorageItemOptions): Proto.IStorageRecord {
   if (!item.key) {
     throw new Error('Missing item.key');
   }
@@ -290,19 +333,35 @@ export function decryptStorageItem(
     throw new Error('Missing item.value');
   }
 
-  const itemKey = deriveStorageItemKey(storageKey, Buffer.from(item.key));
+  const itemKey = deriveStorageItemKey({
+    storageKey,
+    recordIkm,
+    key: Buffer.from(item.key),
+  });
 
   return Proto.StorageRecord.decode(
     decryptAESGCM(Buffer.from(item.value), itemKey),
   );
 }
 
-export function encryptStorageItem(
-  storageKey: Buffer,
-  key: Buffer,
-  record: Proto.IStorageRecord,
-): Proto.IStorageItem {
-  const itemKey = deriveStorageItemKey(storageKey, key);
+export type EncryptStorageItemOptions = Readonly<{
+  storageKey: Buffer;
+  key: Buffer;
+  recordIkm: Buffer | undefined;
+  record: Proto.IStorageRecord;
+}>;
+
+export function encryptStorageItem({
+  storageKey,
+  key,
+  recordIkm,
+  record,
+}: EncryptStorageItemOptions): Proto.IStorageItem {
+  const itemKey = deriveStorageItemKey({
+    storageKey,
+    recordIkm,
+    key,
+  });
 
   const encrypted = encryptAESGCM(
     Buffer.from(Proto.StorageRecord.encode(record).finish()),

@@ -34,6 +34,7 @@ import {
   Uuid,
 } from '@signalapp/libsignal-client';
 import * as SignalClient from '@signalapp/libsignal-client';
+import { AccountEntropyPool } from '@signalapp/libsignal-client/dist/AccountKeys';
 import createDebug from 'debug';
 import {
   ClientZkProfileOperations,
@@ -64,6 +65,7 @@ import {
   decryptStorageItem,
   decryptStorageManifest,
   deriveAccessKey,
+  deriveMasterKey,
   deriveStorageKey,
   encryptProfileName,
 } from '../crypto';
@@ -504,10 +506,15 @@ export class PrimaryDevice {
   public readonly profileKey: ProfileKey;
   public readonly profileName: string;
   public readonly secondaryDevices = new Array<Device>();
-  public readonly masterKey = crypto.randomBytes(32);
+  public readonly accountEntropyPool = AccountEntropyPool.generate();
+  public readonly masterKey = deriveMasterKey(this.accountEntropyPool);
+  public readonly mediaRootBackupKey = crypto.randomBytes(32);
 
   // Forwarded in provisioning envelope
   public ephemeralBackupKey: Buffer | undefined;
+
+  // Overridable to test legacy encryption modes
+  public storageRecordIkm: Buffer | undefined = crypto.randomBytes(32);
 
   // TODO(indutny): make primary device type configurable
   public readonly userAgent = 'OWI';
@@ -1052,10 +1059,11 @@ export class PrimaryDevice {
     state: StorageState,
     previousState?: StorageState,
   ): Promise<StorageState> {
-    const writeOperation = state.createWriteOperation(
-      this.storageKey,
-      previousState,
-    );
+    const writeOperation = state.createWriteOperation({
+      storageKey: this.storageKey,
+      recordIkm: this.storageRecordIkm,
+      previous: previousState,
+    });
     assert(writeOperation.manifest, 'write operation without manifest');
 
     const { updated, error } = await this.config.applyStorageWrite(
@@ -1726,7 +1734,11 @@ export class PrimaryDevice {
     } else if (request.type === Proto.SyncMessage.Request.Type.KEYS) {
       debug('got sync keys request');
       response = {
-        keys: { master: this.masterKey },
+        keys: {
+          master: this.masterKey,
+          mediaRootBackupKey: this.mediaRootBackupKey,
+          accountEntropyPool: this.accountEntropyPool,
+        },
       };
       stateChange = SyncState.Keys;
     } else {
@@ -2150,9 +2162,13 @@ export class PrimaryDevice {
         return {
           type,
           key: keyBuffer,
-          record: decryptStorageItem(this.storageKey, {
-            key,
-            value: item,
+          record: decryptStorageItem({
+            storageKey: this.storageKey,
+            recordIkm: this.storageRecordIkm,
+            item: {
+              key,
+              value: item,
+            },
           }),
         };
       }),

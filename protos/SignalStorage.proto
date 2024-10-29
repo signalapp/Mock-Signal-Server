@@ -57,7 +57,8 @@ message ManifestRecord {
   optional uint64      version = 1;
   optional uint32 sourceDevice = 3;
   repeated Identifier     keys = 2;
-  // Next ID: 4
+  optional bytes recordIkm = 4;
+  // Next ID: 5
 }
 
 message StorageRecord {
@@ -77,6 +78,11 @@ message ContactRecord {
     DEFAULT = 0;
     VERIFIED = 1;
     UNVERIFIED = 2;
+  }
+
+  message Name {
+    optional string given = 1;
+    optional string family = 2;
   }
 
   optional string aci = 1;
@@ -100,6 +106,8 @@ message ContactRecord {
   optional string systemNickname = 19;
   optional bool hidden = 20;
   optional bool pniSignatureVerified = 21;
+  optional Name nickname = 22;
+  optional string note = 23;
 }
 
 message GroupV1Record {
@@ -132,8 +140,8 @@ message GroupV2Record {
 
 message AccountRecord {
   enum PhoneNumberSharingMode {
-    EVERYBODY     = 0;
-    CONTACTS_ONLY = 1;
+    UNKNOWN     = 0;
+    EVERYBODY = 1;
     NOBODY        = 2;
   }
 
@@ -176,7 +184,7 @@ message AccountRecord {
   optional bool readReceipts = 6;
   optional bool sealedSenderIndicators = 7;
   optional bool typingIndicators = 8;
-  optional bool proxiedLinkPreviews = 9;
+  reserved 9; // proxiedLinkPreviews
   optional bool noteToSelfMarkedUnread = 10;
   optional bool linkPreviews = 11;
   optional PhoneNumberSharingMode phoneNumberSharingMode = 12;
@@ -185,11 +193,12 @@ message AccountRecord {
   optional bool preferContactAvatars = 15;
   optional uint32 universalExpireTimer = 17;
   optional bool primarySendsSms = 18;
-  optional string e164 = 19;
+  reserved 19; // deprecatedE164
   repeated string preferredReactionEmoji = 20;
   optional bytes subscriberId = 21;
   optional string subscriberCurrencyCode = 22;
   optional bool displayBadgesOnProfile = 23;
+  optional bool donorSubscriptionManuallyCancelled = 24;
   optional bool keepMutedChatsArchived = 25;
   optional bool hasSetMyStoriesPrivacy = 26;
   optional bool hasViewedOnboardingStory = 27;
@@ -197,10 +206,13 @@ message AccountRecord {
   optional bool storiesDisabled = 29;
   optional OptionalBool storyViewReceiptsEnabled = 30;
   reserved 31; // hasReadOnboardingStory
-  reserved 32; // hasSeenGroupStoryEducationSheet
+  optional bool hasSeenGroupStoryEducationSheet = 32;
   optional string username = 33;
   optional bool hasCompletedUsernameOnboarding = 34;
   optional UsernameLink usernameLink = 35;
+  optional bytes backupsSubscriberId = 36;
+  optional string backupsSubscriberCurrencyCode = 37;
+  optional bool backupsSubscriptionManuallyCancelled = 38;
 }
 
 message StoryDistributionListRecord {

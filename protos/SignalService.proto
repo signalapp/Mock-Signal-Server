@@ -212,7 +212,8 @@ message DataMessage {
       optional string prefix      = 3;
       optional string suffix      = 4;
       optional string middleName  = 5;
-      optional string displayName = 6;
+      reserved /* displayName */ 6;
+      optional string nickname = 7;
     }
 
     message Phone {
@@ -505,7 +506,9 @@ message SyncMessage {
 
   message Keys {
     optional bytes storageService = 1; // deprecated: this field will be removed in a future release.
-    optional bytes master = 2;
+    optional bytes master = 2; // deprecated: this field will be removed in a future release.
+    optional string accountEntropyPool = 3;
+    optional bytes mediaRootBackupKey = 4;
   }
 
   message Read {
@@ -622,7 +625,7 @@ message SyncMessage {
   message CallLinkUpdate {
     enum Type {
       UPDATE = 0;
-      DELETE = 1;
+      reserved 1; // was DELETE, superseded by storage service
     }
 
     optional bytes rootKey      = 1;

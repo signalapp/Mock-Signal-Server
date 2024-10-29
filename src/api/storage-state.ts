@@ -34,6 +34,17 @@ const KEY_SIZE = 16;
 const IdentifierType = Proto.ManifestRecord.Identifier.Type;
 type IdentifierType = Proto.ManifestRecord.Identifier.Type;
 
+export type ToStorageItemOptions = Readonly<{
+  storageKey: Buffer;
+  recordIkm: Buffer | undefined;
+}>;
+
+export type CreateWriteOperationOptions = Readonly<{
+  storageKey: Buffer;
+  recordIkm: Buffer | undefined;
+  previous?: StorageState;
+}>;
+
 class StorageStateItem {
   public readonly type: IdentifierType;
   public readonly key: Buffer;
@@ -49,8 +60,16 @@ class StorageStateItem {
     return this.key.toString('base64');
   }
 
-  public toStorageItem(storageKey: Buffer): Proto.IStorageItem {
-    return encryptStorageItem(storageKey, this.key, this.record);
+  public toStorageItem({
+    storageKey,
+    recordIkm,
+  }: ToStorageItemOptions): Proto.IStorageItem {
+    return encryptStorageItem({
+      storageKey,
+      recordIkm,
+      key: this.key,
+      record: this.record,
+    });
   }
 
   public toIdentifier(): Proto.ManifestRecord.IIdentifier {
@@ -373,10 +392,11 @@ export class StorageState {
   // General
   //
 
-  public createWriteOperation(
-    storageKey: Buffer,
-    previous?: StorageState,
-  ): Proto.IWriteOperation {
+  public createWriteOperation({
+    storageKey,
+    recordIkm,
+    previous,
+  }: CreateWriteOperationOptions): Proto.IWriteOperation {
     const newVersion = Long.fromNumber(
       previous ? previous.version + 1 : this.version + 1,
     );
@@ -390,13 +410,14 @@ export class StorageState {
 
     for (const item of this.items) {
       if (!keysToDelete.delete(item.getKeyString())) {
-        insertItem.push(item.toStorageItem(storageKey));
+        insertItem.push(item.toStorageItem({ storageKey, recordIkm }));
       }
     }
 
     const manifest = encryptStorageManifest(storageKey, {
       version: newVersion,
       keys: this.items.map((item) => item.toIdentifier()),
+      recordIkm,
     });
 
     return {

@@ -12,6 +12,7 @@ import {
   AuthCredentialPresentation,
   BackupAuthCredentialPresentation,
   BackupAuthCredentialRequest,
+  BackupLevel,
   CallLinkAuthCredentialResponse,
   CreateCallLinkCredentialRequest,
   CreateCallLinkCredentialResponse,
@@ -23,6 +24,8 @@ import {
   ServerZkProfileOperations,
   UuidCiphertext,
 } from '@signalapp/libsignal-client/zkgroup';
+// TODO(indutny): wait for libsignal release
+import BackupCredentialType from '@signalapp/libsignal-client/dist/zkgroup/backups/BackupCredentialType';
 import assert from 'assert';
 import https from 'https';
 import crypto from 'crypto';
@@ -95,6 +98,11 @@ export type StorageCredentials = Readonly<{
 export type Credentials = Array<{
   credential: string;
   redemptionTime: number;
+}>;
+
+export type BackupCredentials = Readonly<{
+  MESSAGES: Credentials;
+  MEDIA: Credentials;
 }>;
 
 export type ChallengeResponse = Readonly<{
@@ -326,7 +334,10 @@ export abstract class Server {
   private readonly callLinksByRoomId = new Map<string, CallLinkEntry>();
   private readonly backupAuthReqByAci = new Map<
     AciString,
-    BackupAuthCredentialRequest
+    {
+      messages: BackupAuthCredentialRequest;
+      media: BackupAuthCredentialRequest;
+    }
   >();
   private readonly backupKeyById = new Map<string, PublicKey>();
   private readonly backupCDNPasswordById = new Map<string, string>();
@@ -1425,10 +1436,17 @@ export abstract class Server {
 
   public async setBackupId(
     { aci }: Device,
-    { backupAuthCredentialRequest }: SetBackupId,
+    {
+      messagesBackupAuthCredentialRequest,
+      mediaBackupAuthCredentialRequest,
+    }: SetBackupId,
   ): Promise<void> {
-    const req = new BackupAuthCredentialRequest(backupAuthCredentialRequest);
-    this.backupAuthReqByAci.set(aci, req);
+    this.backupAuthReqByAci.set(aci, {
+      messages: new BackupAuthCredentialRequest(
+        messagesBackupAuthCredentialRequest,
+      ),
+      media: new BackupAuthCredentialRequest(mediaBackupAuthCredentialRequest),
+    });
   }
 
   public async setBackupKey(
@@ -1565,19 +1583,34 @@ export abstract class Server {
   public async getBackupCredentials(
     { aci, backupLevel }: Device,
     range: CredentialsRange,
-  ): Promise<Credentials | undefined> {
+  ): Promise<BackupCredentials | undefined> {
     const req = this.backupAuthReqByAci.get(aci);
     if (req === undefined) {
       return undefined;
     }
 
-    return this.issueCredentials(range, (redemptionTime) => {
-      return req.issueCredential(
+    const messages = this.issueCredentials(range, (redemptionTime) => {
+      return req.messages.issueCredential(
         redemptionTime,
-        backupLevel,
+        BackupLevel.Free,
+        BackupCredentialType.Messages,
         this.backupServerSecret,
       );
     });
+
+    const media = this.issueCredentials(range, (redemptionTime) => {
+      return req.media.issueCredential(
+        redemptionTime,
+        backupLevel,
+        BackupCredentialType.Media,
+        this.backupServerSecret,
+      );
+    });
+
+    return {
+      MESSAGES: messages,
+      MEDIA: media,
+    };
   }
 
   protected async onNewBackupMediaObject(

@@ -581,6 +581,8 @@ export class Server extends BaseServer {
       ProvisioningVersion: Proto.ProvisioningVersion.CURRENT,
       masterKey: primaryDevice.masterKey,
       ephemeralBackupKey: primaryDevice.ephemeralBackupKey,
+      mediaRootBackupKey: primaryDevice.mediaRootBackupKey,
+      accountEntropyPool: primaryDevice.accountEntropyPool,
     }).finish();
 
     const { body, ephemeralKey } = encryptProvisionMessage(
