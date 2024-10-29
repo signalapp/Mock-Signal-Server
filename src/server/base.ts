@@ -12,6 +12,7 @@ import {
   AuthCredentialPresentation,
   BackupAuthCredentialPresentation,
   BackupAuthCredentialRequest,
+  BackupCredentialType,
   BackupLevel,
   CallLinkAuthCredentialResponse,
   CreateCallLinkCredentialRequest,
@@ -24,8 +25,6 @@ import {
   ServerZkProfileOperations,
   UuidCiphertext,
 } from '@signalapp/libsignal-client/zkgroup';
-// TODO(indutny): wait for libsignal release
-import BackupCredentialType from '@signalapp/libsignal-client/dist/zkgroup/backups/BackupCredentialType';
 import assert from 'assert';
 import https from 'https';
 import crypto from 'crypto';
