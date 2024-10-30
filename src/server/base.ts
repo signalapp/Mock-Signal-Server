@@ -100,8 +100,8 @@ export type Credentials = Array<{
 }>;
 
 export type BackupCredentials = Readonly<{
-  MESSAGES: Credentials;
-  MEDIA: Credentials;
+  messages: Credentials;
+  media: Credentials;
 }>;
 
 export type ChallengeResponse = Readonly<{
@@ -1607,8 +1607,8 @@ export abstract class Server {
     });
 
     return {
-      MESSAGES: messages,
-      MEDIA: media,
+      messages,
+      media,
     };
   }
 
