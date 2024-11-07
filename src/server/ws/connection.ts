@@ -6,7 +6,10 @@ import { Buffer } from 'buffer';
 import { IncomingMessage } from 'http';
 import { timingSafeEqual } from 'crypto';
 import createDebug from 'debug';
-import { ProfileKeyCredentialRequest } from '@signalapp/libsignal-client/zkgroup';
+import {
+  CreateCallLinkCredentialRequest,
+  ProfileKeyCredentialRequest,
+} from '@signalapp/libsignal-client/zkgroup';
 import SealedSenderMultiRecipientMessage from '@signalapp/libsignal-client/dist/SealedSenderMultiRecipientMessage';
 
 import WebSocket from 'ws';
@@ -18,10 +21,15 @@ import {
   AtomicLinkingDataSchema,
   BackupHeadersSchema,
   BackupMediaBatchSchema,
+  CreateCallLinkAuthSchema,
+  DeviceKeysSchema,
   Message,
   MessageListSchema,
+  PutUsernameLinkSchema,
   SetBackupIdSchema,
   SetBackupKeySchema,
+  UsernameConfirmationSchema,
+  UsernameReservationSchema,
 } from '../../data/schemas';
 import {
   DeviceId,
@@ -34,11 +42,19 @@ import {
 } from '../../types';
 import {
   decodeKyberPreKey,
+  decodePreKey,
   decodeSignedPreKey,
   generateAccessKeyVerifier,
 } from '../../crypto';
 import { Server } from '../base';
-import { parseAuthHeader } from '../../util';
+import {
+  fromURLSafeBase64,
+  getDevicesKeysResult,
+  parseAuthHeader,
+  serviceIdKindFromQuery,
+  toBase64,
+  toURLSafeBase64,
+} from '../../util';
 
 import { Service, WSRequest, WSResponse } from './service';
 import { Handler, Router } from './router';
@@ -338,15 +354,9 @@ export class Connection extends Service {
     this.router.get(
       '/v1/certificate/delivery',
       requireAuth(async () => {
-        const device = this.device;
-        if (!device) {
-          debug(
-            '/v1/certificate/delivery: No support for unauthorized delivery',
-          );
-          return [401, { error: 'Not authorized' }];
-        }
-
-        const certificate = await this.server.getSenderCertificate(device);
+        const certificate = await this.server.getSenderCertificate(
+          this.getDevice(),
+        );
 
         return [
           200,
@@ -354,6 +364,84 @@ export class Connection extends Service {
         ];
       }),
     );
+
+    this.router.put(
+      '/v2/keys',
+      requireAuth(async (_params, rawBody, _headers, query) => {
+        if (!rawBody) {
+          return [422, { error: 'Missing body' }];
+        }
+
+        const serviceIdKind = serviceIdKindFromQuery(query);
+
+        const body = DeviceKeysSchema.parse(JSON.parse(rawBody.toString()));
+        try {
+          await server.updateDeviceKeys(this.getDevice(), serviceIdKind, {
+            preKeys: body.preKeys?.map(decodePreKey),
+            kyberPreKeys: body.pqPreKeys?.map(decodeKyberPreKey),
+            lastResortKey: body.pqLastResortPreKey
+              ? decodeKyberPreKey(body.pqLastResortPreKey)
+              : undefined,
+            signedPreKey: body.signedPreKey
+              ? decodeSignedPreKey(body.signedPreKey)
+              : undefined,
+          });
+        } catch (error) {
+          assert(error instanceof Error);
+          debug('updateDeviceKeys error', error.stack);
+          return [400, { error: error.message }];
+        }
+
+        return [200, { ok: true }];
+      }),
+    );
+
+    this.router.get(
+      '/v2/keys',
+      requireAuth(async (_params, _rawBody, _headers, query) => {
+        const device = this.getDevice();
+        const serviceIdKind = serviceIdKindFromQuery(query);
+
+        return [
+          200,
+          {
+            count: await device.getPreKeyCount(serviceIdKind),
+            pqCount: await device.getKyberPreKeyCount(serviceIdKind),
+          },
+        ];
+      }),
+    );
+
+    this.router.get('/v2/keys/:serviceId/:deviceId', async (params) => {
+      const serviceId = params.serviceId as ServiceIdString;
+      const deviceId = parseInt(params.deviceId || '', 10) as DeviceId;
+      if (!serviceId || deviceId.toString() !== params.deviceId) {
+        return [400, { error: 'Invalid request parameters' }];
+      }
+
+      const device = await server.getDeviceByServiceId(serviceId, deviceId);
+      if (!device) {
+        return [404, { error: 'Device not found' }];
+      }
+
+      const serviceIdKind = device.getServiceIdKind(serviceId);
+      return [200, await getDevicesKeysResult(serviceIdKind, [device])];
+    });
+
+    this.router.get('/v2/keys/:serviceId(/\\*)', async (params) => {
+      const serviceId = params.serviceId as ServiceIdString;
+      if (!serviceId) {
+        return [400, { error: 'Invalid request parameters' }];
+      }
+
+      const devices = await server.getAllDevicesByServiceId(serviceId);
+      if (devices.length === 0) {
+        return [404, { error: 'Account not found' }];
+      }
+
+      const serviceIdKind = devices[0].getServiceIdKind(serviceId);
+      return [200, await getDevicesKeysResult(serviceIdKind, devices)];
+    });
 
     this.router.put('/v1/devices/link', async (_params, body, headers) => {
       const { error, username, password } = parseAuthHeader(
@@ -417,10 +505,7 @@ export class Connection extends Service {
     this.router.get(
       '/v1/devices/transfer_archive',
       requireAuth(async () => {
-        const device = this.device;
-        assert(device);
-
-        return [200, await server.getTransferArchive(device)];
+        return [200, await server.getTransferArchive(this.getDevice())];
       }),
     );
 
@@ -471,14 +556,12 @@ export class Connection extends Service {
     // Storage Service
     //
 
-    this.router.get('/v1/storage/auth', async () => {
-      const device = this.device;
-      if (!device) {
-        throw new Error('Storage credentials require authorization');
-      }
-
-      return [200, await server.getStorageAuth(device)];
-    });
+    this.router.get(
+      '/v1/storage/auth',
+      requireAuth(async () => {
+        return [200, await server.getStorageAuth(this.getDevice())];
+      }),
+    );
 
     //
     // Backups
@@ -487,15 +570,12 @@ export class Connection extends Service {
     this.router.put(
       '/v1/archives/backupid',
       requireAuth(async (_params, body) => {
-        const device = this.device;
-        assert(device);
-
         if (!body) {
           return [400, { error: 'Missing body' }];
         }
 
         const backupId = SetBackupIdSchema.parse(JSON.parse(body.toString()));
-        await server.setBackupId(device, backupId);
+        await server.setBackupId(this.getDevice(), backupId);
         return [200, { ok: true }];
       }),
     );
@@ -503,16 +583,16 @@ export class Connection extends Service {
     this.router.get(
       '/v1/archives/auth',
       requireAuth(async (_params, _body, _headers, query = {}) => {
-        const device = this.device;
-        assert(device);
-
         const { redemptionStartSeconds: from, redemptionEndSeconds: to } =
           query;
 
-        const credentials = await this.server.getBackupCredentials(device, {
-          from: parseInt(from as string, 10),
-          to: parseInt(to as string, 10),
-        });
+        const credentials = await this.server.getBackupCredentials(
+          this.getDevice(),
+          {
+            from: parseInt(from as string, 10),
+            to: parseInt(to as string, 10),
+          },
+        );
         if (credentials === undefined) {
           return [404, { error: 'backup id not set' }];
         }
@@ -684,6 +764,175 @@ export class Connection extends Service {
         await this.server.getAttachmentUploadForm('attachments', key),
       ];
     });
+
+    //
+    // Accounts
+    //
+
+    this.router.get(
+      '/v1/accounts/whoami',
+      requireAuth(async () => {
+        const device = this.getDevice();
+        return [
+          200,
+          { uuid: device.aci, pni: device.pni, number: device.number },
+        ];
+      }),
+    );
+
+    this.router.put(
+      '/v1/accounts/username_hash/reserve',
+      requireAuth(async (_params, rawBody) => {
+        if (!rawBody) {
+          return [422, { error: 'Missing body' }];
+        }
+
+        const body = UsernameReservationSchema.parse(
+          JSON.parse(rawBody.toString()),
+        );
+
+        const usernameHash = await server.reserveUsername(
+          this.getDevice().aci,
+          body,
+        );
+
+        if (!usernameHash) {
+          return [401, { error: 'All username hashes taken' }];
+        }
+
+        return [200, { usernameHash: toURLSafeBase64(usernameHash) }];
+      }),
+    );
+
+    this.router.put(
+      '/v1/accounts/username_hash/confirm',
+      requireAuth(async (_params, rawBody) => {
+        if (!rawBody) {
+          return [422, { error: 'Missing body' }];
+        }
+
+        const body = UsernameConfirmationSchema.parse(
+          JSON.parse(rawBody.toString()),
+        );
+
+        const result = await server.confirmUsername(this.getDevice().aci, body);
+
+        if (!result) {
+          return [
+            409,
+            {
+              error:
+                "Given username hash doesn't match the reserved one or no reservation found.",
+            },
+          ];
+        }
+
+        return [200, result];
+      }),
+    );
+
+    this.router.del(
+      '/v1/accounts/username_hash',
+      requireAuth(async () => {
+        await this.server.deleteUsername(this.getDevice().aci);
+
+        return [204, { ok: true }];
+      }),
+    );
+
+    this.router.get('/v1/accounts/username_hash/:hash', async (params) => {
+      const { hash = '' } = params;
+
+      const uuid = await server.lookupByUsernameHash(fromURLSafeBase64(hash));
+
+      if (!uuid) {
+        return [404, { error: 'Not found' }];
+      }
+
+      return [200, { uuid }];
+    });
+
+    this.router.get('/v1/accounts/username_link/:uuid', async (params) => {
+      const { uuid: linkUuid = '' } = params;
+
+      const encryptedValue = await server.lookupByUsernameLink(linkUuid);
+
+      if (!encryptedValue) {
+        return [404, { error: 'Not found' }];
+      }
+
+      return [
+        200,
+        { usernameLinkEncryptedValue: toURLSafeBase64(encryptedValue) },
+      ];
+    });
+
+    this.router.put(
+      '/v1/accounts/username_link',
+      requireAuth(async (_params, rawBody) => {
+        if (!rawBody) {
+          return [422, { error: 'Missing body' }];
+        }
+
+        const { usernameLinkEncryptedValue } = PutUsernameLinkSchema.parse(
+          JSON.parse(rawBody.toString()),
+        );
+
+        const usernameLinkHandle = await server.replaceUsernameLink(
+          this.getDevice().aci,
+          usernameLinkEncryptedValue,
+        );
+
+        return [200, { usernameLinkHandle }];
+      }),
+    );
+
+    //
+    // Call links
+    //
+
+    this.router.post(
+      '/v1/call-link/create-auth',
+      requireAuth(async (_params, rawBody) => {
+        if (!rawBody) {
+          return [422, { error: 'Missing body' }];
+        }
+
+        const body = CreateCallLinkAuthSchema.parse(
+          JSON.parse(rawBody.toString()),
+        );
+        const request = new CreateCallLinkCredentialRequest(
+          body.createCallLinkCredentialRequest,
+        );
+        const response = await server.createCallLinkAuth(
+          this.getDevice(),
+          request,
+        );
+
+        return [
+          200,
+          {
+            redemptionTime: -Date.now(),
+            credential: toBase64(response.serialize()),
+          },
+        ];
+      }),
+    );
+
+    //
+    // Captcha
+    //
+    this.router.put(
+      '/v1/challenge',
+      requireAuth(async () => {
+        const response = server.getResponseForChallenges();
+        if (response) {
+          return [response.code, response.data ?? {}];
+        }
+
+        return [200, { ok: true }];
+      }),
+    );
   }
 
   public async start(): Promise<void> {
@@ -794,6 +1043,11 @@ export class Connection extends Service {
     });
 
     await this.server.addWebSocket(device, this);
+  }
+
+  private getDevice(): Device {
+    assert(this.device);
+    return this.device;
   }
 
   private checkAccessKey(

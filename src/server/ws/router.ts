@@ -55,6 +55,10 @@ export class Router {
     this.register('POST', pattern, handler);
   }
 
+  public del(pattern: string, handler: Handler): void {
+    this.register('DELETE', pattern, handler);
+  }
+
   public async run(request: WSRequest): Promise<WSResponse> {
     const headers: Record<string, string> = {};
     for (const pair of request.headers ?? []) {

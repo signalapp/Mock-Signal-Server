@@ -8,7 +8,9 @@ import util from 'node:util';
 import type { JsonValue } from 'type-fest';
 
 import { DAY_IN_SECONDS } from './constants';
-import type { RegistrationId } from './types';
+import { type RegistrationId, ServiceIdKind } from './types';
+import { ParsedUrlQuery } from 'node:querystring';
+import { Device } from './data/device';
 
 type PromiseQueueEntry<T> = Readonly<{
   value: T;
@@ -260,4 +262,49 @@ export function assertJsonValue(root: unknown): asserts root is JsonValue {
   if (issues.length > 0) {
     throw new TypeError(`Invalid JsonValue:\n${issues.join('\n')}`);
   }
+}
+
+export function serviceIdKindFromQuery(
+  query: Record<string, string> | ParsedUrlQuery | undefined,
+): ServiceIdKind {
+  if (query && (query.identity === 'pni' || query.identity === 'PNI')) {
+    return ServiceIdKind.PNI;
+  }
+
+  return ServiceIdKind.ACI;
+}
+
+export async function getDevicesKeysResult(
+  serviceIdKind: ServiceIdKind,
+  devices: ReadonlyArray<Device>,
+) {
+  const [primary] = devices;
+  assert(primary !== undefined, 'Empty device list');
+
+  const identityKey = await primary.getIdentityKey(serviceIdKind);
+
+  return {
+    identityKey: identityKey.serialize().toString('base64'),
+    devices: await Promise.all(
+      devices.map(async (device) => {
+        const { signedPreKey, preKey } =
+          await device.popSingleUseKey(serviceIdKind);
+        return {
+          deviceId: device.deviceId,
+          registrationId: device.getRegistrationId(serviceIdKind),
+          signedPreKey: {
+            keyId: signedPreKey.keyId,
+            publicKey: signedPreKey.publicKey.serialize().toString('base64'),
+            signature: signedPreKey.signature.toString('base64'),
+          },
+          preKey: preKey
+            ? {
+                keyId: preKey.keyId,
+                publicKey: preKey.publicKey.serialize().toString('base64'),
+              }
+            : null,
+        };
+      }),
+    ),
+  };
 }

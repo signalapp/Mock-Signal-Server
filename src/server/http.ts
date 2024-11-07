@@ -41,16 +41,13 @@ import {
   UsernameConfirmationSchema,
   UsernameReservationSchema,
 } from '../data/schemas';
-import {
-  AttachmentId,
-  DeviceId,
-  ServiceIdKind,
-  ServiceIdString,
-} from '../types';
+import { AttachmentId, DeviceId, ServiceIdString } from '../types';
 import {
   ParseAuthHeaderResult,
   fromURLSafeBase64,
+  getDevicesKeysResult,
   parseAuthHeader,
+  serviceIdKindFromQuery,
   toBase64,
   toURLSafeBase64,
 } from '../util';
@@ -62,40 +59,6 @@ const debug = createDebug('mock:http');
 
 const parsePassword = (req: ServerRequest): ParseAuthHeaderResult => {
   return parseAuthHeader(req.headers.authorization);
-};
-
-const sendDevicesKeys = async (
-  res: ServerResponse,
-  serviceIdKind: ServiceIdKind,
-  devices: ReadonlyArray<Device>,
-): Promise<void> => {
-  const [primary] = devices;
-  assert(primary !== undefined, 'Empty device list');
-
-  const identityKey = await primary.getIdentityKey(serviceIdKind);
-
-  send(res, 200, {
-    identityKey: identityKey.serialize().toString('base64'),
-    devices: await Promise.all(
-      devices.map(async (device) => {
-        const { signedPreKey, preKey } =
-          await device.popSingleUseKey(serviceIdKind);
-        return {
-          deviceId: device.deviceId,
-          registrationId: device.getRegistrationId(serviceIdKind),
-          signedPreKey: {
-            keyId: signedPreKey.keyId,
-            publicKey: signedPreKey.publicKey.serialize().toString('base64'),
-            signature: signedPreKey.signature.toString('base64'),
-          },
-          preKey: preKey && {
-            keyId: preKey.keyId,
-            publicKey: preKey.publicKey.serialize().toString('base64'),
-          },
-        };
-      }),
-    ),
-  });
 };
 
 export const createHandler = (
@@ -122,7 +85,11 @@ export const createHandler = (
       }
 
       const serviceIdKind = device.getServiceIdKind(serviceId);
-      return await sendDevicesKeys(res, serviceIdKind, [device]);
+      return send(
+        res,
+        200,
+        await getDevicesKeysResult(serviceIdKind, [device]),
+      );
     },
   );
 
@@ -140,7 +107,7 @@ export const createHandler = (
       }
 
       const serviceIdKind = devices[0].getServiceIdKind(serviceId);
-      return await sendDevicesKeys(res, serviceIdKind, devices);
+      return send(res, 200, await getDevicesKeysResult(serviceIdKind, devices));
     },
   );
 
@@ -415,20 +382,13 @@ export const createHandler = (
     return device;
   }
 
-  function serviceIdKindFromQuery(req: ServerRequest): ServiceIdKind {
-    if (req.query.identity === 'pni') {
-      return ServiceIdKind.PNI;
-    }
-    return ServiceIdKind.ACI;
-  }
-
   const putKeys = put('/v2/keys', async (req, res) => {
     const device = await auth(req, res);
     if (!device) {
       return;
     }
 
-    const serviceIdKind = serviceIdKindFromQuery(req);
+    const serviceIdKind = serviceIdKindFromQuery(req.query);
 
     const body = DeviceKeysSchema.parse(await json(req));
     try {
@@ -464,7 +424,7 @@ export const createHandler = (
         return;
       }
 
-      const serviceIdKind = serviceIdKindFromQuery(req);
+      const serviceIdKind = serviceIdKindFromQuery(req.query);
 
       return {
         count: await device.getPreKeyCount(serviceIdKind),
