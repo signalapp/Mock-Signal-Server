@@ -1,10 +1,7 @@
 // Copyright 2022 Signal Messenger, LLC
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import {
-  CreateCallLinkCredentialRequest,
-  UuidCiphertext,
-} from '@signalapp/libsignal-client/zkgroup';
+import { UuidCiphertext } from '@signalapp/libsignal-client/zkgroup';
 import assert from 'assert';
 import { Buffer } from 'buffer';
 import createDebug from 'debug';
@@ -28,29 +25,15 @@ import { Server as TusServer } from '@tus/server';
 import { FileStore } from '@tus/file-store';
 
 import { signalservice as Proto } from '../../protos/compiled';
-import { decodeKyberPreKey, decodePreKey, decodeSignedPreKey } from '../crypto';
 import { Device } from '../data/device';
 import {
-  CreateCallLinkAuthSchema,
   CreateCallLinkSchema,
   DeleteCallLinkSchema,
-  DeviceKeysSchema,
   PositiveInt,
-  PutUsernameLinkSchema,
   UpdateCallLinkSchema,
-  UsernameConfirmationSchema,
-  UsernameReservationSchema,
 } from '../data/schemas';
-import { AttachmentId, DeviceId, ServiceIdString } from '../types';
-import {
-  ParseAuthHeaderResult,
-  fromURLSafeBase64,
-  getDevicesKeysResult,
-  parseAuthHeader,
-  serviceIdKindFromQuery,
-  toBase64,
-  toURLSafeBase64,
-} from '../util';
+import { AttachmentId } from '../types';
+import { ParseAuthHeaderResult, parseAuthHeader } from '../util';
 import { CallLinkEntry, Server } from './base';
 import { ServerGroup } from './group';
 import { join } from 'path';
@@ -65,52 +48,6 @@ export const createHandler = (
   server: Server,
   { cdn3Path }: { cdn3Path: string | undefined },
 ): RequestHandler => {
-  //
-  // Unauthorized requests
-  //
-
-  // TODO: DESKTOP-5821
-  const getDeviceKeys = get(
-    '/v2/keys/:serviceId/:deviceId',
-    async (req, res) => {
-      const serviceId = req.params.serviceId as ServiceIdString;
-      const deviceId = parseInt(req.params.deviceId || '', 10) as DeviceId;
-      if (!serviceId || deviceId.toString() !== req.params.deviceId) {
-        return send(res, 400, { error: 'Invalid request parameters' });
-      }
-
-      const device = await server.getDeviceByServiceId(serviceId, deviceId);
-      if (!device) {
-        return send(res, 404, { error: 'Device not found' });
-      }
-
-      const serviceIdKind = device.getServiceIdKind(serviceId);
-      return send(
-        res,
-        200,
-        await getDevicesKeysResult(serviceIdKind, [device]),
-      );
-    },
-  );
-
-  const getAllDeviceKeys = get(
-    '/v2/keys/:serviceId(/\\*)',
-    async (req, res) => {
-      const serviceId = req.params.serviceId as ServiceIdString;
-      if (!serviceId) {
-        return send(res, 400, { error: 'Invalid request parameters' });
-      }
-
-      const devices = await server.getAllDevicesByServiceId(serviceId);
-      if (devices.length === 0) {
-        return send(res, 404, { error: 'Account not found' });
-      }
-
-      const serviceIdKind = devices[0].getServiceIdKind(serviceId);
-      return send(res, 200, await getDevicesKeysResult(serviceIdKind, devices));
-    },
-  );
-
   //
   // CDN
   //
@@ -381,215 +318,6 @@ export const createHandler = (
 
     return device;
   }
-
-  const putKeys = put('/v2/keys', async (req, res) => {
-    const device = await auth(req, res);
-    if (!device) {
-      return;
-    }
-
-    const serviceIdKind = serviceIdKindFromQuery(req.query);
-
-    const body = DeviceKeysSchema.parse(await json(req));
-    try {
-      await server.updateDeviceKeys(device, serviceIdKind, {
-        preKeys: body.preKeys?.map(decodePreKey),
-        kyberPreKeys: body.pqPreKeys?.map(decodeKyberPreKey),
-        lastResortKey: body.pqLastResortPreKey
-          ? decodeKyberPreKey(body.pqLastResortPreKey)
-          : undefined,
-        signedPreKey: body.signedPreKey
-          ? decodeSignedPreKey(body.signedPreKey)
-          : undefined,
-      });
-    } catch (error) {
-      assert(error instanceof Error);
-      debug('updateDeviceKeys error', error.stack);
-      return send(res, 400, { error: error.message });
-    }
-
-    return { ok: true };
-  });
-
-  type ServerKeyCountType = {
-    count: number;
-    pqCount: number;
-  };
-
-  const getKeys = get(
-    '/v2/keys',
-    async (req, res): Promise<ServerKeyCountType | undefined> => {
-      const device = await auth(req, res);
-      if (!device) {
-        return;
-      }
-
-      const serviceIdKind = serviceIdKindFromQuery(req.query);
-
-      return {
-        count: await device.getPreKeyCount(serviceIdKind),
-        pqCount: await device.getKyberPreKeyCount(serviceIdKind),
-      };
-    },
-  );
-
-  //
-  // Accounts
-  //
-
-  const whoami = get('/v1/accounts/whoami', async (req, res) => {
-    const device = await auth(req, res);
-    if (!device) {
-      return;
-    }
-
-    return { uuid: device.aci, pni: device.pni, number: device.number };
-  });
-
-  const reserveUsername = put(
-    '/v1/accounts/username_hash/reserve',
-    async (req, res) => {
-      const device = await auth(req, res);
-      if (!device) {
-        return;
-      }
-
-      const body = UsernameReservationSchema.parse(await json(req));
-
-      const usernameHash = await server.reserveUsername(device.aci, body);
-
-      if (!usernameHash) {
-        return send(res, 409);
-      }
-
-      return { usernameHash: toURLSafeBase64(usernameHash) };
-    },
-  );
-
-  const confirmUsername = put(
-    '/v1/accounts/username_hash/confirm',
-    async (req, res) => {
-      const device = await auth(req, res);
-      if (!device) {
-        return;
-      }
-
-      const body = UsernameConfirmationSchema.parse(await json(req));
-
-      const result = await server.confirmUsername(device.aci, body);
-
-      if (!result) {
-        return send(res, 409);
-      }
-
-      return result;
-    },
-  );
-
-  const deleteUsername = del('/v1/accounts/username_hash', async (req, res) => {
-    const device = await auth(req, res);
-    if (!device) {
-      return;
-    }
-
-    await server.deleteUsername(device.aci);
-
-    return send(res, 204);
-  });
-
-  const lookupByUsernameHash = get(
-    '/v1/accounts/username_hash/:hash',
-    async (req, res) => {
-      const { hash = '' } = req.params;
-
-      const uuid = await server.lookupByUsernameHash(fromURLSafeBase64(hash));
-
-      if (!uuid) {
-        return send(res, 404);
-      }
-
-      return { uuid };
-    },
-  );
-
-  const lookupByUsernameLink = get(
-    '/v1/accounts/username_link/:uuid',
-    async (req, res) => {
-      const { uuid: linkUuid = '' } = req.params;
-
-      const encryptedValue = await server.lookupByUsernameLink(linkUuid);
-
-      if (!encryptedValue) {
-        return send(res, 404);
-      }
-
-      return { usernameLinkEncryptedValue: toURLSafeBase64(encryptedValue) };
-    },
-  );
-
-  const replaceUsernameLink = put(
-    '/v1/accounts/username_link',
-    async (req, res) => {
-      const device = await auth(req, res);
-      if (!device) {
-        return;
-      }
-
-      const { usernameLinkEncryptedValue } = PutUsernameLinkSchema.parse(
-        await json(req),
-      );
-
-      const usernameLinkHandle = await server.replaceUsernameLink(
-        device.aci,
-        usernameLinkEncryptedValue,
-      );
-
-      return { usernameLinkHandle };
-    },
-  );
-
-  //
-  // Call links
-  //
-
-  const createCallLinkAuth = post(
-    '/v1/call-link/create-auth',
-    async (req, res) => {
-      const device = await auth(req, res);
-      if (!device) {
-        return;
-      }
-
-      const body = CreateCallLinkAuthSchema.parse(await json(req));
-      const request = new CreateCallLinkCredentialRequest(
-        body.createCallLinkCredentialRequest,
-      );
-      const response = await server.createCallLinkAuth(device, request);
-
-      return {
-        redemptionTime: -Date.now(),
-        credential: toBase64(response.serialize()),
-      };
-    },
-  );
-
-  //
-  // Captcha
-  //
-
-  const putChallenge = put('/v1/challenge', async (req, res) => {
-    const device = await auth(req, res);
-    if (!device) {
-      return;
-    }
-
-    const response = server.getResponseForChallenges();
-    if (response) {
-      return send(res, response.code, response.data);
-    }
-
-    return { ok: true };
-  });
 
   //
   // GV2
@@ -989,28 +717,9 @@ export const createHandler = (
     // Sure, why not
     get('/v1/config', dummyAuth({ config: [] })),
 
-    // TODO(indutny): support nameless devices? They use different route
-    getDeviceKeys,
-    getAllDeviceKeys,
     getAttachment,
     getStickerPack,
     getSticker,
-
-    putKeys,
-    getKeys,
-
-    whoami,
-    reserveUsername,
-    confirmUsername,
-    deleteUsername,
-    lookupByUsernameHash,
-
-    lookupByUsernameLink,
-    replaceUsernameLink,
-
-    createCallLinkAuth,
-
-    putChallenge,
 
     // Technically these should live on a separate server, but who cares
     getGroupV1,
