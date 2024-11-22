@@ -16,7 +16,7 @@ import Long from 'long';
 import { signalservice as Proto } from '../../protos/compiled';
 import { Group } from '../data/group';
 import { GroupStateSchema } from '../data/schemas';
-import { daysToSeconds, getTodayInSeconds } from '../util';
+import { daysToSeconds, fromBase64, getTodayInSeconds } from '../util';
 
 export type ServerGroupOptions = Readonly<{
   profileOps: ServerZkProfileOperations;
@@ -107,6 +107,7 @@ export class ServerGroup extends Group {
     const appliedActions: Proto.GroupChange.IActions = {
       version: actions.version,
       sourceUserId: sourceAci.serialize(),
+      groupId: fromBase64(this.id),
     };
 
     assert.ok(actions.version, 'Actions should have a new version');

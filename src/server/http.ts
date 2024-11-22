@@ -548,6 +548,10 @@ export const createHandler = (
       Buffer.from(await buffer(req)),
     );
 
+    if (actions.groupId.length) {
+      return send(res, 400, { error: 'Bad Request' });
+    }
+
     const { group, aciCiphertext, pniCiphertext } = auth;
 
     try {
