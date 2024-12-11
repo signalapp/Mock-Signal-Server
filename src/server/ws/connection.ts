@@ -941,8 +941,11 @@ export class Connection extends Service {
     if (!url) {
       throw new Error('Request must have url');
     }
+    // Use a fixed string instead of constructing the URL from the HOST header
+    // since we don't actually care about anything but the path.
+    const path = new URL(url, 'http://localhost').pathname;
 
-    if (url.startsWith('/v1/websocket/provisioning')) {
+    if (path.startsWith('/v1/websocket/provisioning')) {
       const id = await this.server.generateProvisionId();
       try {
         await this.handleProvision(id);
@@ -953,8 +956,10 @@ export class Connection extends Service {
       return;
     }
 
-    if (url.startsWith('/v1/websocket/?')) {
+    if (path === '/v1/websocket/') {
       return await this.handleNormal(this.request);
+    } else {
+      debug('websocket connection has unexpected URL %s', url);
     }
   }
 

@@ -20,7 +20,7 @@ emailAddress           = indutny@signal.org
 [ v3_ca ]
 authorityInfoAccess    = @issuer_info
 basicConstraints       = CA:FALSE
-subjectAltName         = IP:127.0.0.1,IP:::1
+subjectAltName         = IP:127.0.0.1,IP:::1,DNS:localhost
 
 [ issuer_info ]
 OCSP;URI.0 = http://mock.signal.org/
