@@ -52,6 +52,7 @@ import {
 import { Device, DeviceKeys } from '../data/device';
 import {
   PromiseQueue,
+  generateDevicePassword,
   generateRandomE164,
   generateRegistrationId,
 } from '../util';
@@ -97,6 +98,7 @@ export type CreatePrimaryDeviceOptions = Readonly<{
   profileName: string;
   contacts?: ReadonlyArray<PrimaryDevice>;
   contactsWithoutProfileKey?: ReadonlyArray<PrimaryDevice>;
+  password?: string;
 }>;
 
 export type PendingProvision = {
@@ -329,15 +331,18 @@ export class Server extends BaseServer {
     profileName,
     contacts = [],
     contactsWithoutProfileKey = [],
+    password,
   }: CreatePrimaryDeviceOptions): Promise<PrimaryDevice> {
     const number = await this.generateNumber();
 
     const registrationId = await generateRegistrationId();
     const pniRegistrationId = await generateRegistrationId();
+    const devicePassword = password ?? generateDevicePassword();
     const device = await this.registerDevice({
       number,
       registrationId,
       pniRegistrationId,
+      password: devicePassword,
     });
 
     const { aci } = device;

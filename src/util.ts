@@ -4,6 +4,7 @@
 import { ProtocolAddress } from '@signalapp/libsignal-client';
 import assert from 'assert';
 import isPlainObject from 'is-plain-obj';
+import crypto from 'node:crypto';
 import util from 'node:util';
 import type { JsonValue } from 'type-fest';
 
@@ -204,6 +205,10 @@ export function daysToSeconds(days: number): number {
 
 export function generateRegistrationId(): RegistrationId {
   return Math.max(1, (Math.random() * 0x4000) | 0) as RegistrationId;
+}
+
+export function generateDevicePassword(): string {
+  return crypto.randomBytes(10).toString('hex');
 }
 
 export function toBase64(buf: Uint8Array): string {
