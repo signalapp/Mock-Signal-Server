@@ -85,10 +85,6 @@ export type CredentialsRange = Readonly<{
   to: number;
 }>;
 
-export type GroupCredentialsFlags = Readonly<{
-  zkc: boolean | undefined;
-}>;
-
 export type StorageCredentials = Readonly<{
   username: string;
   password: string;
@@ -1380,17 +1376,11 @@ export abstract class Server {
   public async getGroupCredentials(
     { aci, pni }: Device,
     range: CredentialsRange,
-    flags: GroupCredentialsFlags = { zkc: false },
   ): Promise<Credentials> {
     const auth = new ServerZkAuthOperations(this.zkSecret);
-    const { zkc } = flags;
-
-    const issueCredential = zkc
-      ? auth.issueAuthCredentialWithPniZkc.bind(auth)
-      : auth.issueAuthCredentialWithPniAsServiceId.bind(auth);
 
     return this.issueCredentials(range, (redemptionTime) => {
-      return issueCredential(
+      return auth.issueAuthCredentialWithPniZkc(
         Aci.parseFromServiceIdString(aci),
         Pni.parseFromServiceIdString(pni),
         redemptionTime,
