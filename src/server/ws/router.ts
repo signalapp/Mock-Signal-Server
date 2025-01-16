@@ -106,10 +106,12 @@ export class Router {
 
     debug('response %s %s status=%d', request.verb, request.path, status);
 
+    const timestampHeader = `X-Signal-Timestamp:${Date.now()}`;
+
     if (json instanceof Uint8Array) {
       return {
         status,
-        headers: ['Content-Type:application/x-protobuf'],
+        headers: ['Content-Type:application/x-protobuf', timestampHeader],
         body: Buffer.from(json),
       };
     }
@@ -117,7 +119,7 @@ export class Router {
     assertJsonValue(json);
     return {
       status,
-      headers: ['Content-Type:application/json'],
+      headers: ['Content-Type:application/json', timestampHeader],
       body: Buffer.from(JSON.stringify(json)),
     };
   }
