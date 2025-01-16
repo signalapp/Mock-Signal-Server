@@ -160,6 +160,7 @@ export class Connection extends Service {
                 value: '64',
                 enabled: true,
               },
+              { name: 'desktop.releaseNotes', enabled: true },
             ],
             serverEpochTime: Date.now() / 1000,
           },

@@ -19,7 +19,7 @@ import {
   put,
   router,
 } from 'microrouter';
-import { type FileHandle, open } from 'node:fs/promises';
+import { type FileHandle, open, stat, readFile } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { Server as TusServer } from '@tus/server';
 import { FileStore } from '@tus/file-store';
@@ -37,12 +37,23 @@ import { ParseAuthHeaderResult, parseAuthHeader } from '../util';
 import { CallLinkEntry, Server } from './base';
 import { ServerGroup } from './group';
 import { join } from 'path';
+import { createHash } from 'crypto';
 
 const debug = createDebug('mock:http');
 
 const parsePassword = (req: ServerRequest): ParseAuthHeaderResult => {
   return parseAuthHeader(req.headers.authorization);
 };
+
+function getContentType(filePath: string): string {
+  const ext = filePath.toLowerCase().split('.').pop();
+  switch (ext) {
+    case 'json':
+      return 'application/json';
+    default:
+      return 'application/octet-stream';
+  }
+}
 
 export const createHandler = (
   server: Server,
@@ -59,6 +70,72 @@ export const createHandler = (
       assert(req.url);
       return req.url.replace(/^(\/cdn3)?\/+/, '');
     },
+  });
+
+  const getResourcesAttachment = get('/updates2/*', async (req, res) => {
+    const thePath = req.params._;
+
+    if (!thePath) {
+      send(res, 400, { error: 'Missing path' });
+      return;
+    }
+
+    const updatesDir = join(__dirname, '..', '..', 'updates-data');
+
+    let file: FileHandle | undefined;
+    try {
+      file = await open(join(updatesDir, thePath), 'r');
+
+      const { size, mtime } = await file.stat();
+      const etag = `"${mtime.getTime().toString(16)}"`;
+
+      res.writeHead(200, {
+        'Content-Length': size,
+        'Content-Type': getContentType(thePath),
+        ETag: etag,
+      });
+      await pipeline(file.createReadStream(), res);
+    } catch (e) {
+      await file?.close();
+
+      assert(e instanceof Error);
+      if ('code' in e && e.code === 'ENOENT') {
+        return send(res, 404);
+      }
+      return send(res, 500, e.message);
+    }
+  });
+
+  const headResourcesAttachment = head('/updates2/*', async (req, res) => {
+    const thePath = req.params._;
+
+    if (!thePath) {
+      send(res, 400, { error: 'Missing path' });
+      return;
+    }
+
+    const updatesDir = join(__dirname, '..', '..', 'updates-data');
+    const filePath = join(updatesDir, thePath);
+
+    try {
+      const { size } = await stat(filePath);
+      const fileContent = await readFile(filePath);
+      const etag = createHash('md5')
+        .update(new Uint8Array(fileContent))
+        .digest('hex');
+
+      res.writeHead(200, {
+        'Content-Length': size,
+        ETag: etag,
+      });
+      res.end();
+    } catch (e) {
+      assert(e instanceof Error);
+      if ('code' in e && e.code === 'ENOENT') {
+        return send(res, 404);
+      }
+      return send(res, 500, e.message);
+    }
   });
 
   const getCdn3Attachment = get('/cdn3/:folder/*', async (req, res) => {
@@ -752,6 +829,8 @@ export const createHandler = (
     ),
 
     getCdn3Attachment,
+    getResourcesAttachment,
+    headResourcesAttachment,
 
     // TODO(indutny): support this
     get('/v1/groups/token', notFound),
