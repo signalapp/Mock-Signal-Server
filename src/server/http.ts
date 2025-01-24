@@ -19,7 +19,7 @@ import {
   put,
   router,
 } from 'microrouter';
-import { type FileHandle, open, stat, readFile } from 'node:fs/promises';
+import { type FileHandle, open, readFile, stat } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
 import { Server as TusServer } from '@tus/server';
 import { FileStore } from '@tus/file-store';
@@ -50,6 +50,8 @@ function getContentType(filePath: string): string {
   switch (ext) {
     case 'json':
       return 'application/json';
+    case 'png':
+      return 'image/png';
     default:
       return 'application/octet-stream';
   }
@@ -57,7 +59,10 @@ function getContentType(filePath: string): string {
 
 export const createHandler = (
   server: Server,
-  { cdn3Path }: { cdn3Path: string | undefined },
+  {
+    cdn3Path,
+    updates2Path,
+  }: { cdn3Path: string | undefined; updates2Path: string | undefined },
 ): RequestHandler => {
   //
   // CDN
@@ -75,16 +80,19 @@ export const createHandler = (
   const getResourcesAttachment = get('/updates2/*', async (req, res) => {
     const thePath = req.params._;
 
+    assert(
+      updates2Path,
+      'updates2Path must be provided to retrieve from updates2',
+    );
+
     if (!thePath) {
       send(res, 400, { error: 'Missing path' });
       return;
     }
 
-    const updatesDir = join(__dirname, '..', '..', 'updates-data');
-
     let file: FileHandle | undefined;
     try {
-      file = await open(join(updatesDir, thePath), 'r');
+      file = await open(join(updates2Path, thePath), 'r');
 
       const { size, mtime } = await file.stat();
       const etag = `"${mtime.getTime().toString(16)}"`;
@@ -109,13 +117,17 @@ export const createHandler = (
   const headResourcesAttachment = head('/updates2/*', async (req, res) => {
     const thePath = req.params._;
 
+    assert(
+      updates2Path,
+      'updates2Path must be provided to retrieve from updates2',
+    );
+
     if (!thePath) {
       send(res, 400, { error: 'Missing path' });
       return;
     }
 
-    const updatesDir = join(__dirname, '..', '..', 'updates-data');
-    const filePath = join(updatesDir, thePath);
+    const filePath = join(updates2Path, thePath);
 
     try {
       const { size } = await stat(filePath);

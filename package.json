@@ -9,8 +9,7 @@
     "src/**/*.d.ts",
     "protos/compiled.js",
     "protos/compiled.d.ts",
-    "certs",
-    "updates-data"
+    "certs"
   ],
   "scripts": {
     "watch": "npm run build:tsc -- -w",

@@ -83,6 +83,7 @@ type StrictConfig = Readonly<{
   timeout: number;
   maxStorageReadKeys?: number;
   cdn3Path?: string;
+  updates2Path?: string;
 }>;
 
 export type Config = Readonly<{
@@ -92,6 +93,7 @@ export type Config = Readonly<{
   timeout?: number;
   maxStorageReadKeys?: number;
   cdn3Path?: string;
+  updates2Path?: string;
 }>;
 
 export type CreatePrimaryDeviceOptions = Readonly<{
@@ -217,6 +219,7 @@ export class Server extends BaseServer {
 
     const httpHandler = createHTTPHandler(this, {
       cdn3Path: this.config.cdn3Path,
+      updates2Path: this.config.updates2Path,
     });
 
     const server = https.createServer(this.config.https || {}, (req, res) => {
