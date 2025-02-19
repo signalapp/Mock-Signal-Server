@@ -146,22 +146,11 @@ export class Connection extends Service {
         return [
           200,
           {
-            config: [
-              { name: 'desktop.internalUser', enabled: true },
-              { name: 'desktop.senderKey.retry', enabled: true },
-              { name: 'desktop.backup.credentialFetch', enabled: true },
-              {
-                name: 'global.groupsv2.maxGroupSize',
-                value: '32',
-                enabled: true,
+            config: [...this.server.getRemoteConfig().entries()].map(
+              ([key, value]) => {
+                return { name: key, ...value };
               },
-              {
-                name: 'global.groupsv2.groupSizeHardLimit',
-                value: '64',
-                enabled: true,
-              },
-              { name: 'desktop.releaseNotes', enabled: true },
-            ],
+            ),
             serverEpochTime: Date.now() / 1000,
           },
         ] as const;
@@ -525,21 +514,16 @@ export class Connection extends Service {
           return [401, { error: 'Not authorized' }];
         }
 
-        const {
-          redemptionStartSeconds: from,
-          redemptionEndSeconds: to,
-        } = query;
+        const { redemptionStartSeconds: from, redemptionEndSeconds: to } =
+          query;
 
         return [
           200,
           {
-            credentials: await this.server.getGroupCredentials(
-              device,
-              {
-                from: parseInt(from as string, 10),
-                to: parseInt(to as string, 10),
-              },
-            ),
+            credentials: await this.server.getGroupCredentials(device, {
+              from: parseInt(from as string, 10),
+              to: parseInt(to as string, 10),
+            }),
             callLinkAuthCredentials:
               await this.server.getCallLinkAuthCredentials(device, {
                 from: parseInt(from as string, 10),

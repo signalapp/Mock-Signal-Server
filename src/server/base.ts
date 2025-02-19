@@ -288,6 +288,11 @@ export type AttachmentUploadForm = Readonly<{
   signedUploadLocation: string;
 }>;
 
+export type RemoteConfigValueType = {
+  enabled: boolean;
+  value?: string;
+};
+
 const debug = createDebug('mock:server:base');
 
 // NOTE: This class is currently extended only by src/api/server.ts
@@ -343,6 +348,7 @@ export abstract class Server {
     Array<BackupMediaObject>
   >();
   private readonly backupMediaCursorById = new Map<string, BackupMediaCursor>();
+  private readonly remoteConfig = new Map<string, RemoteConfigValueType>();
   protected privCertificate: ServerCertificate | undefined;
   protected privZKSecret: ServerSecretParams | undefined;
   protected privGenericServerSecret: GenericServerSecretParams | undefined;
@@ -602,6 +608,17 @@ export abstract class Server {
       return;
     }
     return entry.device;
+  }
+
+  //
+  // Remote config
+  //
+  public setRemoteConfig(key: string, value: RemoteConfigValueType) {
+    this.remoteConfig.set(key, value);
+  }
+
+  public getRemoteConfig() {
+    return this.remoteConfig;
   }
 
   //

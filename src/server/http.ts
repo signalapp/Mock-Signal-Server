@@ -784,18 +784,6 @@ export const createHandler = (
     );
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const dummyAuth = (response: any): RouteHandler => {
-    return async (req, res) => {
-      const device = await auth(req, res);
-      if (!device) {
-        return;
-      }
-
-      return response;
-    };
-  };
-
   const notFoundAfterAuth: RouteHandler = async (req, res) => {
     const device = await auth(req, res);
     if (!device) {
@@ -807,9 +795,6 @@ export const createHandler = (
   };
 
   const routes = router(
-    // Sure, why not
-    get('/v1/config', dummyAuth({ config: [] })),
-
     getAttachment,
     getStickerPack,
     getSticker,
