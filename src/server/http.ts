@@ -14,10 +14,12 @@ import {
   del,
   get,
   head,
+  options,
   patch,
   post,
   put,
   router,
+  withNamespace,
 } from 'microrouter';
 import { type FileHandle, open, readFile, stat } from 'node:fs/promises';
 import { pipeline } from 'node:stream/promises';
@@ -40,6 +42,8 @@ import { join } from 'path';
 import { createHash } from 'crypto';
 
 const debug = createDebug('mock:http');
+
+const ALL_METHODS = [get, post, put, patch, del, head, options] as const;
 
 const parsePassword = (req: ServerRequest): ParseAuthHeaderResult => {
   return parseAuthHeader(req.headers.authorization);
@@ -800,20 +804,31 @@ export const createHandler = (
     getSticker,
 
     // Technically these should live on a separate server, but who cares
-    getGroupV1,
-    getGroup,
-    getGroupVersion,
-    getGroupLogsV1,
-    getGroupLogs,
-    createGroupV1,
-    createGroup,
-    modifyGroupV1,
-    modifyGroup,
+    withNamespace('/storageService')(
+      // All storage service routes have the X-Signal-Timestamp header
+      ...ALL_METHODS.map((method) =>
+        method('/*', (req, res) => {
+          res.setHeader('X-Signal-Timestamp', Date.now());
+        }),
+      ),
+      getGroupV1,
+      getGroup,
+      getGroupVersion,
+      getGroupLogsV1,
+      getGroupLogs,
+      createGroupV1,
+      createGroup,
+      modifyGroupV1,
+      modifyGroup,
 
-    getStorageManifest,
-    getStorageManifestByVersion,
-    putStorage,
-    putStorageRead,
+      // TODO(indutny): support this
+      get('/v1/groups/token', notFound),
+
+      getStorageManifest,
+      getStorageManifestByVersion,
+      putStorage,
+      putStorageRead,
+    ),
 
     getCallLink,
     createOrUpdateCallLink,
@@ -829,13 +844,8 @@ export const createHandler = (
     getResourcesAttachment,
     headResourcesAttachment,
 
-    // TODO(indutny): support this
-    get('/v1/groups/token', notFound),
-
     get('/stickers/', notFound),
-    get('/*', notFoundAfterAuth),
-    put('/*', notFoundAfterAuth),
-    post('/*', notFoundAfterAuth),
+    ...ALL_METHODS.map((method) => method('/*', notFoundAfterAuth)),
   );
 
   return (req, res) => {
