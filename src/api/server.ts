@@ -164,6 +164,7 @@ export class Server extends BaseServer {
   >();
   private responseForChallenges: ChallengeResponse | undefined;
   private unregisteredServiceIds = new Set<ServiceIdString>();
+  private wsUpgradeResponseHeaders: Record<string, string> = {};
 
   constructor(config: Config = {}) {
     super();
@@ -269,6 +270,14 @@ export class Server extends BaseServer {
         ws.close();
         debug('Websocket handling error', error.stack);
       });
+    });
+
+    wss.on('headers', (headers) => {
+      Object.entries(this.wsUpgradeResponseHeaders).forEach(
+        ([header, value]) => {
+          headers.push(`${header}: ${value}`);
+        },
+      );
     });
 
     this.https = server;
@@ -502,6 +511,12 @@ export class Server extends BaseServer {
       recursive: true,
     });
     await fsPromises.writeFile(path.join(dir, cdnKey), data);
+  }
+
+  public setWebsocketUpgradeResponseHeaders(
+    headers: Record<string, string>,
+  ): void {
+    this.wsUpgradeResponseHeaders = headers;
   }
 
   public async storeBackupOnCdn(
