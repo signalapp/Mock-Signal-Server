@@ -33,6 +33,6 @@ jobs:
         run: npm test
 
       - name: Publish
-        run: pnpm publish --tag '${{ github.event.inputs.npm_tag }}' --access public --no-git-checks ${{ inputs.dry_run && '--dry-run' || ''}}
+        run: npm publish --tag '${{ github.event.inputs.npm_tag }}' --access public --no-git-checks ${{ inputs.dry_run && '--dry-run' || ''}}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
