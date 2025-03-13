@@ -27,13 +27,10 @@ jobs:
       - name: Install node_modules
         run: npm ci
 
-      - name: Build
-        run: npm run build
-
       - name: Test
         run: npm test
 
       - name: Publish
-        run: npm publish --tag '${{ github.event.inputs.npm_tag }}' --access public --no-git-checks ${{ inputs.dry_run && '--dry-run' || ''}}
+        run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

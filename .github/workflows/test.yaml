@@ -24,8 +24,5 @@ jobs:
       - name: Install node_modules
         run: npm install
 
-      - name: Build
-        run: npm run build
-
       - name: Run tests
         run: npm test
