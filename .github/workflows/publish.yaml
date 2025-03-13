@@ -9,6 +9,7 @@ on:
 
 jobs:
   publish:
+    if: ${{ github.repository == 'signalapp/Mock-Signal-Server-Private' }}
     name: Publish
     runs-on: ubuntu-latest
     timeout-minutes: 45
