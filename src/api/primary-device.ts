@@ -1342,7 +1342,7 @@ export class PrimaryDevice {
     { messageTimestamp, timestamp = Date.now() }: UnencryptedReceiptOptions,
   ): Promise<void> {
     const envelope: Proto.IEnvelope = {
-      type: Proto.Envelope.Type.RECEIPT,
+      type: Proto.Envelope.Type.SERVER_DELIVERY_RECEIPT,
       timestamp: Long.fromNumber(messageTimestamp),
       serverTimestamp: Long.fromNumber(timestamp),
       sourceServiceId: this.device.aci,
