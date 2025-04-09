@@ -276,10 +276,15 @@ export type BackupMediaBatchResult = Readonly<{
   responses: ReadonlyArray<BackupMediaBatchResponse>;
 }>;
 
-export type TransferArchiveResponse = Readonly<{
-  cdn: 3;
-  key: string;
-}>;
+export type TransferArchiveResponse = Readonly<
+  | {
+      error: 'RELINK_REQUESTED' | 'CONTINUE_WITHOUT_UPLOAD';
+    }
+  | {
+      cdn: 3;
+      key: string;
+    }
+>;
 
 export type AttachmentUploadForm = Readonly<{
   cdn: 3;
