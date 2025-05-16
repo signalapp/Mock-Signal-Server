@@ -292,7 +292,7 @@ export async function getDevicesKeysResult(
     identityKey: identityKey.serialize().toString('base64'),
     devices: await Promise.all(
       devices.map(async (device) => {
-        const { signedPreKey, preKey } =
+        const { signedPreKey, preKey, pqPreKey } =
           await device.popSingleUseKey(serviceIdKind);
         return {
           deviceId: device.deviceId,
@@ -301,6 +301,11 @@ export async function getDevicesKeysResult(
             keyId: signedPreKey.keyId,
             publicKey: signedPreKey.publicKey.serialize().toString('base64'),
             signature: signedPreKey.signature.toString('base64'),
+          },
+          pqPreKey: {
+            keyId: pqPreKey.keyId,
+            publicKey: pqPreKey.publicKey.serialize().toString('base64'),
+            signature: pqPreKey.signature.toString('base64'),
           },
           preKey: preKey
             ? {
