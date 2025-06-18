@@ -215,7 +215,7 @@ message GroupChange {
     repeated AddMemberBannedAction                      addMembersBanned                   = 22; // change epoch = 4
     repeated DeleteMemberBannedAction                   deleteMembersBanned                = 23; // change epoch = 4
     repeated PromoteMemberPendingPniAciProfileKeyAction promoteMembersPendingPniAciProfileKey = 24;  // change epoch = 5
-    // next: 25
+    // next: 26
   }
 
   bytes  actions         = 1; // The serialized actions
@@ -228,7 +228,6 @@ message GroupChange {
 message ExternalGroupCredential {
   string token = 1;
 }
-
 
 // API responses
 

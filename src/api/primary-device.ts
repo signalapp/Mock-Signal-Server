@@ -2146,7 +2146,7 @@ export class PrimaryDevice {
 
     const version = decryptedManifest.version.toNumber();
     const items = await Promise.all(
-      (decryptedManifest.keys || []).map(async ({ type, raw: key }) => {
+      (decryptedManifest.identifiers || []).map(async ({ type, raw: key }) => {
         assert(
           type !== null && type !== undefined,
           'Missing manifestRecord.keys.type',

@@ -261,7 +261,7 @@ export class StorageState {
             serviceIdKind === ServiceIdKind.PNI
               ? untagPni(device.pni)
               : undefined,
-          serviceE164: device.number,
+          e164: device.number,
           ...diff,
         },
       },
@@ -416,7 +416,7 @@ export class StorageState {
 
     const manifest = encryptStorageManifest(storageKey, {
       version: newVersion,
-      keys: this.items.map((item) => item.toIdentifier()),
+      identifiers: this.items.map((item) => item.toIdentifier()),
       recordIkm,
     });
 
