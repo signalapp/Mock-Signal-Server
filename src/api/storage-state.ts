@@ -4,11 +4,12 @@
 import assert from 'assert';
 import crypto from 'crypto';
 import Long from 'long';
+import { Buffer } from 'node:buffer';
 
 import { signalservice as Proto } from '../../protos/compiled';
 import { encryptStorageItem, encryptStorageManifest } from '../crypto';
 import { Device } from '../data/device';
-import { ServiceIdKind, UntaggedPniString, tagPni, untagPni } from '../types';
+import { ServiceIdKind } from '../types';
 import { Group } from './group';
 import { PrimaryDevice } from './primary-device';
 
@@ -102,17 +103,20 @@ class StorageStateItem {
     }
 
     if (serviceIdKind === ServiceIdKind.ACI) {
-      return this.record?.contact?.aci === device.aci;
+      const existingAci = this.record?.contact?.aciBinary;
+      if (!existingAci?.length) {
+        return false;
+      }
+
+      return Buffer.compare(existingAci, device.aciRawUuid) === 0;
     }
 
-    const untaggedPni = this.record?.contact?.pni;
-    if (!untaggedPni) {
+    const existingPni = this.record?.contact?.pniBinary;
+    if (!existingPni?.length) {
       return false;
     }
 
-    const pni = tagPni(untaggedPni as UntaggedPniString);
-
-    return pni === device.pni;
+    return Buffer.compare(existingPni, device.pniRawUuid) === 0;
   }
 
   public inspect(): string {
@@ -256,11 +260,10 @@ export class StorageState {
       type: IdentifierType.CONTACT,
       record: {
         contact: {
-          aci: serviceIdKind === ServiceIdKind.ACI ? device.aci : undefined,
-          pni:
-            serviceIdKind === ServiceIdKind.PNI
-              ? untagPni(device.pni)
-              : undefined,
+          aciBinary:
+            serviceIdKind === ServiceIdKind.ACI ? device.aciRawUuid : undefined,
+          pniBinary:
+            serviceIdKind === ServiceIdKind.PNI ? device.pniRawUuid : undefined,
           e164: device.number,
           ...diff,
         },
@@ -316,7 +319,7 @@ export class StorageState {
     return this.removeItem((item) => item.isContact(device, ServiceIdKind.ACI))
       .removeItem((item) => item.isContact(device, ServiceIdKind.PNI))
       .addContact(primary, {
-        pni: untagPni(device.pni),
+        pniBinary: device.pniRawUuid,
         ...diff,
       })
       .unpin(primary, ServiceIdKind.PNI);
@@ -341,7 +344,8 @@ export class StorageState {
     assert(account, 'No account record found');
 
     return (account.pinnedConversations || []).some((convo) => {
-      return convo?.contact?.serviceId === device.aci;
+      const existing = convo?.contact?.serviceIdBinary;
+      return existing && Buffer.compare(existing, device.aciRawUuid) === 0;
     });
   }
 
@@ -519,7 +523,8 @@ export class StorageState {
     serviceIdKind: ServiceIdKind,
     isPinned: boolean,
   ): StorageState {
-    const deviceServiceId = device.getServiceIdByKind(serviceIdKind);
+    const deviceServiceIdBinary =
+      device.getServiceIdBinaryByKind(serviceIdKind);
 
     return this.updateItem(
       (item) => item.isAccount(),
@@ -531,12 +536,15 @@ export class StorageState {
         const newPinnedConversations = pinnedConversations?.slice() || [];
 
         const existingIndex = newPinnedConversations.findIndex((convo) => {
-          return convo?.contact?.serviceId === deviceServiceId;
+          const existing = convo?.contact?.serviceIdBinary;
+          return (
+            existing && Buffer.compare(existing, deviceServiceIdBinary) === 0
+          );
         });
 
         if (isPinned && existingIndex === -1) {
           newPinnedConversations.push({
-            contact: { serviceId: deviceServiceId },
+            contact: { serviceIdBinary: deviceServiceIdBinary },
           });
         } else if (!isPinned && existingIndex !== -1) {
           newPinnedConversations.splice(existingIndex, 1);

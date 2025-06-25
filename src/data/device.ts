@@ -1,8 +1,14 @@
 // Copyright 2022 Signal Messenger, LLC
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { timingSafeEqual } from 'node:crypto';
 import createDebug from 'debug';
-import { ProtocolAddress, PublicKey } from '@signalapp/libsignal-client';
+import {
+  Aci,
+  Pni,
+  ProtocolAddress,
+  PublicKey,
+} from '@signalapp/libsignal-client';
 import {
   BackupLevel,
   ProfileKeyCommitment,
@@ -123,8 +129,24 @@ export class Device {
     }
   }
 
+  public get aciBinary(): Uint8Array {
+    return Aci.parseFromServiceIdString(this.aci).getServiceIdBinary();
+  }
+
   public get pni(): PniString {
     return this.privPni;
+  }
+
+  public get pniBinary(): Uint8Array {
+    return Pni.parseFromServiceIdString(this.pni).getServiceIdBinary();
+  }
+
+  public get aciRawUuid(): Uint8Array {
+    return Aci.parseFromServiceIdString(this.aci).getRawUuidBytes();
+  }
+
+  public get pniRawUuid(): Uint8Array {
+    return Pni.parseFromServiceIdString(this.pni).getRawUuidBytes();
   }
 
   public get number(): string {
@@ -266,6 +288,15 @@ export class Device {
     }
   }
 
+  public getServiceIdBinaryByKind(serviceIdKind: ServiceIdKind): Uint8Array {
+    switch (serviceIdKind) {
+      case ServiceIdKind.ACI:
+        return this.aciBinary;
+      case ServiceIdKind.PNI:
+        return this.pniBinary;
+    }
+  }
+
   public getServiceIdKind(serviceId: ServiceIdString): ServiceIdKind {
     if (serviceId === this.aci) {
       return ServiceIdKind.ACI;
@@ -274,6 +305,16 @@ export class Device {
       return ServiceIdKind.PNI;
     }
     throw new Error(`Unknown serviceId: ${serviceId}`);
+  }
+
+  public getServiceIdBinaryKind(serviceIdBinary: Uint8Array): ServiceIdKind {
+    if (timingSafeEqual(serviceIdBinary, this.aciBinary)) {
+      return ServiceIdKind.ACI;
+    }
+    if (timingSafeEqual(serviceIdBinary, this.pniBinary)) {
+      return ServiceIdKind.PNI;
+    }
+    throw new Error('Unknown serviceId');
   }
 
   public getAddressByKind(serviceIdKind: ServiceIdKind): ProtocolAddress {

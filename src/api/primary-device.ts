@@ -56,8 +56,6 @@ import {
   PreKey,
   ServiceIdKind,
   ServiceIdString,
-  UntaggedPniString,
-  untagPni,
 } from '../types';
 import { Contact } from '../data/contacts';
 import { Group as GroupData } from '../data/group';
@@ -131,7 +129,7 @@ export type EncryptOptions = Readonly<{
   timestamp?: number;
   sealed?: boolean;
   serviceIdKind?: ServiceIdKind;
-  updatedPni?: UntaggedPniString;
+  updatedPni?: PniString;
   // Sender Key
   distributionId?: string;
   group?: Group;
@@ -582,7 +580,7 @@ export class PrimaryDevice {
 
   public toContact(): Contact {
     return {
-      aci: this.device.aci,
+      aciBinary: this.device.aciRawUuid,
       number: this.device.number,
       profileName: this.profileName,
     };
@@ -1343,11 +1341,11 @@ export class PrimaryDevice {
   ): Promise<void> {
     const envelope: Proto.IEnvelope = {
       type: Proto.Envelope.Type.SERVER_DELIVERY_RECEIPT,
-      timestamp: Long.fromNumber(messageTimestamp),
+      clientTimestamp: Long.fromNumber(messageTimestamp),
       serverTimestamp: Long.fromNumber(timestamp),
-      sourceServiceId: this.device.aci,
-      sourceDevice: this.device.deviceId,
-      destinationServiceId: target.aci,
+      sourceServiceIdBinary: this.device.aciBinary,
+      sourceDeviceId: this.device.deviceId,
+      destinationServiceIdBinary: target.aciBinary,
     };
     return this.config.send(
       target,
@@ -1426,7 +1424,7 @@ export class PrimaryDevice {
         const envelope = await this.encryptContent(device, content, {
           ...options,
           timestamp,
-          updatedPni: untagPni(this.device.pni),
+          updatedPni: this.device.pni,
         });
 
         return { device, envelope };
@@ -1514,17 +1512,19 @@ export class PrimaryDevice {
   public async receive(source: Device, encrypted: Buffer): Promise<void> {
     const envelope = Proto.Envelope.decode(encrypted);
 
-    if (source.aci !== envelope.sourceServiceId) {
+    if (
+      source.getServiceIdBinaryKind(envelope.sourceServiceIdBinary) !==
+      ServiceIdKind.ACI
+    ) {
       throw new Error(
-        `Invalid envelope source. Expected: ${source.aci}, ` +
-          `Got: ${envelope.sourceServiceId}`,
+        `Invalid envelope source. Expected: ${source.aci}, got PNI`,
       );
     }
 
     let envelopeType: EnvelopeType;
-    if (envelope.type === Proto.Envelope.Type.CIPHERTEXT) {
+    if (envelope.type === Proto.Envelope.Type.DOUBLE_RATCHET) {
       envelopeType = EnvelopeType.CipherText;
-    } else if (envelope.type === Proto.Envelope.Type.PREKEY_BUNDLE) {
+    } else if (envelope.type === Proto.Envelope.Type.PREKEY_MESSAGE) {
       envelopeType = EnvelopeType.PreKey;
     } else if (envelope.type === Proto.Envelope.Type.UNIDENTIFIED_SENDER) {
       envelopeType = EnvelopeType.SealedSender;
@@ -1532,10 +1532,8 @@ export class PrimaryDevice {
       throw new Error('Unsupported envelope type');
     }
 
-    const serviceIdKind = envelope.destinationServiceId
-      ? this.device.getServiceIdKind(
-          envelope.destinationServiceId as ServiceIdString,
-        )
+    const serviceIdKind = envelope.destinationServiceIdBinary?.length
+      ? this.device.getServiceIdBinaryKind(envelope.destinationServiceIdBinary)
       : ServiceIdKind.ACI;
 
     return await this.handleEnvelope(
@@ -1946,11 +1944,11 @@ export class PrimaryDevice {
           "Can't send non-prekey messages to PNI",
         );
 
-        envelopeType = Proto.Envelope.Type.CIPHERTEXT;
+        envelopeType = Proto.Envelope.Type.DOUBLE_RATCHET;
         debug('encrypting ciphertext envelope');
       } else {
         assert.strictEqual(ciphertext.type(), CiphertextMessageType.PreKey);
-        envelopeType = Proto.Envelope.Type.PREKEY_BUNDLE;
+        envelopeType = Proto.Envelope.Type.PREKEY_MESSAGE;
         debug('encrypting prekeyBundle envelope');
       }
     }
@@ -1958,12 +1956,16 @@ export class PrimaryDevice {
     const envelope = Buffer.from(
       Proto.Envelope.encode({
         type: envelopeType,
-        sourceServiceId: this.device.aci,
-        sourceDevice: this.device.deviceId,
-        destinationServiceId: target.getServiceIdByKind(serviceIdKind),
-        updatedPni,
+        sourceServiceIdBinary: this.device.aciBinary,
+        sourceDeviceId: this.device.deviceId,
+        destinationServiceIdBinary:
+          target.getServiceIdBinaryByKind(serviceIdKind),
+        updatedPniBinary:
+          updatedPni === undefined
+            ? null
+            : Pni.parseFromServiceIdString(updatedPni).getRawUuidBytes(),
         serverTimestamp: Long.fromNumber(timestamp),
-        timestamp: Long.fromNumber(timestamp),
+        clientTimestamp: Long.fromNumber(timestamp),
         content,
       }).finish(),
     );

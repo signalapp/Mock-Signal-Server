@@ -754,9 +754,9 @@ export abstract class Server {
   ): Promise<void> {
     for (const [target, message] of prepared) {
       let envelopeType: EnvelopeType;
-      if (message.type === Proto.Envelope.Type.CIPHERTEXT) {
+      if (message.type === Proto.Envelope.Type.DOUBLE_RATCHET) {
         envelopeType = EnvelopeType.CipherText;
-      } else if (message.type === Proto.Envelope.Type.PREKEY_BUNDLE) {
+      } else if (message.type === Proto.Envelope.Type.PREKEY_MESSAGE) {
         envelopeType = EnvelopeType.PreKey;
       } else if (message.type === Proto.Envelope.Type.UNIDENTIFIED_SENDER) {
         envelopeType = EnvelopeType.SealedSender;

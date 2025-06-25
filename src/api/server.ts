@@ -27,7 +27,6 @@ import {
   ProvisioningCode,
   ServiceIdKind,
   ServiceIdString,
-  untagPni,
 } from '../types';
 import { serializeContacts } from '../data/contacts';
 import { Group as GroupData } from '../data/group';
@@ -594,14 +593,13 @@ export class Server extends BaseServer {
       pniIdentityKeyPrivate: pniIdentityKey.serialize(),
       pniIdentityKeyPublic: pniIdentityKey.getPublicKey().serialize(),
       number: primaryDevice.device.number,
-      aci: primaryDevice.device.aci,
-      pni: untagPni(primaryDevice.device.pni),
+      aciBinary: primaryDevice.device.aciRawUuid,
+      pniBinary: primaryDevice.device.pniRawUuid,
       provisioningCode,
       profileKey: primaryDevice.profileKey.serialize(),
       userAgent: primaryDevice.userAgent,
       readReceipts: true,
-      // TODO(indutny): is it correct?
-      ProvisioningVersion: Proto.ProvisioningVersion.CURRENT,
+      provisioningVersion: Proto.ProvisioningVersion.CURRENT,
       masterKey: primaryDevice.masterKey,
       ephemeralBackupKey: primaryDevice.ephemeralBackupKey,
       mediaRootBackupKey: primaryDevice.mediaRootBackupKey,

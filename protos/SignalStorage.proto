@@ -118,9 +118,9 @@ message ContactRecord {
     string family = 2;
   }
 
-  string aci = 1;
+  // string aci = 1;
   string e164 = 2;
-  string pni = 15;
+  // string pni = 15;
   bytes profileKey = 3;
   bytes identityKey = 4;
   IdentityState identityState = 5;
@@ -142,7 +142,9 @@ message ContactRecord {
   Name nickname = 22;
   string note = 23;
   optional AvatarColor avatarColor = 24;
-  // Next ID: 25
+  bytes aciBinary = 25; // 16-byte UUID
+  bytes pniBinary = 26; // 16-byte UUID
+  // Next ID: 27
 }
 
 message GroupV1Record {
@@ -174,6 +176,11 @@ message GroupV2Record {
   optional AvatarColor avatarColor = 11;
 }
 
+message Payments {
+  bool enabled = 1;
+  bytes entropy = 2;
+}
+
 message AccountRecord {
 
   enum PhoneNumberSharingMode {
@@ -184,8 +191,9 @@ message AccountRecord {
 
   message PinnedConversation {
     message Contact {
-      string serviceId = 1;
+      // string serviceId = 1;
       string e164 = 2;
+      bytes serviceIdBinary = 3; // service ID binary (i.e. 16 byte UUID for ACI, 1 byte prefix + 16 byte UUID for PNI)
     }
 
     oneof identifier {
@@ -259,6 +267,7 @@ message AccountRecord {
   bool unlistedPhoneNumber = 13;
   repeated PinnedConversation pinnedConversations = 14;
   bool preferContactAvatars = 15;
+  Payments payments = 16;
   uint32 universalExpireTimer = 17;
   reserved 18; // primarySendsSms
   reserved 19; // deprecatedE164
@@ -297,10 +306,11 @@ message AccountRecord {
 message StoryDistributionListRecord {
   bytes identifier = 1;
   string name = 2;
-  repeated string recipientServiceIds = 3;
+  // repeated string recipientServiceIds = 3;
   uint64 deletedAtTimestamp = 4;
   bool allowsReplies = 5;
   bool isBlockList = 6;
+  repeated bytes recipientServiceIdsBinary = 7; // service ID binary (i.e. 16 byte UUID for ACI, 1 byte prefix + 16 byte UUID for PNI)
 }
 
 message StickerPackRecord {
@@ -333,8 +343,9 @@ message CallLinkRecord {
 
 message Recipient {
   message Contact {
-    string serviceId = 1;
+    // string serviceId = 1;
     string e164 = 2;
+    bytes serviceIdBinary = 3; // service ID binary (i.e. 16 byte UUID for ACI, 1 byte prefix + 16 byte UUID for PNI)
   }
 
   oneof identifier {

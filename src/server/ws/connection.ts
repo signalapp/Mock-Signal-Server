@@ -978,8 +978,8 @@ export class Connection extends Service {
   private async handleProvision(id: ProvisionIdString) {
     {
       const { status } = await this.send('PUT', '/v1/address', {
-        body: Proto.ProvisioningUuid.encode({
-          uuid: id,
+        body: Proto.ProvisioningAddress.encode({
+          address: id,
         }).finish(),
       });
       assert.strictEqual(status, 200);
