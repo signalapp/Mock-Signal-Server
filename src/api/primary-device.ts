@@ -26,6 +26,7 @@ import {
   SenderKeyDistributionMessage,
   SenderKeyRecord,
   SenderKeyStore as SenderKeyStoreBase,
+  ServiceId,
   SessionRecord,
   SessionStore as SessionStoreBase,
   SignalMessage,
@@ -988,7 +989,7 @@ export class PrimaryDevice {
           timestamp,
           ...options,
         };
-        const content = {
+        const content: Proto.IContent = {
           dataMessage: {
             groupV2,
             timestamp: Long.fromNumber(encryptOptions.timestamp),
@@ -1243,10 +1244,12 @@ export class PrimaryDevice {
       timestamp: Long.fromNumber(options.timestamp),
     };
 
-    const content = {
+    const content: Proto.IContent = {
       syncMessage: {
         sent: {
-          destinationServiceId: options.destinationServiceId,
+          destinationServiceIdBinary: ServiceId.parseFromServiceIdString(
+            options.destinationServiceId,
+          ).getServiceIdBinary(),
           timestamp: Long.fromNumber(options.timestamp),
           message: dataMessage,
         },
@@ -1259,11 +1262,12 @@ export class PrimaryDevice {
     target: Device,
     options: SyncReadOptions,
   ): Promise<Buffer> {
-    const content = {
+    const content: Proto.IContent = {
       syncMessage: {
         read: options.messages.map(({ senderAci, timestamp }) => {
           return {
-            senderAci,
+            senderAciBinary:
+              Aci.parseFromServiceIdString(senderAci).getRawUuidBytes(),
             timestamp: Long.fromNumber(timestamp),
           };
         }),
@@ -1273,7 +1277,7 @@ export class PrimaryDevice {
   }
 
   public async sendFetchStorage(options: FetchStorageOptions): Promise<void> {
-    const content = {
+    const content: Proto.IContent = {
       syncMessage: {
         fetchLatest: {
           type: Proto.SyncMessage.FetchLatest.Type.STORAGE_MANIFEST,
@@ -1289,7 +1293,7 @@ export class PrimaryDevice {
   ): Promise<void> {
     const Type = Proto.SyncMessage.StickerPackOperation.Type;
 
-    const content = {
+    const content: Proto.IContent = {
       syncMessage: {
         stickerPackOperation: [
           {
@@ -1316,7 +1320,7 @@ export class PrimaryDevice {
       type = Proto.ReceiptMessage.Type.READ;
     }
 
-    const content = {
+    const content: Proto.IContent = {
       receiptMessage: {
         type,
         timestamp: options.messageTimestamps.map((timestamp) =>
