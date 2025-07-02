@@ -35,6 +35,7 @@ async function createPrimaryDevice(name: string): Promise<PrimaryDevice> {
     deviceId: 1 as DeviceId,
     registrationId: 1 as RegistrationId,
     pniRegistrationId: 2 as RegistrationId,
+    isProvisioned: false,
   });
 
   const primary = new PrimaryDevice(device, {

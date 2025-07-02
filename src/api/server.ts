@@ -625,6 +625,7 @@ export class Server extends BaseServer {
     envelopeType: EnvelopeType,
     target: Device,
     encrypted: Buffer,
+    timestamp: number,
   ): Promise<void> {
     assert(
       source || envelopeType === EnvelopeType.SealedSender,
@@ -634,7 +635,41 @@ export class Server extends BaseServer {
     debug('got message for %s.%d', target.aci, target.deviceId);
 
     if (target.deviceId !== PRIMARY_DEVICE_ID) {
-      debug('ignoring message, not primary');
+      if (target.isProvisioned) {
+        let type: Proto.Envelope.Type;
+
+        switch (envelopeType) {
+          case EnvelopeType.CipherText:
+            type = Proto.Envelope.Type.DOUBLE_RATCHET;
+            break;
+          case EnvelopeType.PreKey:
+            type = Proto.Envelope.Type.PREKEY_MESSAGE;
+            break;
+          case EnvelopeType.SealedSender:
+            type = Proto.Envelope.Type.UNIDENTIFIED_SENDER;
+            break;
+          case EnvelopeType.Plaintext:
+            type = Proto.Envelope.Type.PLAINTEXT_CONTENT;
+            break;
+          default:
+            throw new Error(`Unsupported envelope type: ${envelopeType}`);
+        }
+        this.send(
+          target,
+          Buffer.from(
+            Proto.Envelope.encode({
+              type,
+              sourceServiceIdBinary: source?.aciBinary,
+              sourceDeviceId: source?.deviceId,
+              destinationServiceIdBinary:
+                target.getServiceIdBinaryByKind(serviceIdKind),
+              serverTimestamp: Long.fromNumber(timestamp),
+              clientTimestamp: Long.fromNumber(timestamp),
+              content: encrypted,
+            }).finish(),
+          ),
+        );
+      }
       return;
     }
 

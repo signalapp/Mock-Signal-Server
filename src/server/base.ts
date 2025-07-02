@@ -105,7 +105,10 @@ export type ChallengeResponse = Readonly<{
   data: unknown;
 }>;
 
-export type PreparedMultiDeviceMessage = ReadonlyArray<[Device, Message]>;
+export type PreparedMultiDeviceMessage = Readonly<{
+  timestamp: number;
+  targets: ReadonlyArray<[Device, Message]>;
+}>;
 
 export type ProvisionDeviceOptions = Readonly<{
   number: string;
@@ -452,6 +455,7 @@ export abstract class Server {
       deviceId,
       registrationId,
       pniRegistrationId,
+      isProvisioned: !!password,
     });
 
     if (isPrimary) {
@@ -686,6 +690,7 @@ export abstract class Server {
     source: Device | undefined,
     targetServiceId: ServiceIdString,
     messages: ReadonlyArray<Message>,
+    timestamp: number,
   ): Promise<PrepareMultiDeviceMessageResult> {
     if (this.isUnregistered(targetServiceId)) {
       return { status: 'unknown' };
@@ -701,7 +706,7 @@ export abstract class Server {
       deviceById.set(device.deviceId, device);
     }
 
-    const result = new Array<[Device, Message]>();
+    const targets = new Array<[Device, Message]>();
 
     const extraDevices = new Set<DeviceId>();
     const staleDevices = new Set<DeviceId>();
@@ -725,7 +730,7 @@ export abstract class Server {
         continue;
       }
 
-      result.push([target, message]);
+      targets.push([target, message]);
     }
 
     if (source && source.aci === targetServiceId) {
@@ -744,7 +749,7 @@ export abstract class Server {
       };
     }
 
-    return { status: 'ok', targetServiceId, result };
+    return { status: 'ok', targetServiceId, result: { timestamp, targets } };
   }
 
   public async handlePreparedMultiDeviceMessage(
@@ -752,7 +757,7 @@ export abstract class Server {
     targetServiceId: ServiceIdString,
     prepared: PreparedMultiDeviceMessage,
   ): Promise<void> {
-    for (const [target, message] of prepared) {
+    for (const [target, message] of prepared.targets) {
       let envelopeType: EnvelopeType;
       if (message.type === Proto.Envelope.Type.DOUBLE_RATCHET) {
         envelopeType = EnvelopeType.CipherText;
@@ -774,6 +779,7 @@ export abstract class Server {
         envelopeType,
         target,
         Buffer.from(message.content, 'base64'),
+        prepared.timestamp,
       );
     }
   }
@@ -784,6 +790,7 @@ export abstract class Server {
     envelopeType: EnvelopeType,
     target: Device,
     encrypted: Buffer,
+    timestamp: number,
   ): Promise<void>;
 
   public async addWebSocket(device: Device, socket: WebSocket): Promise<void> {

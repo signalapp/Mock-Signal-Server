@@ -35,6 +35,7 @@ export type DeviceOptions = Readonly<{
   deviceId: DeviceId;
   registrationId: RegistrationId;
   pniRegistrationId: RegistrationId;
+  isProvisioned: boolean;
 }>;
 
 export type ChangeNumberOptions = Readonly<{
@@ -79,6 +80,11 @@ export class Device {
   public readonly aci: AciString;
   public readonly deviceId: DeviceId;
   public readonly address: ProtocolAddress;
+
+  // If `true` - the device was provisioned and should receive messages over
+  // the websocket.
+  public readonly isProvisioned: boolean;
+
   public capabilities: {
     deleteSync: boolean;
     versionedExpirationTimer: boolean;
@@ -106,6 +112,8 @@ export class Device {
     this.privPni = options.pni;
     this.privNumber = options.number;
     this.pniRegistrationId = options.pniRegistrationId;
+
+    this.isProvisioned = options.isProvisioned;
 
     this.address = ProtocolAddress.new(this.aci, this.deviceId);
     this.privPniAddress = ProtocolAddress.new(this.pni, this.deviceId);
