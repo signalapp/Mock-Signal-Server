@@ -930,6 +930,25 @@ export class Connection extends Service {
         return [200, { ok: true }];
       }),
     );
+
+    this.router.get(
+      '/v2/calling/relays',
+      requireAuth(async () => [
+        200,
+        {
+          relays: [
+            {
+              username: 'ignored',
+              password: 'ignored',
+              ttl: 43200,
+              urls: ['turn:localhost'],
+              urlsWithIps: ['turn:127.0.0.1'],
+              hostname: 'localhost',
+            },
+          ],
+        },
+      ]),
+    );
   }
 
   public async start(): Promise<void> {
