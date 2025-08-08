@@ -289,7 +289,7 @@ export async function getDevicesKeysResult(
   const identityKey = await primary.getIdentityKey(serviceIdKind);
 
   return {
-    identityKey: identityKey.serialize().toString('base64'),
+    identityKey: Buffer.from(identityKey.serialize()).toString('base64'),
     devices: await Promise.all(
       devices.map(async (device) => {
         const { signedPreKey, preKey, pqPreKey } =
@@ -299,18 +299,24 @@ export async function getDevicesKeysResult(
           registrationId: device.getRegistrationId(serviceIdKind),
           signedPreKey: {
             keyId: signedPreKey.keyId,
-            publicKey: signedPreKey.publicKey.serialize().toString('base64'),
+            publicKey: Buffer.from(signedPreKey.publicKey.serialize()).toString(
+              'base64',
+            ),
             signature: signedPreKey.signature.toString('base64'),
           },
           pqPreKey: {
             keyId: pqPreKey.keyId,
-            publicKey: pqPreKey.publicKey.serialize().toString('base64'),
+            publicKey: Buffer.from(pqPreKey.publicKey.serialize()).toString(
+              'base64',
+            ),
             signature: pqPreKey.signature.toString('base64'),
           },
           preKey: preKey
             ? {
                 keyId: preKey.keyId,
-                publicKey: preKey.publicKey.serialize().toString('base64'),
+                publicKey: Buffer.from(preKey.publicKey.serialize()).toString(
+                  'base64',
+                ),
               }
             : null,
         };

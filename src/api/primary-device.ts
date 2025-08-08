@@ -111,7 +111,7 @@ export type Config = Readonly<{
     request: ProfileKeyCredentialRequest,
   ): Promise<Buffer | undefined>;
 
-  getGroup(publicParams: Buffer): Promise<ServerGroup | undefined>;
+  getGroup(publicParams: Uint8Array): Promise<ServerGroup | undefined>;
   createGroup(group: Proto.IGroup): Promise<ServerGroup>;
   modifyGroup(options: ModifyGroupOptions): Promise<ModifyGroupResult>;
   waitForGroupUpdate(group: GroupData): Promise<void>;
@@ -403,9 +403,17 @@ class IdentityStore extends IdentityKeyStore {
     return this.registrationId;
   }
 
-  async saveIdentity(name: ProtocolAddress, key: PublicKey): Promise<boolean> {
-    this.knownIdentities.set(addressToString(name), key);
-    return true;
+  async saveIdentity(
+    name: ProtocolAddress,
+    key: PublicKey,
+  ): Promise<SignalClient.IdentityChange> {
+    const addr = addressToString(name);
+    const prev = this.knownIdentities.get(addr);
+    if (prev === undefined || prev.compare(key) === 0) {
+      return SignalClient.IdentityChange.NewOrUnchanged;
+    }
+    this.knownIdentities.set(addr, key);
+    return SignalClient.IdentityChange.ReplacedExisting;
   }
 
   async isTrustedIdentity(): Promise<boolean> {
@@ -647,12 +655,12 @@ export class PrimaryDevice {
       signedPreKey: {
         keyId: signedPreKeyId,
         publicKey: signedPreKey.getPublicKey(),
-        signature: signedPreKeySig,
+        signature: Buffer.from(signedPreKeySig),
       },
       lastResortKey: {
         keyId: lastResortKeyId,
         publicKey: lastResortKeyRecord.publicKey(),
-        signature: lastResortKeyRecord.signature(),
+        signature: Buffer.from(lastResortKeyRecord.signature()),
       },
       preKeyIterator: this.getPreKeyIterator(device, serviceIdKind),
       kyberPreKeyIterator: this.getKyberPreKeyIterator(device, serviceIdKind),
@@ -725,7 +733,7 @@ export class PrimaryDevice {
       yield {
         keyId,
         publicKey: record.publicKey(),
-        signature: record.signature(),
+        signature: Buffer.from(record.signature()),
       };
     }
   }
@@ -751,6 +759,7 @@ export class PrimaryDevice {
     target: Device,
     key: SingleUseKey,
     serviceIdKind = ServiceIdKind.ACI,
+    usePqRatchet: SignalClient.UsePQRatchet = SignalClient.UsePQRatchet.No,
   ): Promise<void> {
     assert.ok(this.isInitialized, 'Not initialized');
     debug('adding singleUseKey for', target.debugId);
@@ -782,6 +791,7 @@ export class PrimaryDevice {
       target.getAddressByKind(serviceIdKind),
       this.sessions,
       identity,
+      usePqRatchet,
     );
   }
 
@@ -810,7 +820,7 @@ export class PrimaryDevice {
         const serverGroup = await this.config.getGroup(publicParams);
         assert.ok(
           serverGroup,
-          `Group not found: ${publicParams.toString('base64')}`,
+          `Group not found: ${Buffer.from(publicParams).toString('base64')}`,
         );
 
         return new Group({
@@ -1881,7 +1891,7 @@ export class PrimaryDevice {
     const paddedMessage = Buffer.concat([message, Buffer.from([0x80])]);
 
     let envelopeType: Proto.Envelope.Type;
-    let content: Buffer;
+    let content: Uint8Array;
 
     // Outgoing stores
     const identity = this.identity.get(ServiceIdKind.ACI);
@@ -1983,7 +1993,8 @@ export class PrimaryDevice {
     source: Device | undefined,
     serviceIdKind: ServiceIdKind,
     envelopeType: EnvelopeType,
-    encrypted: Buffer,
+    encrypted: Uint8Array,
+    usePqRatchet: SignalClient.UsePQRatchet = SignalClient.UsePQRatchet.No,
   ): Promise<DecryptResult> {
     debug('decrypting envelope type=%s start', envelopeType);
 
@@ -1997,7 +2008,7 @@ export class PrimaryDevice {
       'Should have identity, prekey/kyber/signed/senderkey stores',
     );
 
-    let decrypted: Buffer;
+    let decrypted: Uint8Array;
 
     if (envelopeType === EnvelopeType.Plaintext) {
       assert(source !== undefined, 'Plaintext must have source');
@@ -2024,6 +2035,7 @@ export class PrimaryDevice {
         preKeys,
         signedPreKeys,
         kyberPreKeys,
+        usePqRatchet,
       );
     } else if (envelopeType === EnvelopeType.SenderKey) {
       assert(source !== undefined, 'SenderKey must have source');

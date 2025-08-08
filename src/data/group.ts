@@ -49,7 +49,7 @@ export abstract class Group {
 
   public getMember(uuidCiphertext: UuidCiphertext): Proto.IMember | undefined {
     const state = this.state;
-    const userId = uuidCiphertext.serialize();
+    const userId = Buffer.from(uuidCiphertext.serialize());
     return (
       state.members?.find((member) => {
         if (!member.userId) {
@@ -65,7 +65,7 @@ export abstract class Group {
     uuidCiphertext: UuidCiphertext,
   ): Proto.IMemberPendingProfileKey | undefined {
     const state = this.state;
-    const userId = uuidCiphertext.serialize();
+    const userId = Buffer.from(uuidCiphertext.serialize());
     return (
       state.membersPendingProfileKey?.find(({ member }) => {
         if (!member?.userId) {

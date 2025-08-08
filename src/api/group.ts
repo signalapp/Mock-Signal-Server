@@ -40,7 +40,7 @@ function encryptBlob(
   proto: Proto.IGroupAttributeBlob,
 ): Buffer {
   const plaintext = Proto.GroupAttributeBlob.encode(proto).finish();
-  return cipher.encryptBlob(Buffer.from(plaintext));
+  return Buffer.from(cipher.encryptBlob(plaintext));
 }
 
 function decryptBlob(
@@ -112,7 +112,7 @@ export class Group extends GroupData {
   }
 
   public get masterKey(): Buffer {
-    return this.secretParams.getMasterKey().serialize();
+    return Buffer.from(this.secretParams.getMasterKey().serialize());
   }
 
   public toContext(): Proto.IGroupContextV2 {
@@ -125,9 +125,11 @@ export class Group extends GroupData {
 
   public encryptServiceId(serviceId: ServiceIdString): Buffer {
     const cipher = new ClientZkGroupCipher(this.secretParams);
-    return cipher
-      .encryptServiceId(ServiceId.parseFromServiceIdString(serviceId))
-      .serialize();
+    return Buffer.from(
+      cipher
+        .encryptServiceId(ServiceId.parseFromServiceIdString(serviceId))
+        .serialize(),
+    );
   }
 
   public decryptServiceId(ciphertext: Uint8Array): ServiceIdString {

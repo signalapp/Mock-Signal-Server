@@ -116,7 +116,7 @@ export class Connection extends Service {
         200,
         {
           name: target.profileName?.toString('base64'),
-          identityKey: identityKey.serialize().toString('base64'),
+          identityKey: Buffer.from(identityKey.serialize()).toString('base64'),
           unrestrictedUnidentifiedAccess: false,
           unidentifiedAccess: target.accessKey
             ? generateAccessKeyVerifier(target.accessKey).toString('base64')
@@ -192,9 +192,9 @@ export class Connection extends Service {
               type: Proto.Envelope.Type.UNIDENTIFIED_SENDER,
               destinationDeviceId: deviceId as DeviceId,
               destinationRegistrationId: registrationId as RegistrationId,
-              content: message
-                .messageForRecipient(recipient)
-                .toString('base64'),
+              content: Buffer.from(
+                message.messageForRecipient(recipient),
+              ).toString('base64'),
             });
           }
         }
@@ -364,7 +364,11 @@ export class Connection extends Service {
 
         return [
           200,
-          { certificate: certificate.serialize().toString('base64') },
+          {
+            certificate: Buffer.from(certificate.serialize()).toString(
+              'base64',
+            ),
+          },
         ];
       }),
     );

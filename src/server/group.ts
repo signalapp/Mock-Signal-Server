@@ -232,10 +232,9 @@ export class ServerGroup extends Group {
       );
 
       assert.ok(
-        presentationFFI
-          .getUuidCiphertext()
-          .serialize()
-          .equals(sourceAci.serialize()),
+        Buffer.from(presentationFFI.getUuidCiphertext().serialize()).equals(
+          sourceAci.serialize(),
+        ),
         'Not a pending member',
       );
 
@@ -290,7 +289,7 @@ export class ServerGroup extends Group {
       const profileKey = presentationFFI.getProfileKeyCiphertext();
 
       assert.ok(
-        aci.serialize().equals(sourceAci.serialize()),
+        Buffer.from(aci.serialize()).equals(sourceAci.serialize()),
         'Not a pending member',
       );
 

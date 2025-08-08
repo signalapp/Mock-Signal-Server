@@ -5,11 +5,11 @@ import crypto from 'crypto';
 import { Buffer } from 'buffer';
 import Long from 'long';
 import {
-  HKDF,
   KEMPublicKey,
   PrivateKey,
   PublicKey,
   SenderCertificate,
+  hkdf,
 } from '@signalapp/libsignal-client';
 
 import { signalservice as Proto } from '../protos/compiled';
@@ -58,9 +58,7 @@ export function encryptProvisionMessage(
 
   const agreement = privateKey.agree(remotePubKey);
 
-  const hkdf = HKDF.new(3);
-
-  const secrets = hkdf.deriveSecrets(
+  const secrets = hkdf(
     AES_KEY_SIZE + MAC_KEY_SIZE,
     agreement,
     Buffer.from('TextSecure Provisioning Message'),
@@ -85,7 +83,7 @@ export function encryptProvisionMessage(
 
   return {
     body,
-    ephemeralKey: publicKey.serialize(),
+    ephemeralKey: Buffer.from(publicKey.serialize()),
   };
 }
 
@@ -178,7 +176,7 @@ export function generateSenderCertificate(
   return SenderCertificate.deserialize(certificate);
 }
 
-export function deriveAccessKey(profileKey: Buffer): Buffer {
+export function deriveAccessKey(profileKey: Uint8Array): Buffer {
   const cipher = crypto.createCipheriv(
     'aes-256-gcm',
     profileKey,
@@ -189,13 +187,13 @@ export function deriveAccessKey(profileKey: Buffer): Buffer {
 }
 
 export function deriveMasterKey(accountEntropyPool: string): Buffer {
-  const hkdf = HKDF.new(3);
-
-  return hkdf.deriveSecrets(
-    MASTER_KEY_SIZE,
-    Buffer.from(accountEntropyPool),
-    Buffer.from('20240801_SIGNAL_SVR_MASTER_KEY'),
-    null,
+  return Buffer.from(
+    hkdf(
+      MASTER_KEY_SIZE,
+      Buffer.from(accountEntropyPool),
+      Buffer.from('20240801_SIGNAL_SVR_MASTER_KEY'),
+      null,
+    ),
   );
 }
 
@@ -232,12 +230,13 @@ export function deriveStorageItemKey({
     return hash.digest();
   }
 
-  const hkdf = HKDF.new(3);
-  return hkdf.deriveSecrets(
-    STORAGE_SERVICE_ITEM_KEY_LEN,
-    recordIkm,
-    Buffer.concat([Buffer.from(STORAGE_SERVICE_ITEM_KEY_INFO_PREFIX), key]),
-    Buffer.alloc(0),
+  return Buffer.from(
+    hkdf(
+      STORAGE_SERVICE_ITEM_KEY_LEN,
+      recordIkm,
+      Buffer.concat([Buffer.from(STORAGE_SERVICE_ITEM_KEY_INFO_PREFIX), key]),
+      Buffer.alloc(0),
+    ),
   );
 }
 
@@ -253,7 +252,7 @@ function decryptAESGCM(ciphertext: Buffer, key: Buffer): Buffer {
   return Buffer.concat([decipher.update(rest), decipher.final()]);
 }
 
-function encryptAESGCM(plaintext: Buffer, key: Buffer): Buffer {
+function encryptAESGCM(plaintext: Uint8Array, key: Uint8Array): Buffer {
   const iv = crypto.randomBytes(AESGCM_IV_SIZE);
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
 
@@ -374,7 +373,10 @@ export function encryptStorageItem({
   };
 }
 
-export function encryptProfileName(profileKey: Buffer, name: string): Buffer {
+export function encryptProfileName(
+  profileKey: Uint8Array,
+  name: string,
+): Buffer {
   const encrypted = encryptAESGCM(Buffer.from(name), profileKey);
 
   return encrypted;

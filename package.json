@@ -43,7 +43,7 @@
   "homepage": "https://github.com/signalapp/Mock-Signal-Server#readme",
   "dependencies": {
     "@indutny/parallel-prettier": "^3.0.0",
-    "@signalapp/libsignal-client": "^0.60.1",
+    "@signalapp/libsignal-client": "^0.76.7",
     "@tus/file-store": "^1.4.0",
     "@tus/server": "^1.7.0",
     "debug": "^4.3.2",
@@ -65,7 +65,7 @@
     "@types/micro": "^7.3.6",
     "@types/microrouter": "^3.1.1",
     "@types/mocha": "^9.1.0",
-    "@types/node": "^17.0.13",
+    "@types/node": "^20.19.9",
     "@types/uuid": "^8.3.0",
     "@types/ws": "^8.2.2",
     "@typescript-eslint/eslint-plugin": "^5.10.1",

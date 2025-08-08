@@ -209,7 +209,7 @@ interface WebSocket {
 }
 
 interface SerializableCredential {
-  serialize(): Buffer;
+  serialize(): Uint8Array;
 }
 
 type AuthEntry = Readonly<{
@@ -883,7 +883,7 @@ export abstract class Server {
       state: group,
     });
 
-    const key = result.publicParams.serialize().toString('base64');
+    const key = Buffer.from(result.publicParams.serialize()).toString('base64');
 
     if (this.groups.get(key)) {
       throw new Error('Duplicate group');
@@ -1192,7 +1192,7 @@ export abstract class Server {
 
   public async replaceUsernameLink(
     aci: AciString,
-    encryptedValue: Buffer,
+    encryptedValue: Uint8Array,
   ): Promise<string> {
     const lookupId = uuidv4();
 
@@ -1202,7 +1202,7 @@ export abstract class Server {
     }
 
     this.usernameLinkIdByServiceId.set(aci, lookupId);
-    this.usernameLinkById.set(lookupId, encryptedValue);
+    this.usernameLinkById.set(lookupId, Buffer.from(encryptedValue));
 
     return lookupId;
   }
@@ -1217,12 +1217,14 @@ export abstract class Server {
   public async lookupByUsername(
     username: string,
   ): Promise<AciString | undefined> {
-    return this.aciByUsername.get(usernames.hash(username).toString('hex'));
+    return this.aciByUsername.get(
+      Buffer.from(usernames.hash(username)).toString('hex'),
+    );
   }
 
   // For easier testing
   public async setUsername(aci: AciString, username: string): Promise<void> {
-    const hash = usernames.hash(username).toString('hex');
+    const hash = Buffer.from(usernames.hash(username)).toString('hex');
     this.usernameByAci.set(aci, hash);
     this.aciByUsername.set(hash, aci);
   }
@@ -1457,14 +1459,16 @@ export abstract class Server {
     const today = getTodayInSeconds();
 
     const profile = new ServerZkProfileOperations(this.zkSecret);
-    return profile
-      .issueExpiringProfileKeyCredential(
-        request,
-        Aci.parseFromServiceIdString(aci),
-        profileKeyCommitment,
-        today + PROFILE_KEY_CREDENTIAL_EXPIRATION,
-      )
-      .serialize();
+    return Buffer.from(
+      profile
+        .issueExpiringProfileKeyCredential(
+          request,
+          Aci.parseFromServiceIdString(aci),
+          profileKeyCommitment,
+          today + PROFILE_KEY_CREDENTIAL_EXPIRATION,
+        )
+        .serialize(),
+    );
   }
 
   public async setBackupId(
@@ -1783,7 +1787,9 @@ export abstract class Server {
       redemptionTime += DAY_IN_SECONDS
     ) {
       result.push({
-        credential: issueOne(redemptionTime).serialize().toString('base64'),
+        credential: Buffer.from(issueOne(redemptionTime).serialize()).toString(
+          'base64',
+        ),
         redemptionTime,
       });
     }
@@ -1800,7 +1806,9 @@ export abstract class Server {
     presentation.verify(this.backupServerSecret);
 
     // Backup id is used in urls, so encode it properly
-    const backupId = presentation.getBackupId().toString('base64url');
+    const backupId = Buffer.from(presentation.getBackupId()).toString(
+      'base64url',
+    );
 
     const validatingKey = this.backupKeyById.get(backupId) || newPublicKey;
     if (!validatingKey) {
