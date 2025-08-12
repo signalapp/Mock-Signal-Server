@@ -407,12 +407,7 @@ class IdentityStore extends IdentityKeyStore {
     name: ProtocolAddress,
     key: PublicKey,
   ): Promise<SignalClient.IdentityChange> {
-    const addr = addressToString(name);
-    const prev = this.knownIdentities.get(addr);
-    if (prev === undefined || prev.compare(key) === 0) {
-      return SignalClient.IdentityChange.NewOrUnchanged;
-    }
-    this.knownIdentities.set(addr, key);
+    this.knownIdentities.set(addressToString(name), key);
     return SignalClient.IdentityChange.ReplacedExisting;
   }
 
