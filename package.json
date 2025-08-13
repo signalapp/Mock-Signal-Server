@@ -1,6 +1,6 @@
 {
   "name": "@signalapp/mock-server",
-  "version": "13.2.2",
+  "version": "13.3.0",
   "description": "Mock Signal Server for writing tests",
   "main": "src/index.js",
   "types": "src/index.d.ts",
