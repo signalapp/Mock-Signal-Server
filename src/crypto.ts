@@ -24,6 +24,7 @@ import {
   PreKey,
   SignedPreKey,
 } from './types';
+import { ReadonlyDeep } from 'type-fest';
 
 const AES_KEY_SIZE = 32;
 const MAC_KEY_SIZE = 32;
@@ -417,4 +418,24 @@ export function decodeKyberPreKey({
     publicKey: KEMPublicKey.deserialize(Buffer.from(publicKey, 'base64')),
     signature: Buffer.from(signature, 'base64'),
   };
+}
+
+export function hashRemoteConfig(
+  config: ReadonlyDeep<Array<[string, string]>>,
+): Buffer {
+  // Not necessarily secure, but this will let us detect changes. The exact
+  // format isn't important so long as it's deterministic.
+  const mac = crypto.createHmac('sha256', 'remoteConfig');
+  return config
+    .reduce(
+      (mac, [name, value], index) =>
+        mac
+          .update(index.toString())
+          .update(name.length.toString())
+          .update(name)
+          .update(value.length.toString())
+          .update(value),
+      mac,
+    )
+    .digest();
 }

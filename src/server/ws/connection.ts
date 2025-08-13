@@ -45,6 +45,7 @@ import {
   decodePreKey,
   decodeSignedPreKey,
   generateAccessKeyVerifier,
+  hashRemoteConfig,
 } from '../../crypto';
 import { Server } from '../base';
 import {
@@ -153,6 +154,37 @@ export class Connection extends Service {
             ),
             serverEpochTime: Date.now() / 1000,
           },
+        ] as const;
+      }),
+    );
+
+    this.router.get(
+      '/v2/config',
+      requireAuth(async (_params, _body, headers) => {
+        const enabledEntries = [...this.server.getRemoteConfig().entries()]
+          .filter((entry) => entry[1].enabled)
+          .map(([name, { value }]) => [name, value ?? 'true'] as const);
+        // Sort by name then value.
+        enabledEntries.sort(([n1, v1], [n2, v2]) => {
+          if (n1 === n2) {
+            return v1 < v2 ? -1 : v1 > v2 ? 1 : 0;
+          }
+          return n1 < n2 ? -1 : 1;
+        });
+        const hash = hashRemoteConfig(enabledEntries).toString('hex');
+
+        const replyHeaders = { etag: hash };
+
+        if (headers['if-none-match'] === hash) {
+          return [304, '', replyHeaders];
+        }
+
+        return [
+          200,
+          {
+            config: Object.fromEntries(enabledEntries),
+          },
+          replyHeaders,
         ] as const;
       }),
     );

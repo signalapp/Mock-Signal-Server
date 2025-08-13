@@ -13,7 +13,10 @@ import { assertJsonValue } from '../../util';
 
 const debug = createDebug('mock:ws:router');
 
-export type AbbreviatedResponse = Readonly<[number, PartialDeep<JsonValue>]>;
+export type AbbreviatedResponse = Readonly<
+  | [number, PartialDeep<JsonValue>]
+  | [number, PartialDeep<JsonValue>, Record<string, string>]
+>;
 
 export type Handler = (
   params: Record<string, string>,
@@ -102,16 +105,21 @@ export class Router {
       break;
     }
 
-    const [status, json] = response;
+    const [status, json, responseHeaders = {}] = response;
 
     debug('response %s %s status=%d', request.verb, request.path, status);
 
     const timestampHeader = `X-Signal-Timestamp:${Date.now()}`;
+    const replyHeaders = [timestampHeader].concat(
+      Object.entries(responseHeaders).map(
+        ([name, value]) => `${name}:${value}`,
+      ),
+    );
 
     if (json instanceof Uint8Array) {
       return {
         status,
-        headers: ['Content-Type:application/x-protobuf', timestampHeader],
+        headers: ['Content-Type:application/x-protobuf'].concat(replyHeaders),
         body: Buffer.from(json),
       };
     }
@@ -119,7 +127,7 @@ export class Router {
     assertJsonValue(json);
     return {
       status,
-      headers: ['Content-Type:application/json', timestampHeader],
+      headers: replyHeaders.concat(['Content-Type:application/json']),
       body: Buffer.from(JSON.stringify(json)),
     };
   }
