@@ -10,7 +10,7 @@ export type Certificates = Readonly<{
   genericServerPublicParams: string;
   backupServerPublicParams: string;
   serverPublicParams: string;
-  serverTrustRoot: string;
+  serverTrustRoots: ReadonlyArray<string>;
 }>;
 
 const CERTS_DIR = path.join(__dirname, '..', '..', 'certs');
@@ -52,6 +52,6 @@ export async function load(): Promise<Certificates> {
     genericServerPublicParams,
     backupServerPublicParams,
     serverPublicParams,
-    serverTrustRoot,
+    serverTrustRoots: [serverTrustRoot],
   };
 }
