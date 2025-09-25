@@ -908,9 +908,9 @@ export abstract class Server {
   }
 
   public async getGroup(
-    publicParams: Buffer,
+    publicParams: Uint8Array,
   ): Promise<ServerGroup | undefined> {
-    return this.groups.get(publicParams.toString('base64'));
+    return this.groups.get(Buffer.from(publicParams).toString('base64'));
   }
 
   //

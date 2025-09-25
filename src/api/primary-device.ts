@@ -94,36 +94,36 @@ export type Config = Readonly<{
   serverPublicParams: ServerPublicParams;
 
   // Server callbacks
-  generateNumber(): Promise<string>;
-  generatePni(): Promise<PniString>;
-  changeDeviceNumber(
+  generateNumber: () => Promise<string>;
+  generatePni: () => Promise<PniString>;
+  changeDeviceNumber: (
     device: Device,
     options: ChangeNumberOptions,
-  ): Promise<void>;
-  send(device: Device, message: Buffer): Promise<void>;
-  getSenderCertificate(): Promise<SenderCertificate>;
-  getDeviceByServiceId(
+  ) => Promise<void>;
+  send: (device: Device, message: Buffer) => Promise<void>;
+  getSenderCertificate: () => Promise<SenderCertificate>;
+  getDeviceByServiceId: (
     serviceId: ServiceIdString,
     deviceId?: DeviceId,
-  ): Promise<Device | undefined>;
-  issueExpiringProfileKeyCredential(
+  ) => Promise<Device | undefined>;
+  issueExpiringProfileKeyCredential: (
     device: Device,
     request: ProfileKeyCredentialRequest,
-  ): Promise<Buffer | undefined>;
+  ) => Promise<Buffer | undefined>;
 
-  getGroup(publicParams: Uint8Array): Promise<ServerGroup | undefined>;
-  createGroup(group: Proto.IGroup): Promise<ServerGroup>;
-  modifyGroup(options: ModifyGroupOptions): Promise<ModifyGroupResult>;
-  waitForGroupUpdate(group: GroupData): Promise<void>;
+  getGroup: (publicParams: Uint8Array) => Promise<ServerGroup | undefined>;
+  createGroup: (group: Proto.IGroup) => Promise<ServerGroup>;
+  modifyGroup: (options: ModifyGroupOptions) => Promise<ModifyGroupResult>;
+  waitForGroupUpdate: (group: GroupData) => Promise<void>;
 
-  getStorageManifest(): Promise<Proto.IStorageManifest | undefined>;
-  getStorageItem(key: Buffer): Promise<Buffer | undefined>;
-  getAllStorageKeys(): Promise<Array<Buffer>>;
-  waitForStorageManifest(afterVersion?: number): Promise<void>;
-  applyStorageWrite(
+  getStorageManifest: () => Promise<Proto.IStorageManifest | undefined>;
+  getStorageItem: (key: Buffer) => Promise<Buffer | undefined>;
+  getAllStorageKeys: () => Promise<Array<Buffer>>;
+  waitForStorageManifest: (afterVersion?: number) => Promise<void>;
+  applyStorageWrite: (
     operation: Proto.IWriteOperation,
     shouldNotify?: boolean,
-  ): Promise<StorageWriteResult>;
+  ) => Promise<StorageWriteResult>;
 }>;
 
 export type EncryptOptions = Readonly<{
