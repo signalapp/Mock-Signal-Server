@@ -205,11 +205,11 @@ export type IsSendRateLimitedOptions = Readonly<{
 export { type ModifyGroupResult };
 
 interface WebSocket {
-  sendMessage(message: Buffer | 'empty'): Promise<void>;
+  sendMessage: (message: Buffer | 'empty') => Promise<void>;
 }
 
 interface SerializableCredential {
-  serialize(): Uint8Array;
+  serialize: () => Uint8Array;
 }
 
 type AuthEntry = Readonly<{
@@ -225,8 +225,8 @@ type StorageAuthEntry = Readonly<{
 
 type MessageQueueEntry = {
   readonly message: Buffer;
-  resolve(): void;
-  reject(error: Error): void;
+  resolve: () => void;
+  reject: (error: Error) => void;
 };
 
 export type CallLinkEntry = Readonly<{
@@ -369,7 +369,7 @@ export abstract class Server {
     }
 
     const result = this.https.address();
-    if (!result || typeof result !== 'object') {
+    if (result == null || typeof result !== 'object') {
       throw new Error('Invalid .address() result');
     }
     return result;
@@ -511,7 +511,7 @@ export abstract class Server {
     }
     entry.delete(provisioningCode);
 
-    const [primary] = this.devices.get(number) || [];
+    const [primary] = this.devices.get(number) ?? [];
     assert(primary !== undefined, 'Missing primary device when provisioning');
 
     const device = await this.registerDevice({
@@ -622,11 +622,11 @@ export abstract class Server {
   //
   // Remote config
   //
-  public setRemoteConfig(key: string, value: RemoteConfigValueType) {
+  public setRemoteConfig(key: string, value: RemoteConfigValueType): void {
     this.remoteConfig.set(key, value);
   }
 
-  public getRemoteConfig() {
+  public getRemoteConfig(): Map<string, RemoteConfigValueType> {
     return this.remoteConfig;
   }
 
@@ -844,6 +844,7 @@ export abstract class Server {
       );
 
       // At least one send should succeed, if not - queue
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       if (success) {
         return;
       }
@@ -998,7 +999,7 @@ export abstract class Server {
       await this.clearStorageItems(device);
     }
 
-    const inserts = (insertItem || []).map(async (item) => {
+    const inserts = (insertItem ?? []).map(async (item) => {
       assert(item.key instanceof Uint8Array, 'insertItem.key must be a Buffer');
       assert(
         item.value instanceof Uint8Array,
@@ -1012,7 +1013,7 @@ export abstract class Server {
     });
     await Promise.all(inserts);
 
-    const deletes = (deleteKey || []).map(async (key) => {
+    const deletes = (deleteKey ?? []).map(async (key) => {
       return this.deleteStorageItem(device, Buffer.from(key));
     });
     await Promise.all(deletes);
@@ -1260,7 +1261,7 @@ export abstract class Server {
     );
   }
 
-  public hasCallLink(roomId: string) {
+  public hasCallLink(roomId: string): boolean {
     return this.callLinksByRoomId.has(roomId);
   }
 
@@ -1355,7 +1356,8 @@ export abstract class Server {
 
     const device = list[deviceId - 1];
 
-    debug('removeDevice %j.%j (%j)', device.aci, deviceId, number);
+    debug('removeDevice %j.%j (%j)', device?.aci, deviceId, number);
+    assert(device != null, `Missing device for deviceId ${deviceId}`);
 
     const copy = [...list];
     copy.splice(deviceId - 1, 1);
@@ -1379,7 +1381,7 @@ export abstract class Server {
     if (primary.deviceId !== PRIMARY_DEVICE_ID) {
       return undefined;
     }
-    return await this.getDevice(primary.number, deviceId);
+    return this.getDevice(primary.number, deviceId);
   }
 
   public async getAllDevicesByServiceId(
@@ -1390,7 +1392,7 @@ export abstract class Server {
       return [];
     }
 
-    return this.devices.get(primary.number) || [];
+    return this.devices.get(primary.number) ?? [];
   }
 
   public async getSenderCertificate(
@@ -1810,7 +1812,7 @@ export abstract class Server {
       'base64url',
     );
 
-    const validatingKey = this.backupKeyById.get(backupId) || newPublicKey;
+    const validatingKey = this.backupKeyById.get(backupId) ?? newPublicKey;
     if (!validatingKey) {
       throw new Error('No backup public key to validate against');
     }

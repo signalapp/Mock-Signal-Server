@@ -159,7 +159,7 @@ export function generateSenderCertificate(
       senderE164: sender.number,
       senderUuid: sender.aci,
       senderDevice: sender.deviceId,
-      expires: Long.fromNumber(sender.expires || NEVER_EXPIRES),
+      expires: Long.fromNumber(sender.expires ?? NEVER_EXPIRES),
       identityKey: sender.identityKey.serialize(),
       signer: serverCert.certificate,
     }).finish(),
@@ -206,7 +206,7 @@ export function deriveStorageKey(masterKey: Buffer): Buffer {
 
 function deriveStorageManifestKey(storageKey: Buffer, version: Long): Buffer {
   const hash = crypto.createHmac('sha256', storageKey);
-  hash.update(`Manifest_${version}`);
+  hash.update(`Manifest_${version.toString()}`);
   return hash.digest();
 }
 
@@ -242,9 +242,9 @@ export function deriveStorageItemKey({
 }
 
 function decryptAESGCM(ciphertext: Buffer, key: Buffer): Buffer {
-  const iv = ciphertext.slice(0, AESGCM_IV_SIZE);
-  const tag = ciphertext.slice(ciphertext.length - AUTH_TAG_SIZE);
-  const rest = ciphertext.slice(iv.length, ciphertext.length - tag.length);
+  const iv = ciphertext.subarray(0, AESGCM_IV_SIZE);
+  const tag = ciphertext.subarray(ciphertext.length - AUTH_TAG_SIZE);
+  const rest = ciphertext.subarray(iv.length, ciphertext.length - tag.length);
 
   const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
 
@@ -281,6 +281,7 @@ export function decryptStorageManifest(
     decryptAESGCM(Buffer.from(manifest.value), manifestKey),
   );
 
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition, @typescript-eslint/strict-boolean-expressions
   if (!decoded.version) {
     throw new Error('Missing manifestRecord.version');
   }

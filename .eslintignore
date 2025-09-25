@@ -1,9 +1,0 @@
-src/**/*.js
-src/**/*.d.ts
-test/**/*.js
-test/**/*.d.ts
-bin/**/*.js
-bin/**/*.d.ts
-scripts/**/*.js
-scripts/**/*.d.ts
-protos/*

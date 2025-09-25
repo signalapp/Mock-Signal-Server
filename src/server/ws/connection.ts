@@ -98,7 +98,7 @@ export class Connection extends Service {
       let credential: Buffer | undefined;
       if (params.request) {
         const request = new ProfileKeyCredentialRequest(
-          Buffer.from(params.request as string, 'hex'),
+          Buffer.from(params.request, 'hex'),
         );
         if (credentialType === 'expiringProfileKey') {
           credential = await this.server.issueExpiringProfileKeyCredential(
@@ -195,7 +195,7 @@ export class Connection extends Service {
         if (!body) {
           return [400, { error: 'Missing body' }];
         }
-        if (!query.ts) {
+        if (query.ts == null) {
           return [400, { error: 'Missing ts' }];
         }
 
@@ -417,7 +417,7 @@ export class Connection extends Service {
         const body = DeviceKeysSchema.parse(JSON.parse(rawBody.toString()));
         try {
           await server.updateDeviceKeys(this.getDevice(), serviceIdKind, {
-            preKeys: body.preKeys?.map(decodePreKey),
+            preKeys: body.preKeys.map(decodePreKey),
             kyberPreKeys: body.pqPreKeys?.map(decodeKyberPreKey),
             lastResortKey: body.pqLastResortPreKey
               ? decodeKyberPreKey(body.pqLastResortPreKey)
@@ -453,8 +453,8 @@ export class Connection extends Service {
     );
 
     this.router.get('/v2/keys/:serviceId/:deviceId', async (params) => {
-      const serviceId = params.serviceId as ServiceIdString;
-      const deviceId = parseInt(params.deviceId || '', 10) as DeviceId;
+      const serviceId = params.serviceId as ServiceIdString | undefined;
+      const deviceId = parseInt(params.deviceId ?? '', 10) as DeviceId;
       if (!serviceId || deviceId.toString() !== params.deviceId) {
         return [400, { error: 'Invalid request parameters' }];
       }
@@ -469,7 +469,7 @@ export class Connection extends Service {
     });
 
     this.router.get('/v2/keys/:serviceId(/\\*)', async (params) => {
-      const serviceId = params.serviceId as ServiceIdString;
+      const serviceId = params.serviceId as ServiceIdString | undefined;
       if (!serviceId) {
         return [400, { error: 'Invalid request parameters' }];
       }
@@ -479,7 +479,9 @@ export class Connection extends Service {
         return [404, { error: 'Account not found' }];
       }
 
-      const serviceIdKind = devices[0].getServiceIdKind(serviceId);
+      const device = devices[0];
+      assert(device != null, `Missing first device for serviceId ${serviceId}`);
+      const serviceIdKind = device.getServiceIdKind(serviceId);
       return [200, await getDevicesKeysResult(serviceIdKind, devices)];
     });
 
@@ -733,7 +735,7 @@ export class Connection extends Service {
           200,
           await this.server.listBackupMedia(
             BackupHeadersSchema.parse(headers),
-            { cursor: cursor ? String(cursor) : undefined, limit },
+            { cursor: cursor != null ? String(cursor) : undefined, limit },
           ),
         ];
       },
@@ -1009,7 +1011,7 @@ export class Connection extends Service {
     }
 
     if (path === '/v1/websocket/') {
-      return await this.handleNormal(this.request);
+      return this.handleNormal(this.request);
     } else {
       debug('websocket connection has unexpected URL %s', url);
     }

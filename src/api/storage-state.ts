@@ -89,7 +89,7 @@ class StorageStateItem {
       return false;
     }
 
-    const masterKey = this.record?.groupV2?.masterKey;
+    const masterKey = this.record.groupV2?.masterKey;
     if (!masterKey) {
       return false;
     }
@@ -103,7 +103,7 @@ class StorageStateItem {
     }
 
     if (serviceIdKind === ServiceIdKind.ACI) {
-      const existingAci = this.record?.contact?.aciBinary;
+      const existingAci = this.record.contact?.aciBinary;
       if (!existingAci?.length) {
         return false;
       }
@@ -111,7 +111,7 @@ class StorageStateItem {
       return Buffer.compare(existingAci, device.aciRawUuid) === 0;
     }
 
-    const existingPni = this.record?.contact?.pniBinary;
+    const existingPni = this.record.contact?.pniBinary;
     if (!existingPni?.length) {
       return false;
     }
@@ -239,7 +239,7 @@ export class StorageState {
     const account = this.getAccountRecord();
     assert(account, 'No account record found');
 
-    return (account.pinnedConversations || []).some((convo) => {
+    return (account.pinnedConversations ?? []).some((convo) => {
       if (!convo.groupMasterKey) {
         return false;
       }
@@ -343,8 +343,8 @@ export class StorageState {
     const account = this.getAccountRecord();
     assert(account, 'No account record found');
 
-    return (account.pinnedConversations || []).some((convo) => {
-      const existing = convo?.contact?.serviceIdBinary;
+    return (account.pinnedConversations ?? []).some((convo) => {
+      const existing = convo.contact?.serviceIdBinary;
       return existing && Buffer.compare(existing, device.aciRawUuid) === 0;
     });
   }
@@ -389,7 +389,7 @@ export class StorageState {
   }
 
   public hasKey(storageKey: Buffer): boolean {
-    return this.hasRecord(({ key }) => key?.equals(storageKey));
+    return this.hasRecord(({ key }) => key.equals(storageKey));
   }
 
   //
@@ -533,10 +533,10 @@ export class StorageState {
 
         const { pinnedConversations } = account;
 
-        const newPinnedConversations = pinnedConversations?.slice() || [];
+        const newPinnedConversations = pinnedConversations?.slice() ?? [];
 
         const existingIndex = newPinnedConversations.findIndex((convo) => {
-          const existing = convo?.contact?.serviceIdBinary;
+          const existing = convo.contact?.serviceIdBinary;
           return (
             existing && Buffer.compare(existing, deviceServiceIdBinary) === 0
           );
@@ -568,7 +568,7 @@ export class StorageState {
 
         const { pinnedConversations } = account;
 
-        const newPinnedConversations = pinnedConversations?.slice() || [];
+        const newPinnedConversations = pinnedConversations?.slice() ?? [];
 
         const existingIndex = newPinnedConversations.findIndex((convo) => {
           if (!convo.groupMasterKey) {

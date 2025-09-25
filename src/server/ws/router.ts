@@ -10,6 +10,7 @@ import { WSRequest, WSResponse } from './service';
 import { JsonValue, PartialDeep } from 'type-fest';
 import URLPattern from 'url-pattern';
 import { assertJsonValue } from '../../util';
+import assert from 'assert';
 
 const debug = createDebug('mock:ws:router');
 
@@ -66,7 +67,7 @@ export class Router {
     const headers: Record<string, string> = {};
     for (const pair of request.headers ?? []) {
       const [field, value = ''] = pair.split(/\s*:\s*/, 2);
-
+      assert(field != null, 'Missing field name for header');
       headers[field.toLowerCase()] = value;
     }
 
@@ -79,6 +80,7 @@ export class Router {
       request.path,
     );
 
+    // eslint-disable-next-line @typescript-eslint/no-deprecated
     const { pathname, query } = parseURL(request.path ?? '');
 
     for (const { method, pattern, handler } of this.routes) {
@@ -86,14 +88,14 @@ export class Router {
         continue;
       }
 
-      const params = pattern.match(pathname ?? '');
-      if (!params) {
+      const params: unknown = pattern.match(pathname ?? '');
+      if (params == null) {
         continue;
       }
 
       const decodedParams: Record<string, string> = {};
       for (const [key, value] of Object.entries(params)) {
-        decodedParams[String(key)] = decodeURIComponent(String(value));
+        decodedParams[key] = decodeURIComponent(String(value));
       }
 
       response = await handler(

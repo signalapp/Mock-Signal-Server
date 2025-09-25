@@ -52,19 +52,20 @@ export function parseAuthHeader(
   }
 
   const [basic, base64] = header.split(/\s+/g, 2);
-  if (basic.toLowerCase() !== 'basic') {
+  if (basic?.toLowerCase() !== 'basic') {
     return { error: `Unsupported authorization type ${basic}` };
   }
 
-  let username: string;
-  let password: string;
+  let decoded: string;
   try {
-    const decoded = Buffer.from(base64, 'base64').toString();
-    [username, password] = decoded.split(':', 2);
+    assert(base64 != null, 'Missing base64 for basic authorization');
+    decoded = Buffer.from(base64, 'base64').toString();
   } catch (error) {
     assert(error instanceof Error);
     return { error: error.message };
   }
+
+  const [username, password = ''] = decoded.split(':', 2);
 
   if (!username) {
     return { error: 'Missing username' };
@@ -86,7 +87,7 @@ export class PromiseQueue<T> {
     this.defaultTimeout = config.timeout;
   }
 
-  public get size() {
+  public get size(): number {
     return this.entries.length;
   }
 
@@ -102,7 +103,7 @@ export class PromiseQueue<T> {
     }
 
     // Not waiting for `.shift()` - queue.
-    return await new Promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       let timer: NodeJS.Timeout | undefined;
 
       const entry = {
@@ -158,7 +159,7 @@ export class PromiseQueue<T> {
       return entry.value;
     }
 
-    return await new Promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       let timer: NodeJS.Timeout | undefined;
 
       const resolveEntry = (value: T) => {
@@ -235,7 +236,7 @@ export function fromURLSafeBase64(base64: string): Buffer {
 }
 
 export function assertJsonValue(root: unknown): asserts root is JsonValue {
-  const issues: string[] = [];
+  const issues: Array<string> = [];
 
   function visit(node: unknown, path: ReadonlyArray<PropertyKey>) {
     if (
@@ -282,7 +283,7 @@ export function serviceIdKindFromQuery(
 export async function getDevicesKeysResult(
   serviceIdKind: ServiceIdKind,
   devices: ReadonlyArray<Device>,
-) {
+): Promise<JsonValue> {
   const [primary] = devices;
   assert(primary !== undefined, 'Empty device list');
 

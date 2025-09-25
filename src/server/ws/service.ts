@@ -21,12 +21,13 @@ interface RequestOptions {
 }
 
 export abstract class Service {
-  private readonly requests: Map<number, (res: WSResponse) => void> = new Map();
+  private readonly requests = new Map<number, (res: WSResponse) => void>();
   private lastSentId = 0;
 
   constructor(protected readonly ws: WebSocket) {
     this.ws = ws;
 
+    // eslint-disable-next-line @typescript-eslint/no-misused-promises
     this.ws.on('message', async (message) => {
       try {
         await this.onMessage(message);
@@ -57,7 +58,7 @@ export abstract class Service {
 
     this.ws.send(packet);
 
-    return await new Promise((resolve) => this.requests.set(id, resolve));
+    return new Promise((resolve) => this.requests.set(id, resolve));
   }
 
   private async onMessage(raw: WebSocket.Data): Promise<void> {
@@ -79,7 +80,7 @@ export abstract class Service {
 
       const id = parseInt(response.id.toString(), 10);
       if (isNaN(id)) {
-        throw new Error(`Invalid response.id: ${response.id}`);
+        throw new Error(`Invalid response.id: ${response.id.toString()}`);
       }
 
       const resolve = this.requests.get(id);

@@ -25,7 +25,9 @@ async function loadJSONProperty(
   property: string,
 ): Promise<string> {
   const raw = await fs.readFile(path.join(CERTS_DIR, file));
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
   const obj = JSON.parse(raw.toString());
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
   const value = obj[property];
 
   assert(typeof value === 'string', `Expected string at: ${file}/${property}`);

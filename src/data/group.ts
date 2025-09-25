@@ -26,7 +26,7 @@ export abstract class Group {
   public get state(): Readonly<Proto.IGroup> {
     const { groupChanges } = this.changes;
     assert(groupChanges, 'Missing group changes in the group state');
-    const state = groupChanges[groupChanges.length - 1].groupState;
+    const state = groupChanges.at(-1)?.groupState;
     assert(state, 'Group must have the last state');
     return state;
   }

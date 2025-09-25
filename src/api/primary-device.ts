@@ -270,7 +270,7 @@ enum SyncState {
 type SyncEntry = {
   state: SyncState;
   onComplete: Promise<void>;
-  complete(): void;
+  complete: () => void;
 };
 
 type DecryptResult = Readonly<{
@@ -417,7 +417,7 @@ class IdentityStore extends IdentityKeyStore {
   }
 
   async getIdentity(name: ProtocolAddress): Promise<PublicKey | null> {
-    return this.knownIdentities.get(addressToString(name)) || null;
+    return this.knownIdentities.get(addressToString(name)) ?? null;
   }
 
   // Not part of IdentityKeyStore API
@@ -432,7 +432,7 @@ class IdentityStore extends IdentityKeyStore {
 }
 
 export class SessionStore extends SessionStoreBase {
-  private readonly sessions: Map<string, SessionRecord> = new Map();
+  private readonly sessions = new Map<string, SessionRecord>();
 
   async saveSession(
     name: ProtocolAddress,
@@ -442,12 +442,12 @@ export class SessionStore extends SessionStoreBase {
   }
 
   async getSession(name: ProtocolAddress): Promise<SessionRecord | null> {
-    return this.sessions.get(addressToString(name)) || null;
+    return this.sessions.get(addressToString(name)) ?? null;
   }
 
   async getExistingSessions(
-    addresses: ProtocolAddress[],
-  ): Promise<SessionRecord[]> {
+    addresses: Array<ProtocolAddress>,
+  ): Promise<Array<SessionRecord>> {
     return addresses.map((name) => {
       const existing = this.sessions.get(addressToString(name));
       if (!existing) {
@@ -459,21 +459,25 @@ export class SessionStore extends SessionStoreBase {
 }
 
 export class SenderKeyStore extends SenderKeyStoreBase {
-  private readonly keys: Map<string, SenderKeyRecord> = new Map();
+  private readonly keys = new Map<string, SenderKeyRecord>();
 
   async saveSenderKey(
     sender: ProtocolAddress,
     distributionId: Uuid,
     record: SenderKeyRecord,
   ): Promise<void> {
-    this.keys.set(`${sender.serviceId}.${distributionId}`, record);
+    const serviceId = sender.serviceId();
+    assert(serviceId != null, 'Missing serviceId for sender');
+    this.keys.set(`${serviceId.toString()}.${distributionId}`, record);
   }
   async getSenderKey(
     sender: ProtocolAddress,
     distributionId: Uuid,
   ): Promise<SenderKeyRecord | null> {
-    const key = this.keys.get(`${sender.serviceId}.${distributionId}`);
-    return key || null;
+    const serviceId = sender.serviceId();
+    assert(serviceId != null, 'Missing serviceId for sender');
+    const key = this.keys.get(`${serviceId.toString()}.${distributionId}`);
+    return key ?? null;
   }
 }
 
@@ -619,7 +623,7 @@ export class PrimaryDevice {
       signedPreKey.getPublicKey().serialize(),
     );
     const signedPreKeyId =
-      this.signedPreKeys.get(serviceIdKind)?.getNextId() || 1;
+      this.signedPreKeys.get(serviceIdKind)?.getNextId() ?? 1;
     const signedPreKeyRecord = SignedPreKeyRecord.new(
       signedPreKeyId,
       Date.now(),
@@ -634,7 +638,7 @@ export class PrimaryDevice {
     }
 
     const lastResortKeyId =
-      this.kyberPreKeys.get(serviceIdKind)?.getNextId() || 1;
+      this.kyberPreKeys.get(serviceIdKind)?.getNextId() ?? 1;
     const lastResortKeyRecord = this.generateKyberPreKey(
       lastResortKeyId,
       serviceIdKind,
@@ -668,7 +672,7 @@ export class PrimaryDevice {
   private async *getPreKeyIterator(
     device: Device,
     serviceIdKind: ServiceIdKind,
-  ): AsyncIterator<PreKey> {
+  ): AsyncIterator<PreKey, undefined> {
     const preKeyStore = this.preKeys.get(serviceIdKind);
     assert.ok(preKeyStore, 'Missing preKey store');
 
@@ -677,6 +681,7 @@ export class PrimaryDevice {
       return;
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     while (true) {
       const preKey = PrivateKey.generate();
       const publicKey = preKey.getPublicKey();
@@ -710,7 +715,7 @@ export class PrimaryDevice {
   private async *getKyberPreKeyIterator(
     device: Device,
     serviceIdKind: ServiceIdKind,
-  ): AsyncIterator<KyberPreKey> {
+  ): AsyncIterator<KyberPreKey, undefined> {
     const kyberPreKeyStore = this.kyberPreKeys.get(serviceIdKind);
     assert.ok(kyberPreKeyStore, 'Missing kyberPreKeyStore store');
 
@@ -719,6 +724,7 @@ export class PrimaryDevice {
       return;
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     while (true) {
       const keyId = kyberPreKeyStore.getNextId();
       const record = this.generateKyberPreKey(keyId, serviceIdKind);
@@ -799,7 +805,7 @@ export class PrimaryDevice {
   ): Promise<ReadonlyArray<Group>> {
     const records = storage.getAllGroupRecords();
 
-    return await Promise.all(
+    return Promise.all(
       records.map(async ({ record }) => {
         const { groupV2 } = record;
         assert.ok(groupV2, 'Not a group v2 record!');
@@ -911,7 +917,7 @@ export class PrimaryDevice {
       groupState: serverGroup.state,
     });
 
-    if (sendUpdateTo?.length) {
+    if (sendUpdateTo.length) {
       const groupV2 = {
         ...updatedGroup.toContext(),
         groupChange: Proto.GroupChange.encode(
@@ -1075,6 +1081,7 @@ export class PrimaryDevice {
       false,
     );
     if (!updated) {
+      // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
       throw new Error(`setStorageState: failed to update, ${error}`);
     }
 
@@ -1124,7 +1131,7 @@ export class PrimaryDevice {
       content,
       envelopeType: unsealedType,
     } = await this.lock(async () => {
-      return await this.decrypt(source, serviceIdKind, envelopeType, encrypted);
+      return this.decrypt(source, serviceIdKind, envelopeType, encrypted);
     });
 
     let handled = true;
@@ -1137,7 +1144,7 @@ export class PrimaryDevice {
         ServiceIdKind.ACI,
         'Got sync message on PNI',
       );
-      await this.handleResendRequest(
+      this.handleResendRequest(
         unsealedSource,
         serviceIdKind,
         unsealedType,
@@ -1236,7 +1243,7 @@ export class PrimaryDevice {
       },
       pniSignatureMessage,
     };
-    return await this.encryptContent(target, content, encryptOptions);
+    return this.encryptContent(target, content, encryptOptions);
   }
 
   public async encryptSyncSent(
@@ -1260,7 +1267,7 @@ export class PrimaryDevice {
         },
       },
     };
-    return await this.encryptContent(target, content, options);
+    return this.encryptContent(target, content, options);
   }
 
   public async encryptSyncRead(
@@ -1278,7 +1285,7 @@ export class PrimaryDevice {
         }),
       },
     };
-    return await this.encryptContent(target, content, options);
+    return this.encryptContent(target, content, options);
   }
 
   public async sendFetchStorage(options: FetchStorageOptions): Promise<void> {
@@ -1333,7 +1340,7 @@ export class PrimaryDevice {
         ),
       },
     };
-    return await this.encryptContent(target, content, options);
+    return this.encryptContent(target, content, options);
   }
 
   public async sendReceipt(
@@ -1498,7 +1505,7 @@ export class PrimaryDevice {
     );
 
     if (!options?.skipSkdmSend) {
-      this.sendRaw(
+      void this.sendRaw(
         target,
         {
           senderKeyDistributionMessage: skdm.serialize(),
@@ -1541,11 +1548,11 @@ export class PrimaryDevice {
       throw new Error('Unsupported envelope type');
     }
 
-    const serviceIdKind = envelope.destinationServiceIdBinary?.length
+    const serviceIdKind = envelope.destinationServiceIdBinary.length
       ? this.device.getServiceIdBinaryKind(envelope.destinationServiceIdBinary)
       : ServiceIdKind.ACI;
 
-    return await this.handleEnvelope(
+    return this.handleEnvelope(
       source,
       serviceIdKind,
       envelopeType,
@@ -1646,8 +1653,8 @@ export class PrimaryDevice {
   ): Promise<Buffer> {
     const encoded = Buffer.from(Proto.Content.encode(content).finish());
 
-    return await this.lock(async () => {
-      return await this.encrypt(target, encoded, options);
+    return this.lock(async () => {
+      return this.encrypt(target, encoded, options);
     });
   }
 
@@ -2040,7 +2047,10 @@ export class PrimaryDevice {
         senderKeys,
         encrypted,
       );
-    } else if (envelopeType === EnvelopeType.SealedSender) {
+    } else if (
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      envelopeType === EnvelopeType.SealedSender
+    ) {
       assert(source === undefined, 'Sealed sender must have no source');
 
       const usmc = await SignalClient.sealedSenderDecryptToUsmc(
@@ -2091,6 +2101,7 @@ export class PrimaryDevice {
 
       return result;
     } else {
+      // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
       throw new Error(`Unsupported envelope type: ${envelopeType}`);
     }
 
@@ -2159,7 +2170,7 @@ export class PrimaryDevice {
 
     const version = decryptedManifest.version.toNumber();
     const items = await Promise.all(
-      (decryptedManifest.identifiers || []).map(async ({ type, raw: key }) => {
+      (decryptedManifest.identifiers ?? []).map(async ({ type, raw: key }) => {
         assert(
           type !== null && type !== undefined,
           'Missing manifestRecord.keys.type',

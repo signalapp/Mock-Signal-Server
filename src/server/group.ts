@@ -170,7 +170,7 @@ export class ServerGroup extends Group {
 
       const { userId, role } = member;
       assert.ok(userId, 'Missing addPendingMembers.added.member.userId');
-      assert.ok(role, 'Missing addPendingMembers.added.member.role');
+      assert.ok(role != null, 'Missing addPendingMembers.added.member.role');
 
       this.verifyAccess(
         'pendingMembers',

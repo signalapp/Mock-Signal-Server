@@ -103,7 +103,7 @@ export type CreatePrimaryDeviceOptions = Readonly<{
 }>;
 
 export type PendingProvision = {
-  complete(response: PendingProvisionResponse): Promise<Device>;
+  complete: (response: PendingProvisionResponse) => Promise<Device>;
 };
 
 export type PendingProvisionResponse = Readonly<{
@@ -127,9 +127,11 @@ const CERTS_DIR = path.join(__dirname, '..', '..', 'certs');
 
 const CERT = fs.readFileSync(path.join(CERTS_DIR, 'full-cert.pem'));
 const KEY = fs.readFileSync(path.join(CERTS_DIR, 'key.pem'));
+// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
 const TRUST_ROOT: TrustRoot = JSON.parse(
   fs.readFileSync(path.join(CERTS_DIR, 'trust-root.json')).toString(),
 );
+// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
 const ZK_PARAMS: ZKParams = JSON.parse(
   fs.readFileSync(path.join(CERTS_DIR, 'zk-params.json')).toString(),
 );
@@ -177,7 +179,7 @@ export class Server extends BaseServer {
       https: {
         key: KEY,
         cert: CERT,
-        ...(config.https || {}),
+        ...(config.https ?? {}),
       },
     };
 
@@ -222,18 +224,19 @@ export class Server extends BaseServer {
       updates2Path: this.config.updates2Path,
     });
 
-    const server = https.createServer(this.config.https || {}, (req, res) => {
-      run(req, res, httpHandler);
+    const server = https.createServer(this.config.https, (req, res) => {
+      void run(req, res, httpHandler);
     });
 
     const wss = new WebSocket.Server({
       server,
+      // eslint-disable-next-line @typescript-eslint/no-misused-promises
       verifyClient: async (info, callback) => {
         const { url } = info.req;
         assert(url, 'verifyClient: expected a URL on incoming request');
-        const query = parseURL(url, true).query || {};
+        const { query } = parseURL(url, true);
 
-        if (!query.login && !query.password) {
+        if (query.login == null && query.password == null) {
           debug('verifyClient: Allowing connection with no credentials');
           callback(true);
           return;
@@ -241,7 +244,7 @@ export class Server extends BaseServer {
 
         // Note: when a device has been unlinked, it will use '' as its password
         if (
-          !query.login ||
+          query.login == null ||
           Array.isArray(query.login) ||
           typeof query.password !== 'string' ||
           Array.isArray(query.password)
@@ -265,9 +268,9 @@ export class Server extends BaseServer {
     wss.on('connection', (ws, request) => {
       const conn = new WSConnection(request, ws, this);
 
-      conn.start().catch((error) => {
+      conn.start().catch((error: unknown) => {
         ws.close();
-        debug('Websocket handling error', error.stack);
+        debug('Websocket handling error', error);
       });
     });
 
@@ -281,7 +284,7 @@ export class Server extends BaseServer {
 
     this.https = server;
 
-    return await new Promise((resolve) => {
+    return new Promise((resolve) => {
       server.listen(port, host, () => resolve());
     });
   }
@@ -302,7 +305,7 @@ export class Server extends BaseServer {
   //
 
   public async waitForProvision(): Promise<PendingProvision> {
-    return await this.provisionQueue.shift();
+    return this.provisionQueue.shift();
   }
 
   private async waitForStorageManifest(
@@ -346,8 +349,8 @@ export class Server extends BaseServer {
   }: CreatePrimaryDeviceOptions): Promise<PrimaryDevice> {
     const number = await this.generateNumber();
 
-    const registrationId = await generateRegistrationId();
-    const pniRegistrationId = await generateRegistrationId();
+    const registrationId = generateRegistrationId();
+    const pniRegistrationId = generateRegistrationId();
     const devicePassword = password ?? generateDevicePassword();
     const device = await this.registerDevice({
       number,
@@ -417,8 +420,8 @@ export class Server extends BaseServer {
   }
 
   public async createSecondaryDevice(primary: PrimaryDevice): Promise<Device> {
-    const registrationId = await generateRegistrationId();
-    const pniRegistrationId = await generateRegistrationId();
+    const registrationId = generateRegistrationId();
+    const pniRegistrationId = generateRegistrationId();
 
     const device = await this.registerDevice({
       primary: primary.device,
@@ -550,7 +553,7 @@ export class Server extends BaseServer {
     await this.provisionQueue.pushAndWait({
       complete: async (response) => {
         await responseQueue.pushAndWait(response);
-        return await resultQueue.shift();
+        return resultQueue.shift();
       },
     });
 
@@ -560,10 +563,10 @@ export class Server extends BaseServer {
       primaryDevice,
     } = await responseQueue.shift();
 
-    const query = parseURL(provisionURL, true).query || {};
+    const { query } = parseURL(provisionURL, true);
 
     assert.strictEqual(query.uuid, id, 'id mismatch');
-    if (!query.pub_key || Array.isArray(query.pub_key)) {
+    if (query.pub_key == null || Array.isArray(query.pub_key)) {
       throw new Error('Expected `pub_key` in provision URL');
     }
 
@@ -627,10 +630,9 @@ export class Server extends BaseServer {
     encrypted: Buffer,
     timestamp: number,
   ): Promise<void> {
-    assert(
-      source || envelopeType === EnvelopeType.SealedSender,
-      'No source for non-sealed sender envelope',
-    );
+    if (envelopeType !== EnvelopeType.SealedSender) {
+      assert(source, 'No source for non-sealed sender envelope');
+    }
 
     debug('got message for %s.%d', target.aci, target.deviceId);
 
@@ -654,7 +656,7 @@ export class Server extends BaseServer {
           default:
             throw new Error(`Unsupported envelope type: ${envelopeType}`);
         }
-        this.send(
+        void this.send(
           target,
           Buffer.from(
             Proto.Envelope.encode({
@@ -889,7 +891,7 @@ export class Server extends BaseServer {
 
         await fsPromises.writeFile(finalPath, reencrypted.blob);
 
-        this.onNewBackupMediaObject(backupId, {
+        void this.onNewBackupMediaObject(backupId, {
           cdn: 3,
           mediaId: item.mediaId,
           objectLength: reencrypted.blob.length,

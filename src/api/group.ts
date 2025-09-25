@@ -63,7 +63,7 @@ export class Group extends GroupData {
     this.secretParams = secretParams;
 
     const cipher = new ClientZkGroupCipher(secretParams);
-    this.title = decryptBlob(cipher, groupState.title)?.title ?? '';
+    this.title = decryptBlob(cipher, groupState.title).title ?? '';
 
     this.privPublicParams = this.secretParams.getPublicParams();
 

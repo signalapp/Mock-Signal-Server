@@ -148,7 +148,9 @@ describe('util', () => {
       invalid(() => 'hi', /value: \[Function \(anonymous\)\]/);
       invalid(Buffer.from('hi'), /value: <Buffer 68 69>/);
       invalid(new Uint8Array([68, 69]), /value: Uint8Array\(2\) \[ 68, 69 \]/);
+      // eslint-disable-next-line @typescript-eslint/no-extraneous-class
       invalid(class Foo {}, /value: \[class Foo\]/);
+      // eslint-disable-next-line @typescript-eslint/no-extraneous-class
       invalid(new (class Foo {})(), /value: Foo {}/);
       invalid(
         Long.fromNumber(42),

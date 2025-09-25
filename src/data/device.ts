@@ -51,8 +51,8 @@ export type DeviceKeys = Readonly<{
   lastResortKey?: KyberPreKey;
   signedPreKey?: SignedPreKey;
 
-  preKeyIterator?: AsyncIterator<PreKey>;
-  kyberPreKeyIterator?: AsyncIterator<KyberPreKey>;
+  preKeyIterator?: AsyncIterator<PreKey, undefined>;
+  kyberPreKeyIterator?: AsyncIterator<KyberPreKey, undefined>;
 }>;
 
 export type SingleUseKey = Readonly<{
@@ -69,8 +69,8 @@ type InternalDeviceKeys = Readonly<{
   lastResortKey: KyberPreKey;
   preKeys: Array<PreKey>;
   kyberPreKeys: Array<KyberPreKey>;
-  preKeyIterator?: AsyncIterator<PreKey>;
-  kyberPreKeyIterator?: AsyncIterator<KyberPreKey>;
+  preKeyIterator?: AsyncIterator<PreKey, undefined>;
+  kyberPreKeyIterator?: AsyncIterator<KyberPreKey, undefined>;
 }>;
 
 // Technically, it is infinite.
@@ -232,21 +232,17 @@ export class Device {
       const { value } = await keys.preKeyIterator.next();
       preKey = value;
     }
-    if (!preKey) {
-      preKey = keys.preKeys.shift();
-    }
+    preKey ??= keys.preKeys.shift();
 
     let pqPreKey: KyberPreKey | undefined;
     if (keys.kyberPreKeyIterator) {
       const { value } = await keys.kyberPreKeyIterator.next();
       pqPreKey = value;
     }
-    if (!pqPreKey) {
-      pqPreKey = keys.kyberPreKeys.shift();
-    }
-    if (!pqPreKey) {
-      pqPreKey = keys.lastResortKey;
-    }
+    pqPreKey ??= keys.kyberPreKeys.shift();
+    pqPreKey ??= keys.lastResortKey;
+
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition, @typescript-eslint/strict-boolean-expressions
     if (!pqPreKey) {
       throw new Error(
         'popSingleUseKey: Missing pqPreKey; checked iterator/array/lastResort',

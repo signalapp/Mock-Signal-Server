@@ -90,7 +90,7 @@ export const createHandler = (
     );
 
     if (!thePath) {
-      send(res, 400, { error: 'Missing path' });
+      void send(res, 400, { error: 'Missing path' });
       return;
     }
 
@@ -127,7 +127,7 @@ export const createHandler = (
     );
 
     if (!thePath) {
-      send(res, 400, { error: 'Missing path' });
+      void send(res, 400, { error: 'Missing path' });
       return;
     }
 
@@ -156,6 +156,8 @@ export const createHandler = (
 
   const getCdn3Attachment = get('/cdn3/:folder/*', async (req, res) => {
     assert(cdn3Path, 'cdn3Path must be set');
+    assert(req.params.folder != null, 'Missing folder param');
+    assert(req.params._ != null, 'Missing extra params');
 
     if (req.params.folder === 'backups') {
       const { username, password, error } = parsePassword(req);
@@ -166,16 +168,16 @@ export const createHandler = (
           req.url,
           error,
         );
-        send(res, 401, { error });
+        void send(res, 401, { error });
         return;
       }
       if (!username || !password) {
-        send(res, 401, { error: 'Missing username and/or password' });
+        void send(res, 401, { error: 'Missing username and/or password' });
         return;
       }
       const authorized = await server.authorizeBackupCDN(username, password);
       if (!authorized) {
-        send(res, 403, { error: 'Invalid password' });
+        void send(res, 403, { error: 'Invalid password' });
         return;
       }
     }
@@ -214,6 +216,7 @@ export const createHandler = (
   const getStickerPack = get(
     '/stickers/:pack/manifest.proto',
     async (req, res) => {
+      assert(req.params.pack != null, 'Missing pack param');
       const { pack } = req.params;
       const result = await server.fetchStickerPack(pack);
       if (!result) {
@@ -224,6 +227,8 @@ export const createHandler = (
   );
 
   const getSticker = get('/stickers/:pack/full/:sticker', async (req, res) => {
+    assert(req.params.pack != null, 'Missing pack param');
+    assert(req.params.sticker != null, 'Missing sticker param');
     const { pack, sticker } = req.params;
     const result = await server.fetchSticker(pack, parseInt(sticker, 10));
     if (!result) {
@@ -244,7 +249,7 @@ export const createHandler = (
   function toCallLinkResponse(callLink: CallLinkEntry) {
     return {
       name: callLink.encryptedName,
-      restrictions: String(callLink.restrictions),
+      restrictions: callLink.restrictions,
       revoked: callLink.revoked,
       expiration: Math.floor(callLink.expiration / 1000), // unix
     };
@@ -270,7 +275,7 @@ export const createHandler = (
       return send(res, 400, { error: 'Missing room ID' });
     }
 
-    const body = await json(req);
+    const body: unknown = await json(req);
 
     let callLink: CallLinkEntry;
     if (!server.hasCallLink(roomId)) {
@@ -305,14 +310,14 @@ export const createHandler = (
     const { username, password, error } = parsePassword(req);
     if (error) {
       debug('%s %s auth failed, error %j', req.method, req.url, error);
-      send(res, 401, { error });
+      void send(res, 401, { error });
       return;
     }
 
     const device = await server.auth(username ?? '', password ?? '');
     if (!device) {
       debug('%s %s auth failed, need re-provisioning', req.method, req.url);
-      send(res, 401, { error: 'Need re-provisioning' });
+      void send(res, 401, { error: 'Need re-provisioning' });
       return;
     }
 
@@ -332,11 +337,11 @@ export const createHandler = (
     const { error, username, password } = parsePassword(req);
 
     if (error) {
-      send(res, 400, { error });
+      void send(res, 400, { error });
       return undefined;
     }
     if (!username || !password) {
-      send(res, 400, { error: 'Invalid authorization header' });
+      void send(res, 400, { error: 'Invalid authorization header' });
       return undefined;
     }
 
@@ -353,10 +358,11 @@ export const createHandler = (
 
       aciCiphertext = auth.getUuidCiphertext();
       const maybePni = auth.getPniCiphertext();
+      // eslint-disable-next-line @typescript-eslint/strict-boolean-expressions
       assert(maybePni, 'Auth credentials must have PNI');
       pniCiphertext = maybePni;
-    } catch (_) {
-      send(res, 403, { error: 'Invalid credentials' });
+    } catch {
+      void send(res, 403, { error: 'Invalid credentials' });
       return undefined;
     }
 
@@ -380,7 +386,7 @@ export const createHandler = (
 
     const group = await server.getGroup(auth.publicParams);
     if (!group) {
-      send(res, 404, { error: 'Group not found' });
+      void send(res, 404, { error: 'Group not found' });
       return undefined;
     }
 
@@ -394,18 +400,18 @@ export const createHandler = (
     const { error, username, password } = parsePassword(req);
 
     if (error) {
-      send(res, 400, { error });
+      void send(res, 400, { error });
       return undefined;
     }
     if (!username || !password) {
-      send(res, 400, { error: 'Invalid authorization header' });
+      void send(res, 400, { error: 'Invalid authorization header' });
       return undefined;
     }
 
     const device = await server.storageAuth(username, password);
     if (!device) {
       debug('%s %s storage auth failed', req.method, req.url);
-      send(res, 403, { error: 'Invalid authorization' });
+      void send(res, 403, { error: 'Invalid authorization' });
       return undefined;
     }
 
@@ -490,6 +496,7 @@ export const createHandler = (
       return send(res, 403, { error: 'Not a member of this group' });
     }
 
+    assert(req.params.since != null, 'Missing since param');
     const since = parseInt(req.params.since, 10);
     if (since < (member.joinedAtVersion ?? 0)) {
       return send(res, 403, { error: '`since` is before joinedAtVersion' });
@@ -582,11 +589,11 @@ export const createHandler = (
     }
 
     const groupData = Proto.Group.decode(Buffer.from(await buffer(req)));
-    if (!groupData.title) {
+    if (!groupData.title.length) {
       return send(res, 400, { error: 'Missing group title' });
     }
     if (
-      !groupData.publicKey ||
+      !groupData.publicKey.length ||
       !auth.publicParams.equals(groupData.publicKey)
     ) {
       return send(res, 400, { error: 'Invalid group public key' });
@@ -656,7 +663,8 @@ export const createHandler = (
       });
 
       if (modifyResult.conflict) {
-        return send(res, 409, { error: 'Conflict' });
+        await send(res, 409, { error: 'Conflict' });
+        return;
       }
 
       return {
@@ -726,6 +734,7 @@ export const createHandler = (
         return;
       }
 
+      assert(req.params.after != null, 'Missing after param');
       const after = Long.fromString(req.params.after);
       const manifest = await server.getStorageManifest(device);
       if (!manifest?.version?.gt(after)) {
@@ -772,7 +781,7 @@ export const createHandler = (
       Buffer.from(await buffer(req)),
     );
 
-    const keys = (readOperation.readKey || []).map((key) => Buffer.from(key));
+    const keys = readOperation.readKey.map((key) => Buffer.from(key));
 
     const items = await server.getStorageItems(device, keys);
     if (!items) {
@@ -854,6 +863,7 @@ export const createHandler = (
       res.once('finish', () => {
         debug('response %s %s', req.method, req.url, res.statusCode);
       });
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-return
       return routes(req, res);
     } catch (error) {
       assert(error instanceof Error);
