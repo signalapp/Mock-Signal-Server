@@ -466,17 +466,13 @@ export class SenderKeyStore extends SenderKeyStoreBase {
     distributionId: Uuid,
     record: SenderKeyRecord,
   ): Promise<void> {
-    const serviceId = sender.serviceId();
-    assert(serviceId != null, 'Missing serviceId for sender');
-    this.keys.set(`${serviceId.toString()}.${distributionId}`, record);
+    this.keys.set(`${sender.toString()}.${distributionId}`, record);
   }
   async getSenderKey(
     sender: ProtocolAddress,
     distributionId: Uuid,
   ): Promise<SenderKeyRecord | null> {
-    const serviceId = sender.serviceId();
-    assert(serviceId != null, 'Missing serviceId for sender');
-    const key = this.keys.get(`${serviceId.toString()}.${distributionId}`);
+    const key = this.keys.get(`${sender.toString()}.${distributionId}`);
     return key ?? null;
   }
 }
@@ -1910,7 +1906,7 @@ export class PrimaryDevice {
         assert(senderKey, 'Should have an ACI sender keys');
 
         const ciphertext = await SignalClient.groupEncrypt(
-          this.device.address,
+          target.address,
           distributionId,
           senderKey,
           paddedMessage,

@@ -194,6 +194,18 @@ export class StorageState {
     );
   }
 
+  public updateManyAccounts(diff: Proto.IAccountRecord): StorageState {
+    return this.updateManyItems(
+      (item) => item.isAccount(),
+      ({ account }) => ({
+        account: {
+          ...account,
+          ...diff,
+        },
+      }),
+    );
+  }
+
   //
   // Group
   //
