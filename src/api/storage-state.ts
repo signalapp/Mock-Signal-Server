@@ -46,6 +46,12 @@ export type CreateWriteOperationOptions = Readonly<{
   previous?: StorageState;
 }>;
 
+type StorageRecordPredicate = (record: StorageStateRecord) => boolean;
+type StorageRecordMapper = (
+  record: Proto.IStorageRecord,
+) => Proto.IStorageRecord;
+type StorageItemPredicate = (item: StorageStateItem, index: number) => boolean;
+
 class StorageStateItem {
   public readonly type: IdentifierType;
   public readonly key: Buffer;
@@ -358,28 +364,43 @@ export class StorageState {
   }
 
   public findRecord(
-    find: (record: StorageStateRecord) => boolean,
+    find: StorageRecordPredicate,
   ): StorageStateRecord | undefined {
     const item = this.items.find((item) => find(item.toRecord()));
 
     return item?.toRecord();
   }
 
-  public hasRecord(find: (record: StorageStateRecord) => boolean): boolean {
+  public filterRecords(
+    filter: StorageRecordPredicate,
+  ): ReadonlyArray<StorageStateRecord> {
+    return this.items.filter((item) => filter(item.toRecord()));
+  }
+
+  public hasRecord(find: StorageRecordPredicate): boolean {
     return this.findRecord(find) !== undefined;
   }
 
   public updateRecord(
-    find: (item: StorageStateRecord) => boolean,
-    map: (record: Proto.IStorageRecord) => Proto.IStorageRecord,
+    find: StorageRecordPredicate,
+    map: StorageRecordMapper,
   ): StorageState {
     return this.updateItem((item) => find(item.toRecord()), map);
   }
 
-  public removeRecord(
-    find: (item: StorageStateRecord) => boolean,
+  public updateManyRecords(
+    filter: StorageRecordPredicate,
+    map: StorageRecordMapper,
   ): StorageState {
+    return this.updateManyItems((item) => filter(item.toRecord()), map);
+  }
+
+  public removeRecord(find: StorageRecordPredicate): StorageState {
     return this.removeItem((item) => find(item.toRecord()));
+  }
+
+  public removeManyRecords(filter: StorageRecordPredicate): StorageState {
+    return this.removeManyItems((item) => filter(item.toRecord()));
   }
 
   public getAllGroupRecords(): ReadonlyArray<StorageStateRecord> {
@@ -469,15 +490,23 @@ export class StorageState {
     return this.replaceItem(this.items.length, newRecord);
   }
 
-  private updateItem(
-    find: (item: StorageStateItem, index: number) => boolean,
-    map: (record: Proto.IStorageRecord) => Proto.IStorageRecord,
-  ): StorageState {
+  private findItemIndex(find: StorageItemPredicate): number {
     const itemIndex = this.items.findIndex(find);
     if (itemIndex === -1) {
       throw new Error('Item not found');
     }
+    const otherIndex = this.items.findLastIndex(find);
+    if (otherIndex !== itemIndex) {
+      throw new Error('Found multiple items');
+    }
+    return itemIndex;
+  }
 
+  private updateItem(
+    find: StorageItemPredicate,
+    map: StorageRecordMapper,
+  ): StorageState {
+    const itemIndex = this.findItemIndex(find);
     const item = this.items[itemIndex];
     assert(item, 'consistency check');
 
@@ -485,6 +514,29 @@ export class StorageState {
       type: item.type,
       record: map(item.record),
     });
+  }
+
+  public updateManyItems(
+    filter: StorageItemPredicate,
+    map: StorageRecordMapper,
+  ): StorageState {
+    let updated = 0;
+    const newItems = this.items.map((item, index) => {
+      if (filter(item, index)) {
+        updated += 1;
+        return new StorageStateItem({
+          type: item.type,
+          key: StorageState.createStorageID(),
+          record: map(item.record),
+        });
+      } else {
+        return item;
+      }
+    });
+    if (updated === 0) {
+      throw new Error('No items updated');
+    }
+    return new StorageState(this.version, newItems);
   }
 
   private replaceItem(
@@ -504,17 +556,24 @@ export class StorageState {
     return new StorageState(this.version, newItems);
   }
 
-  private removeItem(find: (item: StorageStateItem) => boolean): StorageState {
-    const itemIndex = this.items.findIndex((item) => find(item));
-    if (itemIndex === -1) {
-      throw new Error('Record not found');
-    }
+  private removeItem(find: StorageItemPredicate): StorageState {
+    const itemIndex = this.findItemIndex(find);
 
     const newItems = [
       ...this.items.slice(0, itemIndex),
       ...this.items.slice(itemIndex + 1),
     ];
 
+    return new StorageState(this.version, newItems);
+  }
+
+  private removeManyItems(filter: StorageItemPredicate): StorageState {
+    const newItems = this.items.filter((item, index) => {
+      return !filter(item, index);
+    });
+    if (newItems.length === this.items.length) {
+      throw new Error('No items removed');
+    }
     return new StorageState(this.version, newItems);
   }
 
