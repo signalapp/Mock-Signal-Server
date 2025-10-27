@@ -422,15 +422,6 @@ export const createHandler = (
   // GV2
   //
 
-  const getGroupV1 = get('/v1/groups', async (req, res) => {
-    const auth = await groupAuthAndFetch(req, res);
-    if (!auth) {
-      return;
-    }
-    const { group } = auth;
-    return send(res, 200, Proto.Group.encode(group.state).finish());
-  });
-
   const getGroup = get('/v2/groups', async (req, res) => {
     const auth = await groupAuthAndFetch(req, res);
     if (!auth) {
@@ -451,7 +442,7 @@ export const createHandler = (
   });
 
   const getGroupVersion = get(
-    '/v1/groups/joined_at_version',
+    '/v2/groups/joined_at_version',
     async (req, res) => {
       const auth = await groupAuthAndFetch(req, res);
       if (!auth) {
@@ -507,20 +498,6 @@ export const createHandler = (
       groupChanges: group.getChangesSince(since),
     };
   }
-
-  const getGroupLogsV1 = get('/v1/groups/logs/:since', async (req, res) => {
-    const result = await getGroupLogsInner(req, res);
-    if (!result) {
-      return;
-    }
-    return send(
-      res,
-      200,
-      Proto.GroupChanges.encode({
-        groupChanges: result.groupChanges.groupChanges,
-      }).finish(),
-    );
-  });
 
   const getGroupLogs = get('/v2/groups/logs/:since', async (req, res) => {
     const result = await getGroupLogsInner(req, res);
@@ -606,14 +583,6 @@ export const createHandler = (
     return { auth, group };
   }
 
-  const createGroupV1 = put('/v1/groups', async (req, res) => {
-    const result = await createGroupInner(req, res);
-    if (!result) {
-      return;
-    }
-    return send(res, 200);
-  });
-
   const createGroup = put('/v2/groups', async (req, res) => {
     const result = await createGroupInner(req, res);
     if (!result) {
@@ -680,15 +649,6 @@ export const createHandler = (
       return send(res, 500, { error: error.stack });
     }
   }
-
-  const modifyGroupV1 = patch('/v1/groups', async (req, res) => {
-    const result = await modifyGroupInner(req, res);
-    if (!result) {
-      return;
-    }
-    const { signedChange } = result;
-    return send(res, 200, Proto.GroupChange.encode(signedChange).finish());
-  });
 
   const modifyGroup = patch('/v2/groups', async (req, res) => {
     const result = await modifyGroupInner(req, res);
@@ -820,18 +780,14 @@ export const createHandler = (
           res.setHeader('X-Signal-Timestamp', Date.now());
         }),
       ),
-      getGroupV1,
       getGroup,
       getGroupVersion,
-      getGroupLogsV1,
       getGroupLogs,
-      createGroupV1,
       createGroup,
-      modifyGroupV1,
       modifyGroup,
 
       // TODO(indutny): support this
-      get('/v1/groups/token', notFound),
+      get('/v2/groups/token', notFound),
 
       getStorageManifest,
       getStorageManifestByVersion,
