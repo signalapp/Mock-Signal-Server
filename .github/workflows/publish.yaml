@@ -17,6 +17,8 @@ jobs:
     permissions:
       # Required for OIDC
       id-token: 'write'
+      # Needed for ncipollo/release-action.
+      contents: 'write'
 
     steps:
       - name: Checkout
