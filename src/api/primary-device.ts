@@ -1968,8 +1968,8 @@ export class PrimaryDevice {
     const envelope = Buffer.from(
       Proto.Envelope.encode({
         type: envelopeType,
-        sourceServiceIdBinary: this.device.aciBinary,
-        sourceDeviceId: this.device.deviceId,
+        sourceServiceIdBinary: sealed ? undefined : this.device.aciBinary,
+        sourceDeviceId: sealed ? undefined : this.device.deviceId,
         destinationServiceIdBinary:
           target.getServiceIdBinaryByKind(serviceIdKind),
         updatedPniBinary:
