@@ -11,7 +11,6 @@ import {
   UuidCiphertext,
 } from '@signalapp/libsignal-client/zkgroup';
 import assert from 'assert';
-import Long from 'long';
 
 import { signalservice as Proto } from '../../protos/compiled';
 import { Group } from '../data/group';
@@ -21,13 +20,13 @@ import { daysToSeconds, fromBase64, getTodayInSeconds } from '../util';
 export type ServerGroupOptions = Readonly<{
   profileOps: ServerZkProfileOperations;
   zkSecret: ServerSecretParams;
-  state: Proto.IGroup;
+  state: Proto.Group.Params;
 }>;
 
 export type ModifyGroupResult = Readonly<
   | {
       conflict: false;
-      signedChange: Proto.IGroupChange;
+      signedChange: Proto.GroupChange.Params;
     }
   | {
       conflict: true;
@@ -72,8 +71,10 @@ export class ServerGroup extends Group {
       groupChanges: [
         {
           groupState: unrolledState,
+          groupChange: null,
         },
       ],
+      groupSendEndorsementResponse: null,
     };
   }
 
@@ -102,17 +103,39 @@ export class ServerGroup extends Group {
   public modify(
     sourceAci: UuidCiphertext,
     sourcePni: UuidCiphertext,
-    actions: Proto.GroupChange.IActions,
+    actions: Proto.GroupChange.Actions.Params,
   ): ModifyGroupResult {
-    const appliedActions: Proto.GroupChange.IActions = {
+    const appliedActions: Proto.GroupChange.Actions.Params = {
       version: actions.version,
       sourceUserId: sourceAci.serialize(),
       groupId: fromBase64(this.id),
+      addMembers: null,
+      deleteMembers: null,
+      modifyMemberRoles: null,
+      modifyMemberProfileKeys: null,
+      addPendingMembers: null,
+      deletePendingMembers: null,
+      promotePendingMembers: null,
+      modifyTitle: null,
+      modifyAvatar: null,
+      modifyDisappearingMessagesTimer: null,
+      modifyAttributesAccess: null,
+      modifyMemberAccess: null,
+      modifyAddFromInviteLinkAccess: null,
+      addMemberPendingAdminApprovals: null,
+      deleteMemberPendingAdminApprovals: null,
+      promoteMemberPendingAdminApprovals: null,
+      modifyInviteLinkPassword: null,
+      modifyDescription: null,
+      modifyAnnouncementsOnly: null,
+      addMembersBanned: null,
+      deleteMembersBanned: null,
+      promoteMembersPendingPniAciProfileKey: null,
     };
 
     assert.ok(actions.version, 'Actions should have a new version');
 
-    const timestamp = Long.fromNumber(Date.now());
+    const timestamp = BigInt(Date.now());
 
     const newState = {
       ...this.state,
@@ -179,7 +202,13 @@ export class ServerGroup extends Group {
       );
 
       const newPendingMember = {
-        member: { userId, role },
+        member: {
+          userId,
+          role,
+          profileKey: null,
+          presentation: null,
+          joinedAtVersion: null,
+        },
         addedByUserId: sourceAci.serialize(),
         timestamp,
       };
@@ -260,12 +289,14 @@ export class ServerGroup extends Group {
           role: Role.DEFAULT,
           userId,
           profileKey,
+          presentation: null,
+          joinedAtVersion: null,
         },
       ];
 
       appliedActions.promotePendingMembers = [
         ...(appliedActions.promotePendingMembers ?? []),
-        { userId, profileKey },
+        { userId, profileKey, presentation: null },
       ];
     }
 
@@ -307,6 +338,8 @@ export class ServerGroup extends Group {
           role: Role.DEFAULT,
           userId: aci.serialize(),
           profileKey: profileKey.serialize(),
+          presentation: null,
+          joinedAtVersion: null,
         },
       ];
 
@@ -318,6 +351,7 @@ export class ServerGroup extends Group {
           userId: aci.serialize(),
           pni: pni.serialize(),
           profileKey: profileKey.serialize(),
+          presentation: null,
         },
       ];
     }
@@ -331,15 +365,15 @@ export class ServerGroup extends Group {
       return { conflict: true, signedChange: undefined };
     }
 
-    const encodedActions =
-      Proto.GroupChange.Actions.encode(appliedActions).finish();
+    const encodedActions = Proto.GroupChange.Actions.encode(appliedActions);
     const serverSignature = this.zkSecret
       .sign(Buffer.from(encodedActions))
       .serialize();
 
-    const groupChange: Proto.IGroupChange = {
+    const groupChange: Proto.GroupChange.Params = {
       actions: encodedActions,
       changeEpoch,
+      serverSignature: null,
     };
 
     assert.ok(this.privChanges?.groupChanges, 'Must be initialized');
@@ -363,7 +397,7 @@ export class ServerGroup extends Group {
 
   private verifyAccess(
     attribute: string,
-    member: Proto.IMember | undefined,
+    member: Proto.Member.Params | undefined,
     access: Proto.AccessControl.AccessRequired,
     affectedUserId?: Uint8Array,
   ): void {
@@ -400,7 +434,10 @@ export class ServerGroup extends Group {
     }
   }
 
-  private unrollMember({ role, presentation }: Proto.IMember): Proto.IMember {
+  private unrollMember({
+    role,
+    presentation,
+  }: Proto.Member.Params): Proto.Member.Params {
     assert.strictEqual(typeof role, 'number', 'Group member role is undefined');
     assert.ok(presentation, 'Group member presentation is undefined');
 
@@ -416,6 +453,8 @@ export class ServerGroup extends Group {
       role,
       userId: presentationFFI.getUuidCiphertext().serialize(),
       profileKey: presentationFFI.getProfileKeyCiphertext().serialize(),
+      presentation: null,
+      joinedAtVersion: null,
     };
   }
 }

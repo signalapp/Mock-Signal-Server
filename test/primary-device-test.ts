@@ -42,7 +42,25 @@ async function createPrimaryDevice(name: string): Promise<PrimaryDevice> {
     trustRoot: trustRoot.getPublicKey(),
     serverPublicParams: serverSecretParams.getPublicParams(),
     profileName: name,
-    contacts: {},
+    contacts: {
+      attachmentIdentifier: null,
+      clientUuid: null,
+      contentType: null,
+      key: null,
+      size: null,
+      thumbnail: null,
+      digest: null,
+      incrementalMac: null,
+      chunkSize: null,
+      fileName: null,
+      flags: null,
+      width: null,
+      height: null,
+      caption: null,
+      blurHash: null,
+      uploadTimestamp: null,
+      cdnNumber: null,
+    },
 
     async getSenderCertificate() {
       return generateSenderCertificate(serverCert, {

@@ -29,7 +29,6 @@ import assert from 'assert';
 import https from 'https';
 import crypto from 'crypto';
 import createDebug from 'debug';
-import Long from 'long';
 import { v4 as uuidv4 } from 'uuid';
 import { AddressInfo } from 'net';
 
@@ -170,7 +169,7 @@ export type SetUsernameLinkResult = Readonly<{
 export type StorageWriteResult = Readonly<
   | {
       updated: false;
-      manifest: Proto.IStorageManifest;
+      manifest: Proto.StorageManifest.Params;
       error?: void;
     }
   | {
@@ -186,7 +185,7 @@ export type StorageWriteResult = Readonly<
 
 export type ModifyGroupOptions = Readonly<{
   group: ServerGroup;
-  actions: Proto.GroupChange.IActions;
+  actions: Proto.GroupChange.Actions.Params;
   aciCiphertext: Uint8Array;
   pniCiphertext: Uint8Array;
 }>;
@@ -314,7 +313,7 @@ export abstract class Server {
   private readonly storageAuthByDevice = new Map<Device, StorageAuthEntry>();
   private readonly storageManifestByAci = new Map<
     AciString,
-    Proto.IStorageManifest
+    Proto.StorageManifest.Params
   >();
   private readonly storageItemsByAci = new Map<
     AciString,
@@ -733,7 +732,7 @@ export abstract class Server {
       targets.push([target, message]);
     }
 
-    if (source && source.aci === targetServiceId) {
+    if (source?.aci === targetServiceId) {
       deviceById.delete(source.deviceId);
     }
 
@@ -877,7 +876,7 @@ export abstract class Server {
   // Groups
   //
 
-  public async createGroup(group: Proto.IGroup): Promise<ServerGroup> {
+  public async createGroup(group: Proto.Group.Params): Promise<ServerGroup> {
     const result = new ServerGroup({
       zkSecret: this.zkSecret,
       profileOps: new ServerZkProfileOperations(this.zkSecret),
@@ -959,36 +958,31 @@ export abstract class Server {
 
   public async getStorageManifest(
     device: Device,
-  ): Promise<Proto.IStorageManifest | undefined> {
+  ): Promise<Proto.StorageManifest.Params | undefined> {
     return this.storageManifestByAci.get(device.aci);
   }
 
   public async applyStorageWrite(
     device: Device,
-    { manifest, clearAll, insertItem, deleteKey }: Proto.IWriteOperation,
+    { manifest, clearAll, insertItem, deleteKey }: Proto.WriteOperation.Params,
     shouldNotify = true,
   ): Promise<StorageWriteResult> {
     if (!manifest) {
       return { error: 'missing `writeOperation.manifest`' };
     }
-
     if (!manifest.version) {
-      return {
-        error:
-          'not updating storage manifest, ' +
-          'missing `writeOperation.manifest.version`',
-      };
+      return { error: 'missing `writeOperation.manifest.version`' };
     }
 
     const existing = await this.getStorageManifest(device);
     if (existing) {
       // Atomicity
       assert(existing.version, 'consistency check');
-      if (!manifest.version.eq(existing.version.add(1))) {
+      if (manifest.version !== existing.version + 1n) {
         debug(
           'not updating storage manifest, current version=%j new version=%j',
-          existing.version.toNumber(),
-          manifest.version.toNumber(),
+          existing.version,
+          manifest.version,
         );
         return { updated: false, manifest: existing };
       }
@@ -1020,7 +1014,7 @@ export abstract class Server {
 
     debug(
       'updating storage manifest to version=%j for=%j',
-      manifest.version.toNumber(),
+      manifest.version,
       device.debugId,
     );
     this.storageManifestByAci.set(device.aci, manifest);
@@ -1074,8 +1068,8 @@ export abstract class Server {
   public async getStorageItems(
     device: Device,
     keys: ReadonlyArray<Buffer>,
-  ): Promise<Array<Proto.IStorageItem> | undefined> {
-    const result = new Array<Proto.IStorageItem>();
+  ): Promise<Array<Proto.StorageItem.Params> | undefined> {
+    const result = new Array<Proto.StorageItem.Params>();
 
     await Promise.all(
       keys.map(async (key) => {
@@ -1100,7 +1094,7 @@ export abstract class Server {
 
   protected abstract onStorageManifestUpdate(
     device: Device,
-    version: Long,
+    version: bigint,
   ): Promise<void>;
 
   //

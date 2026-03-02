@@ -19,7 +19,7 @@ const AccessRequired = Proto.AccessControl.AccessRequired;
 
 export type GroupOptions = Readonly<{
   secretParams: GroupSecretParams;
-  groupState: Proto.IGroup;
+  groupState: Proto.Group.Params;
 }>;
 
 export type GroupMember = Readonly<{
@@ -37,16 +37,16 @@ export type GroupFromConfigOptions = Readonly<{
 
 function encryptBlob(
   cipher: ClientZkGroupCipher,
-  proto: Proto.IGroupAttributeBlob,
+  proto: Proto.GroupAttributeBlob.Params,
 ): Buffer {
-  const plaintext = Proto.GroupAttributeBlob.encode(proto).finish();
+  const plaintext = Proto.GroupAttributeBlob.encode(proto);
   return Buffer.from(cipher.encryptBlob(plaintext));
 }
 
 function decryptBlob(
   cipher: ClientZkGroupCipher,
   ciphertext: Uint8Array,
-): Proto.IGroupAttributeBlob {
+): Proto.GroupAttributeBlob {
   const plaintext = cipher.decryptBlob(Buffer.from(ciphertext));
   return Proto.GroupAttributeBlob.decode(plaintext);
 }
@@ -63,7 +63,9 @@ export class Group extends GroupData {
     this.secretParams = secretParams;
 
     const cipher = new ClientZkGroupCipher(secretParams);
-    this.title = decryptBlob(cipher, groupState.title).title ?? '';
+    const decrypted = decryptBlob(cipher, groupState.title);
+    assert(decrypted.content?.kind === 'title', 'expected title');
+    this.title = decrypted.content.value;
 
     this.privPublicParams = this.secretParams.getPublicParams();
 
@@ -73,8 +75,10 @@ export class Group extends GroupData {
       groupChanges: [
         {
           groupState,
+          groupChange: null,
         },
       ],
+      groupSendEndorsementResponse: null,
     };
   }
 
@@ -85,10 +89,10 @@ export class Group extends GroupData {
   }: GroupFromConfigOptions): Group {
     const cipher = new ClientZkGroupCipher(secretParams);
 
-    const groupState = {
+    const groupState: Proto.Group.Params = {
       publicKey: secretParams.getPublicParams().serialize(),
       version: 0,
-      title: encryptBlob(cipher, { title }),
+      title: encryptBlob(cipher, { content: { kind: 'title', value: title } }),
 
       // TODO(indutny): make it configurable
       accessControl: {
@@ -101,8 +105,20 @@ export class Group extends GroupData {
         return {
           role: Proto.Member.Role.ADMINISTRATOR,
           presentation: presentation.serialize(),
+          userId: null,
+          profileKey: null,
+          joinedAtVersion: null,
         };
       }),
+
+      avatar: null,
+      disappearingMessagesTimer: null,
+      membersPendingProfileKey: null,
+      membersPendingAdminApproval: null,
+      inviteLinkPassword: null,
+      descriptionBytes: null,
+      announcementsOnly: null,
+      membersBanned: null,
     };
 
     return new Group({
@@ -115,11 +131,12 @@ export class Group extends GroupData {
     return Buffer.from(this.secretParams.getMasterKey().serialize());
   }
 
-  public toContext(): Proto.IGroupContextV2 {
+  public toContext(): Proto.GroupContextV2.Params {
     const masterKey = this.masterKey;
     return {
       masterKey,
       revision: this.revision,
+      groupChange: null,
     };
   }
 
@@ -142,13 +159,13 @@ export class Group extends GroupData {
 
   public getMemberByServiceId(
     serviceId: ServiceIdString,
-  ): Proto.IMember | undefined {
+  ): Proto.Member.Params | undefined {
     return this.getMember(new UuidCiphertext(this.encryptServiceId(serviceId)));
   }
 
   public getPendingMemberByServiceId(
     serviceId: ServiceIdString,
-  ): Proto.IMemberPendingProfileKey | undefined {
+  ): Proto.MemberPendingProfileKey.Params | undefined {
     return this.getPendingMember(
       new UuidCiphertext(this.encryptServiceId(serviceId)),
     );

@@ -18,7 +18,11 @@ export function serializeContacts(contacts: ReadonlyArray<Contact>): Buffer {
           aciBinary,
           number,
           name,
-        }).finish(),
+          avatar: null,
+          expireTimer: null,
+          expireTimerVersion: null,
+          inboxPosition: null,
+        }),
       );
     })
     .map((chunk) => {

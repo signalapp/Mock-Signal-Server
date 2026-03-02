@@ -13,12 +13,28 @@ export type Attachment = {
 export function attachmentToPointer(
   cdnKey: string,
   attachment: Attachment,
-): Proto.IAttachmentPointer {
+): Proto.AttachmentPointer.Params {
   return {
     contentType: 'application/octet-stream',
-    cdnKey,
+    attachmentIdentifier: {
+      kind: 'cdnKey',
+      value: cdnKey,
+    },
     key: attachment.key,
     size: attachment.size,
     digest: attachment.digest,
+
+    clientUuid: null,
+    thumbnail: null,
+    incrementalMac: null,
+    chunkSize: null,
+    fileName: null,
+    flags: null,
+    width: null,
+    height: null,
+    caption: null,
+    blurHash: null,
+    uploadTimestamp: null,
+    cdnNumber: null,
   };
 }

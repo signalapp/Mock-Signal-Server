@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import assert from 'assert';
-import Long from 'long';
 
 import { PromiseQueue, assertJsonValue } from '../src/util';
 
@@ -152,10 +151,7 @@ describe('util', () => {
       invalid(class Foo {}, /value: \[class Foo\]/);
       // eslint-disable-next-line @typescript-eslint/no-extraneous-class
       invalid(new (class Foo {})(), /value: Foo {}/);
-      invalid(
-        Long.fromNumber(42),
-        /value: Long { low: 42, high: 0, unsigned: false }/,
-      );
+      invalid(42n, /value: 42n/);
     });
 
     it('should report multiple errors', () => {

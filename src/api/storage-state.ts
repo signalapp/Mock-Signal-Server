@@ -3,7 +3,6 @@
 
 import assert from 'assert';
 import crypto from 'crypto';
-import Long from 'long';
 import { Buffer } from 'node:buffer';
 
 import { signalservice as Proto } from '../../protos/compiled';
@@ -13,21 +12,24 @@ import { ServiceIdKind } from '../types';
 import { Group } from './group';
 import { PrimaryDevice } from './primary-device';
 
-export type StorageStateRecord = Readonly<{
-  type: Proto.ManifestRecord.Identifier.Type;
-  key: Buffer;
-  record: Proto.IStorageRecord;
-}>;
+type RecordValue = NonNullable<Proto.StorageRecord.Params['record']>;
+
+export type StorageStateRecord<Value extends RecordValue = RecordValue> =
+  Readonly<{
+    type: Proto.ManifestRecord.Identifier.Type;
+    key: Buffer;
+    record: Value;
+  }>;
 
 export type StorageStateNewRecord = Readonly<{
   type: Proto.ManifestRecord.Identifier.Type;
   key?: Buffer;
-  record: Proto.IStorageRecord;
+  record: RecordValue;
 }>;
 
 export type DiffResult = Readonly<{
-  added: ReadonlyArray<Proto.IStorageRecord>;
-  removed: ReadonlyArray<Proto.IStorageRecord>;
+  added: ReadonlyArray<RecordValue>;
+  removed: ReadonlyArray<RecordValue>;
 }>;
 
 const KEY_SIZE = 16;
@@ -46,18 +48,21 @@ export type CreateWriteOperationOptions = Readonly<{
   previous?: StorageState;
 }>;
 
-type StorageRecordPredicate = (record: StorageStateRecord) => boolean;
-type StorageRecordMapper = (
-  record: Proto.IStorageRecord,
-) => Proto.IStorageRecord;
-type StorageItemPredicate = (item: StorageStateItem, index: number) => boolean;
+type StorageRecordPredicate<Value extends RecordValue> = (
+  record: StorageStateRecord,
+) => record is StorageStateRecord<Value>;
+type StorageRecordMapper<Value extends RecordValue> = (record: Value) => Value;
+type StorageItemPredicate<Value extends RecordValue> = (
+  item: StorageStateItem,
+  index: number,
+) => item is StorageStateItem<Value>;
 
-class StorageStateItem {
+class StorageStateItem<Value extends RecordValue = RecordValue> {
   public readonly type: IdentifierType;
   public readonly key: Buffer;
-  public readonly record: Proto.IStorageRecord;
+  public readonly record: Value;
 
-  constructor({ type, key, record }: StorageStateRecord) {
+  constructor({ type, key, record }: StorageStateRecord<Value>) {
     this.type = type;
     this.key = key;
     this.record = record;
@@ -70,32 +75,39 @@ class StorageStateItem {
   public toStorageItem({
     storageKey,
     recordIkm,
-  }: ToStorageItemOptions): Proto.IStorageItem {
+  }: ToStorageItemOptions): Proto.StorageItem.Params {
     return encryptStorageItem({
       storageKey,
       recordIkm,
       key: this.key,
-      record: this.record,
+      record: { record: this.record },
     });
   }
 
-  public toIdentifier(): Proto.ManifestRecord.IIdentifier {
+  public toIdentifier(): Proto.ManifestRecord.Identifier.Params {
     return {
       type: this.type,
       raw: this.key,
     };
   }
 
-  public isAccount(): boolean {
-    return this.type === IdentifierType.ACCOUNT && Boolean(this.record.account);
+  public isAccount(): this is StorageStateItem<
+    Extract<RecordValue, { kind: 'account' }>
+  > {
+    return (
+      this.type === IdentifierType.ACCOUNT && this.record.kind === 'account'
+    );
   }
 
-  public isGroup(group: Group): boolean {
+  public isGroup(
+    group: Group,
+  ): this is StorageStateItem<Extract<RecordValue, { kind: 'groupV2' }>> {
     if (this.type !== IdentifierType.GROUPV2) {
       return false;
     }
+    assert(this.record.kind === 'groupV2', 'consistency check');
 
-    const masterKey = this.record.groupV2?.masterKey;
+    const masterKey = this.record.value.masterKey;
     if (!masterKey) {
       return false;
     }
@@ -103,13 +115,17 @@ class StorageStateItem {
     return group.masterKey.equals(masterKey);
   }
 
-  public isContact(device: Device, serviceIdKind: ServiceIdKind): boolean {
+  public isContact(
+    device: Device,
+    serviceIdKind: ServiceIdKind,
+  ): this is StorageStateItem<Extract<RecordValue, { kind: 'contact' }>> {
     if (this.type !== IdentifierType.CONTACT) {
       return false;
     }
+    assert(this.record.kind === 'contact', 'consistency check');
 
     if (serviceIdKind === ServiceIdKind.ACI) {
-      const existingAci = this.record.contact?.aciBinary;
+      const existingAci = this.record.value.aciBinary;
       if (!existingAci?.length) {
         return false;
       }
@@ -117,7 +133,7 @@ class StorageStateItem {
       return Buffer.compare(existingAci, device.aciRawUuid) === 0;
     }
 
-    const existingPni = this.record.contact?.pniBinary;
+    const existingPni = this.record.value.pniBinary;
     if (!existingPni?.length) {
       return false;
     }
@@ -135,7 +151,7 @@ class StorageStateItem {
       .join('\n');
   }
 
-  public toRecord(): StorageStateRecord {
+  public toRecord(): StorageStateRecord<Value> {
     return {
       type: this.type,
       key: this.key,
@@ -143,6 +159,46 @@ class StorageStateItem {
     };
   }
 }
+
+const EMPTY_CONTACT: Proto.ContactRecord.Params = {
+  e164: null,
+  profileKey: null,
+  identityKey: null,
+  identityState: null,
+  givenName: null,
+  familyName: null,
+  username: null,
+  blocked: null,
+  whitelisted: null,
+  archived: null,
+  markedUnread: null,
+  mutedUntilTimestamp: null,
+  hideStory: null,
+  unregisteredAtTimestamp: null,
+  systemGivenName: null,
+  systemFamilyName: null,
+  systemNickname: null,
+  hidden: null,
+  pniSignatureVerified: null,
+  nickname: null,
+  note: null,
+  avatarColor: null,
+  aciBinary: null,
+  pniBinary: null,
+};
+
+const EMPTY_GROUP: Proto.GroupV2Record.Params = {
+  masterKey: null,
+  blocked: null,
+  whitelisted: null,
+  archived: null,
+  markedUnread: null,
+  mutedUntilTimestamp: null,
+  dontNotifyForMentionsIfMuted: null,
+  hideStory: null,
+  storySendMode: null,
+  avatarColor: null,
+};
 
 export class StorageState {
   private readonly items: ReadonlyArray<StorageStateItem>;
@@ -160,7 +216,45 @@ export class StorageState {
         key: StorageState.createStorageID(),
         type: IdentifierType.ACCOUNT,
         record: {
-          account: {},
+          kind: 'account',
+          value: {
+            profileKey: null,
+            givenName: null,
+            familyName: null,
+            avatarUrlPath: null,
+            noteToSelfArchived: null,
+            readReceipts: null,
+            sealedSenderIndicators: null,
+            typingIndicators: null,
+            noteToSelfMarkedUnread: null,
+            linkPreviews: null,
+            phoneNumberSharingMode: null,
+            unlistedPhoneNumber: null,
+            pinnedConversations: null,
+            preferContactAvatars: null,
+            payments: null,
+            universalExpireTimer: null,
+            preferredReactionEmoji: null,
+            donorSubscriberId: null,
+            donorSubscriberCurrencyCode: null,
+            displayBadgesOnProfile: null,
+            donorSubscriptionManuallyCancelled: null,
+            keepMutedChatsArchived: null,
+            hasSetMyStoriesPrivacy: null,
+            hasViewedOnboardingStory: null,
+            storiesDisabled: null,
+            storyViewReceiptsEnabled: null,
+            hasSeenGroupStoryEducationSheet: null,
+            username: null,
+            hasCompletedUsernameOnboarding: null,
+            usernameLink: null,
+            hasBackup: null,
+            backupTier: null,
+            backupSubscriberData: null,
+            avatarColor: null,
+            notificationProfileManualOverride: null,
+            notificationProfileSyncDisabled: null,
+          },
         },
       }),
     ]);
@@ -170,39 +264,46 @@ export class StorageState {
   // Account
   //
 
-  public getAccountRecord(): Proto.IAccountRecord | undefined {
+  public getAccountRecord(): Proto.AccountRecord.Params | undefined {
     const item = this.items.find((item) => item.isAccount());
     if (!item) {
       return undefined;
     }
 
-    const { account } = item.record;
-    assert(account, 'consistency check');
-
-    return account;
+    return item.record.value;
   }
 
-  public updateAccount(diff: Proto.IAccountRecord): StorageState {
+  public updateAccount(
+    diff: Partial<Proto.AccountRecord.Params>,
+  ): StorageState {
     return this.updateItem(
       (item) => item.isAccount(),
-      ({ account }) => ({
-        account: {
-          ...account,
-          ...diff,
-        },
-      }),
+      (record) => {
+        return {
+          kind: 'account',
+          value: {
+            ...record.value,
+            ...diff,
+          },
+        };
+      },
     );
   }
 
-  public updateManyAccounts(diff: Proto.IAccountRecord): StorageState {
+  public updateManyAccounts(
+    diff: Partial<Proto.AccountRecord.Params>,
+  ): StorageState {
     return this.updateManyItems(
       (item) => item.isAccount(),
-      ({ account }) => ({
-        account: {
-          ...account,
-          ...diff,
-        },
-      }),
+      (record) => {
+        return {
+          kind: 'account',
+          value: {
+            ...record.value,
+            ...diff,
+          },
+        };
+      },
     );
   }
 
@@ -210,23 +311,25 @@ export class StorageState {
   // Group
   //
 
-  public getGroup(group: Group): Proto.IGroupV2Record | undefined {
+  public getGroup(group: Group): Proto.GroupV2Record.Params | undefined {
     const item = this.items.find((item) => item.isGroup(group));
     if (!item) {
       return undefined;
     }
 
-    const { groupV2 } = item.record;
-    assert(groupV2, 'consistency check');
-
-    return groupV2;
+    return item.record.value;
   }
 
-  public addGroup(group: Group, diff: Proto.IGroupV2Record = {}): StorageState {
+  public addGroup(
+    group: Group,
+    diff: Partial<Proto.GroupV2Record.Params> = {},
+  ): StorageState {
     return this.addItem({
       type: IdentifierType.GROUPV2,
       record: {
-        groupV2: {
+        kind: 'groupV2',
+        value: {
+          ...EMPTY_GROUP,
           ...diff,
           masterKey: group.masterKey,
         },
@@ -234,15 +337,21 @@ export class StorageState {
     });
   }
 
-  public updateGroup(group: Group, diff: Proto.IGroupV2Record): StorageState {
+  public updateGroup(
+    group: Group,
+    diff: Partial<Proto.GroupV2Record.Params>,
+  ): StorageState {
     return this.updateItem(
       (item) => item.isGroup(group),
-      ({ groupV2 }) => ({
-        groupV2: {
-          ...groupV2,
-          ...diff,
-        },
-      }),
+      (record) => {
+        return {
+          kind: 'groupV2',
+          value: {
+            ...record.value,
+            ...diff,
+          },
+        };
+      },
     );
   }
   public pinGroup(group: Group): StorageState {
@@ -258,10 +367,10 @@ export class StorageState {
     assert(account, 'No account record found');
 
     return (account.pinnedConversations ?? []).some((convo) => {
-      if (!convo.groupMasterKey) {
+      if (convo.identifier?.kind !== 'groupMasterKey') {
         return false;
       }
-      return group.masterKey.equals(convo.groupMasterKey);
+      return group.masterKey.equals(convo.identifier.value);
     });
   }
 
@@ -271,17 +380,19 @@ export class StorageState {
 
   public addContact(
     { device }: PrimaryDevice,
-    diff: Proto.IContactRecord = {},
+    diff: Partial<Proto.ContactRecord.Params> = {},
     serviceIdKind = ServiceIdKind.ACI,
   ): StorageState {
     return this.addItem({
       type: IdentifierType.CONTACT,
       record: {
-        contact: {
+        kind: 'contact',
+        value: {
+          ...EMPTY_CONTACT,
           aciBinary:
-            serviceIdKind === ServiceIdKind.ACI ? device.aciRawUuid : undefined,
+            serviceIdKind === ServiceIdKind.ACI ? device.aciRawUuid : null,
           pniBinary:
-            serviceIdKind === ServiceIdKind.PNI ? device.pniRawUuid : undefined,
+            serviceIdKind === ServiceIdKind.PNI ? device.pniRawUuid : null,
           e164: device.number,
           ...diff,
         },
@@ -291,24 +402,27 @@ export class StorageState {
 
   public updateContact(
     { device }: PrimaryDevice,
-    diff: Proto.IContactRecord,
+    diff: Partial<Proto.ContactRecord.Params>,
     serviceIdKind = ServiceIdKind.ACI,
   ): StorageState {
     return this.updateItem(
       (item) => item.isContact(device, serviceIdKind),
-      ({ contact }) => ({
-        contact: {
-          ...contact,
-          ...diff,
-        },
-      }),
+      (record) => {
+        return {
+          kind: 'contact',
+          value: {
+            ...record.value,
+            ...diff,
+          },
+        };
+      },
     );
   }
 
   public getContact(
     { device }: PrimaryDevice,
     serviceIdKind = ServiceIdKind.ACI,
-  ): Proto.IContactRecord | undefined {
+  ): Proto.ContactRecord.Params | undefined {
     const item = this.items.find((item) =>
       item.isContact(device, serviceIdKind),
     );
@@ -316,10 +430,7 @@ export class StorageState {
       return undefined;
     }
 
-    const { contact } = item.record;
-    assert(contact, 'consistency check');
-
-    return contact;
+    return item.record.value;
   }
 
   public removeContact(
@@ -331,7 +442,7 @@ export class StorageState {
 
   public mergeContact(
     primary: PrimaryDevice,
-    diff: Proto.IContactRecord,
+    diff: Partial<Proto.ContactRecord.Params>,
   ): StorageState {
     const { device } = primary;
     return this.removeItem((item) => item.isContact(device, ServiceIdKind.ACI))
@@ -362,7 +473,10 @@ export class StorageState {
     assert(account, 'No account record found');
 
     return (account.pinnedConversations ?? []).some((convo) => {
-      const existing = convo.contact?.serviceIdBinary;
+      if (convo.identifier?.kind !== 'contact') {
+        return false;
+      }
+      const existing = convo.identifier.value.serviceIdBinary;
       return existing && Buffer.compare(existing, device.aciRawUuid) === 0;
     });
   }
@@ -375,54 +489,78 @@ export class StorageState {
     return this.addItem(newRecord);
   }
 
-  public findRecord(
-    find: StorageRecordPredicate,
-  ): StorageStateRecord | undefined {
-    const item = this.items.find((item) => find(item.toRecord()));
+  public findRecord<Value extends RecordValue>(
+    find: StorageRecordPredicate<Value>,
+  ): StorageStateRecord<Value> | undefined {
+    const item = this.items.find((item): item is StorageStateItem<Value> => {
+      return find(item.toRecord());
+    });
 
     return item?.toRecord();
   }
 
-  public filterRecords(
-    filter: StorageRecordPredicate,
-  ): ReadonlyArray<StorageStateRecord> {
-    return this.items.filter((item) => filter(item.toRecord()));
+  public filterRecords<Value extends RecordValue>(
+    filter: StorageRecordPredicate<Value>,
+  ): ReadonlyArray<StorageStateRecord<Value>> {
+    return this.items.filter((item): item is StorageStateItem<Value> =>
+      filter(item.toRecord()),
+    );
   }
 
-  public hasRecord(find: StorageRecordPredicate): boolean {
-    return this.findRecord(find) !== undefined;
+  public hasRecord(find: (record: StorageStateRecord) => boolean): boolean {
+    return (
+      this.findRecord(find as StorageRecordPredicate<RecordValue>) !== undefined
+    );
   }
 
-  public updateRecord(
-    find: StorageRecordPredicate,
-    map: StorageRecordMapper,
+  public updateRecord<Value extends RecordValue>(
+    find: StorageRecordPredicate<Value>,
+    map: StorageRecordMapper<Value>,
   ): StorageState {
-    return this.updateItem((item) => find(item.toRecord()), map);
+    return this.updateItem(
+      (item): item is StorageStateItem<Value> => find(item.toRecord()),
+      map,
+    );
   }
 
-  public updateManyRecords(
-    filter: StorageRecordPredicate,
-    map: StorageRecordMapper,
+  public updateManyRecords<Value extends RecordValue>(
+    filter: StorageRecordPredicate<Value>,
+    map: StorageRecordMapper<Value>,
   ): StorageState {
-    return this.updateManyItems((item) => filter(item.toRecord()), map);
+    return this.updateManyItems(
+      (item): item is StorageStateItem<Value> => filter(item.toRecord()),
+      map,
+    );
   }
 
-  public removeRecord(find: StorageRecordPredicate): StorageState {
+  public removeRecord(
+    find: (record: StorageStateRecord) => boolean,
+  ): StorageState {
     return this.removeItem((item) => find(item.toRecord()));
   }
 
-  public removeManyRecords(filter: StorageRecordPredicate): StorageState {
+  public removeManyRecords(
+    filter: (record: StorageStateRecord) => boolean,
+  ): StorageState {
     return this.removeManyItems((item) => filter(item.toRecord()));
   }
 
-  public getAllGroupRecords(): ReadonlyArray<StorageStateRecord> {
+  public getAllGroupRecords(): ReadonlyArray<
+    StorageStateRecord<Extract<RecordValue, { kind: 'groupV2' }>>
+  > {
     return this.items
-      .filter((item) => item.type === IdentifierType.GROUPV2)
+      .filter(
+        (
+          item,
+        ): item is StorageStateItem<
+          Extract<RecordValue, { kind: 'groupV2' }>
+        > => item.type === IdentifierType.GROUPV2,
+      )
       .map((item) => item.toRecord());
   }
 
   public hasKey(storageKey: Buffer): boolean {
-    return this.hasRecord(({ key }) => key.equals(storageKey));
+    return this.hasRecord((item) => item.key.equals(storageKey));
   }
 
   //
@@ -433,8 +571,8 @@ export class StorageState {
     storageKey,
     recordIkm,
     previous,
-  }: CreateWriteOperationOptions): Proto.IWriteOperation {
-    const newVersion = Long.fromNumber(
+  }: CreateWriteOperationOptions): Proto.WriteOperation.Params {
+    const newVersion = BigInt(
       previous ? previous.version + 1 : this.version + 1,
     );
 
@@ -443,7 +581,7 @@ export class StorageState {
         return item.getKeyString();
       }),
     );
-    const insertItem = new Array<Proto.IStorageItem>();
+    const insertItem = new Array<Proto.StorageItem.Params>();
 
     for (const item of this.items) {
       if (!keysToDelete.delete(item.getKeyString())) {
@@ -454,7 +592,8 @@ export class StorageState {
     const manifest = encryptStorageManifest(storageKey, {
       version: newVersion,
       identifiers: this.items.map((item) => item.toIdentifier()),
-      recordIkm,
+      recordIkm: recordIkm ?? null,
+      sourceDevice: null,
     });
 
     return {
@@ -463,6 +602,7 @@ export class StorageState {
       deleteKey: Array.from(keysToDelete).map((key) => {
         return Buffer.from(key, 'base64');
       }),
+      clearAll: null,
     };
   }
 
@@ -474,8 +614,8 @@ export class StorageState {
   }
 
   public diff(oldState: StorageState): DiffResult {
-    const addedIds = new Map<string, Proto.IStorageRecord>();
-    const removedIds = new Map<string, Proto.IStorageRecord>();
+    const addedIds = new Map<string, RecordValue>();
+    const removedIds = new Map<string, RecordValue>();
 
     for (const item of this.items) {
       addedIds.set(item.key.toString('base64'), item.record);
@@ -502,7 +642,9 @@ export class StorageState {
     return this.replaceItem(this.items.length, newRecord);
   }
 
-  private findItemIndex(find: StorageItemPredicate): number {
+  private findItemIndex(
+    find: (record: StorageStateItem, index: number) => boolean,
+  ): number {
     const itemIndex = this.items.findIndex(find);
     if (itemIndex === -1) {
       throw new Error('Item not found');
@@ -514,12 +656,12 @@ export class StorageState {
     return itemIndex;
   }
 
-  private updateItem(
-    find: StorageItemPredicate,
-    map: StorageRecordMapper,
+  private updateItem<Value extends RecordValue>(
+    find: StorageItemPredicate<Value>,
+    map: StorageRecordMapper<Value>,
   ): StorageState {
     const itemIndex = this.findItemIndex(find);
-    const item = this.items[itemIndex];
+    const item = this.items[itemIndex] as StorageStateItem<Value> | undefined;
     assert(item, 'consistency check');
 
     return this.replaceItem(itemIndex, {
@@ -528,9 +670,9 @@ export class StorageState {
     });
   }
 
-  public updateManyItems(
-    filter: StorageItemPredicate,
-    map: StorageRecordMapper,
+  public updateManyItems<Value extends RecordValue>(
+    filter: StorageItemPredicate<Value>,
+    map: StorageRecordMapper<Value>,
   ): StorageState {
     let updated = 0;
     const newItems = this.items.map((item, index) => {
@@ -568,7 +710,9 @@ export class StorageState {
     return new StorageState(this.version, newItems);
   }
 
-  private removeItem(find: StorageItemPredicate): StorageState {
+  private removeItem(
+    find: (item: StorageStateItem, index: number) => boolean,
+  ): StorageState {
     const itemIndex = this.findItemIndex(find);
 
     const newItems = [
@@ -579,7 +723,9 @@ export class StorageState {
     return new StorageState(this.version, newItems);
   }
 
-  private removeManyItems(filter: StorageItemPredicate): StorageState {
+  private removeManyItems(
+    filter: (item: StorageStateItem, index: number) => boolean,
+  ): StorageState {
     const newItems = this.items.filter((item, index) => {
       return !filter(item, index);
     });
@@ -599,15 +745,19 @@ export class StorageState {
 
     return this.updateItem(
       (item) => item.isAccount(),
-      ({ account }) => {
-        assert(account, 'consistency check');
+      (record) => {
+        const { value: account } = record;
 
         const { pinnedConversations } = account;
 
         const newPinnedConversations = pinnedConversations?.slice() ?? [];
 
         const existingIndex = newPinnedConversations.findIndex((convo) => {
-          const existing = convo.contact?.serviceIdBinary;
+          const { identifier } = convo;
+          if (identifier?.kind !== 'contact') {
+            return false;
+          }
+          const existing = identifier.value.serviceIdBinary;
           return (
             existing && Buffer.compare(existing, deviceServiceIdBinary) === 0
           );
@@ -615,14 +765,21 @@ export class StorageState {
 
         if (isPinned && existingIndex === -1) {
           newPinnedConversations.push({
-            contact: { serviceIdBinary: deviceServiceIdBinary },
+            identifier: {
+              kind: 'contact',
+              value: {
+                e164: null,
+                serviceIdBinary: deviceServiceIdBinary,
+              },
+            },
           });
         } else if (!isPinned && existingIndex !== -1) {
           newPinnedConversations.splice(existingIndex, 1);
         }
 
         return {
-          account: {
+          kind: 'account',
+          value: {
             ...account,
             pinnedConversations: newPinnedConversations,
           },
@@ -634,30 +791,34 @@ export class StorageState {
   private changeGroupPin(group: Group, isPinned: boolean): StorageState {
     return this.updateItem(
       (item) => item.isAccount(),
-      ({ account }) => {
-        assert(account, 'consistency check');
-
+      (record) => {
+        const { value: account } = record;
         const { pinnedConversations } = account;
 
         const newPinnedConversations = pinnedConversations?.slice() ?? [];
 
         const existingIndex = newPinnedConversations.findIndex((convo) => {
-          if (!convo.groupMasterKey) {
+          const { identifier } = convo;
+          if (identifier?.kind !== 'groupMasterKey') {
             return false;
           }
-          return group.masterKey.equals(convo.groupMasterKey);
+          return group.masterKey.equals(identifier.value);
         });
 
         if (isPinned && existingIndex === -1) {
           newPinnedConversations.push({
-            groupMasterKey: group.masterKey,
+            identifier: {
+              kind: 'groupMasterKey',
+              value: group.masterKey,
+            },
           });
         } else if (!isPinned && existingIndex !== -1) {
           newPinnedConversations.splice(existingIndex, 1);
         }
 
         return {
-          account: {
+          kind: 'account',
+          value: {
             ...account,
             pinnedConversations: newPinnedConversations,
           },

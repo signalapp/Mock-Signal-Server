@@ -5,7 +5,6 @@ import assert from 'assert';
 import fs from 'fs';
 import fsPromises from 'fs/promises';
 import { type Readable } from 'stream';
-import Long from 'long';
 import path from 'path';
 import https, { ServerOptions } from 'https';
 import { parse as parseURL } from 'url';
@@ -144,7 +143,7 @@ export class Server extends BaseServer {
   private readonly trustRoot: PrivateKey;
   private readonly primaryDevices = new Map<string, PrimaryDevice>();
   private readonly knownNumbers = new Set<string>();
-  private emptyAttachment: Proto.IAttachmentPointer | undefined;
+  private emptyAttachment: Proto.AttachmentPointer.Params | undefined;
 
   private provisionQueue: PromiseQueue<PendingProvision>;
   private provisionResultQueueByCode = new Map<
@@ -379,7 +378,7 @@ export class Server extends BaseServer {
     );
     const contactsCDNKey = await this.storeAttachment(contactsAttachment.blob);
     debug('contacts cdn key', contactsCDNKey);
-    debug('groups cdn key', this.emptyAttachment.cdnKey);
+    debug('groups cdn key', this.emptyAttachment.attachmentIdentifier?.value);
 
     const primary = new PrimaryDevice(device, {
       profileName: profileName,
@@ -604,10 +603,10 @@ export class Server extends BaseServer {
       readReceipts: true,
       provisioningVersion: Proto.ProvisioningVersion.CURRENT,
       masterKey: primaryDevice.masterKey,
-      ephemeralBackupKey: primaryDevice.ephemeralBackupKey,
+      ephemeralBackupKey: primaryDevice.ephemeralBackupKey ?? null,
       mediaRootBackupKey: primaryDevice.mediaRootBackupKey,
       accountEntropyPool: primaryDevice.accountEntropyPool,
-    }).finish();
+    });
 
     const { body, ephemeralKey } = encryptProvisionMessage(
       Buffer.from(envelopeData),
@@ -617,7 +616,7 @@ export class Server extends BaseServer {
     const envelope = Proto.ProvisionEnvelope.encode({
       publicKey: ephemeralKey,
       body,
-    }).finish();
+    });
 
     return { envelope: Buffer.from(envelope) };
   }
@@ -661,14 +660,21 @@ export class Server extends BaseServer {
           Buffer.from(
             Proto.Envelope.encode({
               type,
-              sourceServiceIdBinary: source?.aciBinary,
-              sourceDeviceId: source?.deviceId,
+              sourceServiceIdBinary: source?.aciBinary ?? null,
+              sourceDeviceId: source?.deviceId ?? null,
               destinationServiceIdBinary:
                 target.getServiceIdBinaryByKind(serviceIdKind),
-              serverTimestamp: Long.fromNumber(timestamp),
-              clientTimestamp: Long.fromNumber(timestamp),
+              serverTimestamp: BigInt(timestamp),
+              clientTimestamp: BigInt(timestamp),
               content: encrypted,
-            }).finish(),
+              urgent: null,
+              serverGuid: null,
+              ephemeral: null,
+              story: null,
+              reportSpamToken: null,
+              serverGuidBinary: null,
+              updatedPniBinary: null,
+            }),
           ),
         );
       }
@@ -792,7 +798,7 @@ export class Server extends BaseServer {
   public override async getStorageItems(
     device: Device,
     keys: ReadonlyArray<Buffer>,
-  ): Promise<Array<Proto.IStorageItem> | undefined> {
+  ): Promise<Array<Proto.StorageItem.Params> | undefined> {
     if (
       this.config.maxStorageReadKeys !== undefined &&
       keys.length > this.config.maxStorageReadKeys
@@ -826,7 +832,7 @@ export class Server extends BaseServer {
 
   protected override async onStorageManifestUpdate(
     device: Device,
-    version: Long,
+    version: bigint,
   ): Promise<void> {
     debug('onStorageManifestUpdate', device.debugId);
 
@@ -836,7 +842,7 @@ export class Server extends BaseServer {
       this.manifestQueueByAci.set(device.aci, queue);
     }
 
-    queue.push(version.toNumber());
+    queue.push(Number(version));
   }
 
   protected override async backupTransitAttachments(

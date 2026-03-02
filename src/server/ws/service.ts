@@ -2,14 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import assert from 'assert';
-import Long from 'long';
 import WebSocket from 'ws';
 import createDebug from 'debug';
 
 import { signalservice as SignalService } from '../../../protos/compiled';
 
-export type WSRequest = SignalService.IWebSocketRequestMessage;
-export type WSResponse = SignalService.IWebSocketResponseMessage;
+export type WSRequest = SignalService.WebSocketRequestMessage.Params;
+export type WSResponse = SignalService.WebSocketResponseMessage.Params;
 
 const debug = createDebug('mock:ws:service');
 
@@ -49,12 +48,14 @@ export abstract class Service {
     const packet = WSMessage.encode({
       type: WSMessage.Type.REQUEST,
       request: {
-        ...options,
+        headers: options.headers ?? null,
+        body: options.body ?? null,
         verb,
         path,
-        id: Long.fromNumber(id),
+        id: BigInt(id),
       },
-    }).finish();
+      response: null,
+    });
 
     this.ws.send(packet);
 
@@ -74,10 +75,6 @@ export abstract class Service {
         throw new Error('Expected response in message');
       }
 
-      if (!response.id) {
-        throw new Error('Expected response.id');
-      }
-
       const id = parseInt(response.id.toString(), 10);
       if (isNaN(id)) {
         throw new Error(`Invalid response.id: ${response.id.toString()}`);
@@ -95,10 +92,6 @@ export abstract class Service {
         throw new Error('Expected request in message');
       }
 
-      if (!request.id) {
-        throw new Error('Expected request.id');
-      }
-
       let response: WSResponse;
       try {
         response = await this.handleRequest(request);
@@ -106,7 +99,10 @@ export abstract class Service {
         assert(error instanceof Error);
         console.error('handleRequest error', error.stack);
         response = {
+          id: request.id,
           status: 500,
+          message: null,
+          headers: null,
           body: Buffer.from(
             JSON.stringify({
               error: error.stack,
@@ -118,11 +114,12 @@ export abstract class Service {
       // Keepalive responses
       const packet = WSMessage.encode({
         type: WSMessage.Type.RESPONSE,
+        request: null,
         response: {
           ...response,
           id: request.id,
         },
-      }).finish();
+      });
 
       this.ws.send(packet);
     } else {
@@ -133,9 +130,11 @@ export abstract class Service {
   private onClose(): void {
     for (const [id, resolve] of this.requests.entries()) {
       resolve({
-        id: Long.fromNumber(id),
+        id: BigInt(id),
         status: 500,
         message: 'WebSocket is gone',
+        headers: null,
+        body: null,
       });
     }
   }

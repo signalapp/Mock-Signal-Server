@@ -120,7 +120,9 @@ export class Router {
 
     if (json instanceof Uint8Array) {
       return {
+        id: request.id,
         status,
+        message: null,
         headers: ['Content-Type:application/x-protobuf'].concat(replyHeaders),
         body: Buffer.from(json),
       };
@@ -128,7 +130,9 @@ export class Router {
 
     assertJsonValue(json);
     return {
+      id: request.id,
       status,
+      message: null,
       headers: replyHeaders.concat(['Content-Type:application/json']),
       body: Buffer.from(JSON.stringify(json)),
     };

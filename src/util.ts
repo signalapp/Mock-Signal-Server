@@ -6,8 +6,9 @@ import assert from 'assert';
 import isPlainObject from 'is-plain-obj';
 import crypto from 'node:crypto';
 import util from 'node:util';
-import type { JsonValue } from 'type-fest';
+import type { JsonValue, RequireExactlyOne } from 'type-fest';
 
+import { signalservice as Proto } from '../protos/compiled';
 import { DAY_IN_SECONDS } from './constants';
 import { type RegistrationId, ServiceIdKind } from './types';
 import { ParsedUrlQuery } from 'node:querystring';
@@ -323,5 +324,98 @@ export async function getDevicesKeysResult(
         };
       }),
     ),
+  };
+}
+
+type WithOneOf<T, K extends keyof T> = Omit<T, K> &
+  RequireExactlyOne<Pick<T, K>>;
+
+type ContentParamsBuilderInput = WithOneOf<
+  Proto.Content.Params,
+  | 'dataMessage'
+  | 'syncMessage'
+  | 'callMessage'
+  | 'nullMessage'
+  | 'receiptMessage'
+  | 'typingMessage'
+  | 'senderKeyDistributionMessage'
+  | 'decryptionErrorMessage'
+  | 'storyMessage'
+  | 'editMessage'
+>;
+
+export function buildContentParams(
+  input: ContentParamsBuilderInput,
+): Proto.Content.Params {
+  return {
+    dataMessage: null,
+    syncMessage: null,
+    callMessage: null,
+    nullMessage: null,
+    receiptMessage: null,
+    typingMessage: null,
+    senderKeyDistributionMessage: null,
+    decryptionErrorMessage: null,
+    storyMessage: null,
+    editMessage: null,
+    ...input,
+  };
+}
+
+type SyncMessageParamsBuilderInput = WithOneOf<
+  Proto.SyncMessage.Params,
+  | 'keys'
+  | 'sent'
+  | 'contacts'
+  | 'request'
+  | 'read'
+  | 'blocked'
+  | 'verified'
+  | 'configuration'
+  | 'padding'
+  | 'stickerPackOperation'
+  | 'viewOnceOpen'
+  | 'fetchLatest'
+  | 'messageRequestResponse'
+  | 'outgoingPayment'
+  | 'viewed'
+  | 'pniChangeNumber'
+  | 'callEvent'
+  | 'callLinkUpdate'
+  | 'callLogEvent'
+  | 'deleteForMe'
+  | 'deviceNameChange'
+  | 'attachmentBackfillRequest'
+  | 'attachmentBackfillResponse'
+>;
+
+export function buildSyncMessageParams(
+  input: SyncMessageParamsBuilderInput,
+): Proto.SyncMessage.Params {
+  return {
+    keys: null,
+    sent: null,
+    contacts: null,
+    request: null,
+    read: null,
+    blocked: null,
+    verified: null,
+    configuration: null,
+    padding: null,
+    stickerPackOperation: null,
+    viewOnceOpen: null,
+    fetchLatest: null,
+    messageRequestResponse: null,
+    outgoingPayment: null,
+    viewed: null,
+    pniChangeNumber: null,
+    callEvent: null,
+    callLinkUpdate: null,
+    callLogEvent: null,
+    deleteForMe: null,
+    deviceNameChange: null,
+    attachmentBackfillRequest: null,
+    attachmentBackfillResponse: null,
+    ...input,
   };
 }

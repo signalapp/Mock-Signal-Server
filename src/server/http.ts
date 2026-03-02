@@ -5,7 +5,6 @@ import { UuidCiphertext } from '@signalapp/libsignal-client/zkgroup';
 import assert from 'assert';
 import { Buffer } from 'buffer';
 import createDebug from 'debug';
-import Long from 'long';
 import { RequestHandler, buffer, json, send } from 'micro';
 import {
   AugmentedRequestHandler as RouteHandler,
@@ -437,7 +436,7 @@ export const createHandler = (
       Proto.GroupResponse.encode({
         group: group.state,
         groupSendEndorsementResponse,
-      }).finish(),
+      }),
     );
   });
 
@@ -461,8 +460,12 @@ export const createHandler = (
         res,
         200,
         Proto.Member.encode({
+          userId: null,
+          role: null,
+          profileKey: null,
+          presentation: null,
           joinedAtVersion: member.joinedAtVersion,
-        }).finish(),
+        }),
       );
     },
   );
@@ -474,7 +477,7 @@ export const createHandler = (
     res: ServerResponse,
   ): Promise<{
     auth: GroupAuthAndFetchResult;
-    groupChanges: Proto.IGroupChanges;
+    groupChanges: Proto.GroupChanges.Params;
   } | void> {
     const auth = await groupAuthAndFetch(req, res);
     if (!auth) {
@@ -552,7 +555,7 @@ export const createHandler = (
       Proto.GroupChanges.encode({
         groupChanges,
         groupSendEndorsementResponse,
-      }).finish(),
+      }),
     );
   });
 
@@ -597,7 +600,7 @@ export const createHandler = (
         groupSendEndorsementResponse: group.getGroupSendEndorsementResponse(
           auth.aciCiphertext,
         ),
-      }).finish(),
+      }),
     );
   });
 
@@ -606,7 +609,7 @@ export const createHandler = (
     res: ServerResponse,
   ): Promise<{
     auth: GroupAuthAndFetchResult;
-    signedChange: Proto.IGroupChange;
+    signedChange: Proto.GroupChange.Params;
   } | void> {
     const auth = await groupAuthAndFetch(req, res);
     if (!auth) {
@@ -664,7 +667,7 @@ export const createHandler = (
         groupChange: signedChange,
         groupSendEndorsementResponse:
           group.getGroupSendEndorsementResponse(aciCiphertext),
-      }).finish(),
+      }),
     );
   });
 
@@ -683,7 +686,7 @@ export const createHandler = (
       return send(res, 404, { error: 'Manifest not found' });
     }
 
-    return send(res, 200, Proto.StorageManifest.encode(manifest).finish());
+    return send(res, 200, Proto.StorageManifest.encode(manifest));
   });
 
   const getStorageManifestByVersion = get(
@@ -695,13 +698,16 @@ export const createHandler = (
       }
 
       assert(req.params.after != null, 'Missing after param');
-      const after = Long.fromString(req.params.after);
+      const after = BigInt(req.params.after);
       const manifest = await server.getStorageManifest(device);
-      if (!manifest?.version?.gt(after)) {
+      if (manifest === undefined) {
+        return send(res, 404);
+      }
+      if (!manifest.version || manifest.version <= after) {
         return send(res, 204);
       }
 
-      return send(res, 200, Proto.StorageManifest.encode(manifest).finish());
+      return send(res, 200, Proto.StorageManifest.encode(manifest));
     },
   );
 
@@ -721,11 +727,7 @@ export const createHandler = (
     }
 
     if (!result.updated) {
-      return send(
-        res,
-        409,
-        Proto.StorageManifest.encode(result.manifest).finish(),
-      );
+      return send(res, 409, Proto.StorageManifest.encode(result.manifest));
     }
 
     return send(res, 200);
@@ -753,7 +755,7 @@ export const createHandler = (
       200,
       Proto.StorageItems.encode({
         items,
-      }).finish(),
+      }),
     );
   });
 
@@ -776,7 +778,7 @@ export const createHandler = (
     withNamespace('/storageService')(
       // All storage service routes have the X-Signal-Timestamp header
       ...ALL_METHODS.map((method) =>
-        method('/*', (req, res) => {
+        method('/*', (_req, res) => {
           res.setHeader('X-Signal-Timestamp', Date.now());
         }),
       ),

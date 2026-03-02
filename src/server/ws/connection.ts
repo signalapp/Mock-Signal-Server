@@ -1051,7 +1051,7 @@ export class Connection extends Service {
       const { status } = await this.send('PUT', '/v1/address', {
         body: Proto.ProvisioningAddress.encode({
           address: id,
-        }).finish(),
+        }),
       });
       assert.strictEqual(status, 200);
     }

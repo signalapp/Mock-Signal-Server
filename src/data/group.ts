@@ -10,10 +10,10 @@ import {
 import { signalservice as Proto } from '../../protos/compiled';
 
 export abstract class Group {
-  protected privChanges?: Proto.IGroupChanges;
+  protected privChanges?: Proto.GroupChanges.Params;
   protected privPublicParams?: GroupPublicParams;
 
-  public get changes(): Readonly<Proto.IGroupChanges> {
+  public get changes(): Readonly<Proto.GroupChanges.Params> {
     assert(this.privChanges !== undefined, 'Group not initialized');
     return this.privChanges;
   }
@@ -23,7 +23,7 @@ export abstract class Group {
     return this.privPublicParams;
   }
 
-  public get state(): Readonly<Proto.IGroup> {
+  public get state(): Readonly<Proto.Group.Params> {
     const { groupChanges } = this.changes;
     assert(groupChanges, 'Missing group changes in the group state');
     const state = groupChanges.at(-1)?.groupState;
@@ -41,13 +41,16 @@ export abstract class Group {
     return this.state.version ?? 0;
   }
 
-  public getChangesSince(since: number): Readonly<Proto.IGroupChanges> {
+  public getChangesSince(since: number): Readonly<Proto.GroupChanges.Params> {
     return {
-      groupChanges: this.changes.groupChanges?.slice(since),
+      groupChanges: this.changes.groupChanges?.slice(since) ?? null,
+      groupSendEndorsementResponse: null,
     };
   }
 
-  public getMember(uuidCiphertext: UuidCiphertext): Proto.IMember | undefined {
+  public getMember(
+    uuidCiphertext: UuidCiphertext,
+  ): Proto.Member.Params | undefined {
     const state = this.state;
     const userId = Buffer.from(uuidCiphertext.serialize());
     return (
@@ -63,7 +66,7 @@ export abstract class Group {
 
   public getPendingMember(
     uuidCiphertext: UuidCiphertext,
-  ): Proto.IMemberPendingProfileKey | undefined {
+  ): Proto.MemberPendingProfileKey.Params | undefined {
     const state = this.state;
     const userId = Buffer.from(uuidCiphertext.serialize());
     return (

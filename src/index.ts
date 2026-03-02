@@ -12,9 +12,11 @@ export {
   SyncReadMessage,
   SyncReadOptions,
   SyncSentOptions,
+  EMPTY_DATA_MESSAGE,
 } from './api/primary-device';
 export { Device, SingleUseKey } from './data/device';
 export { EnvelopeType } from './server/base';
 export { signalservice as Proto } from '../protos/compiled';
 export { load as loadCertificates, Certificates } from './data/certificates';
 export { ServiceIdKind } from './types';
+export { buildContentParams, buildSyncMessageParams } from './util';

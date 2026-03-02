@@ -3,7 +3,6 @@
 
 import crypto from 'crypto';
 import { Buffer } from 'buffer';
-import Long from 'long';
 import {
   KEMPublicKey,
   PrivateKey,
@@ -39,7 +38,7 @@ export type EncryptedProvisionMessage = {
 
 export type ServerCertificate = {
   privateKey: PrivateKey;
-  certificate: Proto.IServerCertificate;
+  certificate: Proto.ServerCertificate.Params;
 };
 
 export type Sender = {
@@ -134,7 +133,7 @@ export function generateServerCertificate(
     Proto.ServerCertificate.Certificate.encode({
       id: SERVER_CERTIFICATE_ID,
       key: privateKey.getPublicKey().serialize(),
-    }).finish(),
+    }),
   );
 
   const signature = rootKey.sign(data);
@@ -156,13 +155,13 @@ export function generateSenderCertificate(
 ): SenderCertificate {
   const data = Buffer.from(
     Proto.SenderCertificate.Certificate.encode({
-      senderE164: sender.number,
+      senderE164: sender.number ?? null,
       senderUuid: sender.aci,
       senderDevice: sender.deviceId,
-      expires: Long.fromNumber(sender.expires ?? NEVER_EXPIRES),
+      expires: BigInt(sender.expires ?? NEVER_EXPIRES),
       identityKey: sender.identityKey.serialize(),
       signer: serverCert.certificate,
-    }).finish(),
+    }),
   );
 
   const signature = serverCert.privateKey.sign(data);
@@ -171,7 +170,7 @@ export function generateSenderCertificate(
     Proto.SenderCertificate.encode({
       certificate: data,
       signature,
-    }).finish(),
+    }),
   );
 
   return SenderCertificate.deserialize(certificate);
@@ -204,7 +203,7 @@ export function deriveStorageKey(masterKey: Buffer): Buffer {
   return hash.digest();
 }
 
-function deriveStorageManifestKey(storageKey: Buffer, version: Long): Buffer {
+function deriveStorageManifestKey(storageKey: Buffer, version: bigint): Buffer {
   const hash = crypto.createHmac('sha256', storageKey);
   hash.update(`Manifest_${version.toString()}`);
   return hash.digest();
@@ -266,26 +265,22 @@ function encryptAESGCM(plaintext: Uint8Array, key: Uint8Array): Buffer {
 
 export function decryptStorageManifest(
   storageKey: Buffer,
-  manifest: Proto.IStorageManifest,
-): Proto.IManifestRecord {
-  if (!manifest.version) {
-    throw new Error('Missing manifest.version');
-  }
-  if (!manifest.value) {
+  manifest: Proto.StorageManifest.Params,
+): Proto.ManifestRecord {
+  if (!manifest.value?.length) {
     throw new Error('Missing manifest.value');
   }
 
-  const manifestKey = deriveStorageManifestKey(storageKey, manifest.version);
+  const manifestKey = deriveStorageManifestKey(
+    storageKey,
+    manifest.version ?? 0n,
+  );
 
   const decoded = Proto.ManifestRecord.decode(
     decryptAESGCM(Buffer.from(manifest.value), manifestKey),
   );
 
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition, @typescript-eslint/strict-boolean-expressions
-  if (!decoded.version) {
-    throw new Error('Missing manifestRecord.version');
-  }
-  if (!decoded.version.eq(manifest.version)) {
+  if (decoded.version !== manifest.version) {
     throw new Error('manifestRecord.version != manifest.version');
   }
 
@@ -294,8 +289,8 @@ export function decryptStorageManifest(
 
 export function encryptStorageManifest(
   storageKey: Buffer,
-  manifestRecord: Proto.IManifestRecord,
-): Proto.IStorageManifest {
+  manifestRecord: Proto.ManifestRecord.Params,
+): Proto.StorageManifest.Params {
   if (!manifestRecord.version) {
     throw new Error('Missing manifest.version');
   }
@@ -306,7 +301,7 @@ export function encryptStorageManifest(
   );
 
   const encrypted = encryptAESGCM(
-    Buffer.from(Proto.ManifestRecord.encode(manifestRecord).finish()),
+    Buffer.from(Proto.ManifestRecord.encode(manifestRecord)),
     manifestKey,
   );
 
@@ -319,14 +314,14 @@ export function encryptStorageManifest(
 export type DecryptStorageItemOptions = Readonly<{
   storageKey: Buffer;
   recordIkm: Buffer | undefined;
-  item: Proto.IStorageItem;
+  item: Proto.StorageItem.Params;
 }>;
 
 export function decryptStorageItem({
   storageKey,
   recordIkm,
   item,
-}: DecryptStorageItemOptions): Proto.IStorageRecord {
+}: DecryptStorageItemOptions): Proto.StorageRecord {
   if (!item.key) {
     throw new Error('Missing item.key');
   }
@@ -349,7 +344,7 @@ export type EncryptStorageItemOptions = Readonly<{
   storageKey: Buffer;
   key: Buffer;
   recordIkm: Buffer | undefined;
-  record: Proto.IStorageRecord;
+  record: Proto.StorageRecord.Params;
 }>;
 
 export function encryptStorageItem({
@@ -357,7 +352,7 @@ export function encryptStorageItem({
   key,
   recordIkm,
   record,
-}: EncryptStorageItemOptions): Proto.IStorageItem {
+}: EncryptStorageItemOptions): Proto.StorageItem.Params {
   const itemKey = deriveStorageItemKey({
     storageKey,
     recordIkm,
@@ -365,7 +360,7 @@ export function encryptStorageItem({
   });
 
   const encrypted = encryptAESGCM(
-    Buffer.from(Proto.StorageRecord.encode(record).finish()),
+    Buffer.from(Proto.StorageRecord.encode(record)),
     itemKey,
   );
 
