@@ -64,8 +64,8 @@ export class Group extends GroupData {
 
     const cipher = new ClientZkGroupCipher(secretParams);
     const decrypted = decryptBlob(cipher, groupState.title);
-    assert(decrypted.content?.kind === 'title', 'expected title');
-    this.title = decrypted.content.value;
+    assert.strictEqual(decrypted.content, 'title', 'expected title');
+    this.title = decrypted.title;
 
     this.privPublicParams = this.secretParams.getPublicParams();
 
@@ -92,7 +92,7 @@ export class Group extends GroupData {
     const groupState: Proto.Group.Params = {
       publicKey: secretParams.getPublicParams().serialize(),
       version: 0,
-      title: encryptBlob(cipher, { content: { kind: 'title', value: title } }),
+      title: encryptBlob(cipher, { content: 'title', title }),
 
       // TODO(indutny): make it configurable
       accessControl: {

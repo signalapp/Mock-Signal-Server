@@ -20,8 +20,8 @@ interface RequestOptions {
 }
 
 export abstract class Service {
-  private readonly requests = new Map<number, (res: WSResponse) => void>();
-  private lastSentId = 0;
+  private readonly requests = new Map<bigint, (res: WSResponse) => void>();
+  private lastSentId = 0n;
 
   constructor(protected readonly ws: WebSocket) {
     this.ws = ws;
@@ -52,7 +52,7 @@ export abstract class Service {
         body: options.body ?? null,
         verb,
         path,
-        id: BigInt(id),
+        id,
       },
       response: null,
     });
@@ -75,10 +75,7 @@ export abstract class Service {
         throw new Error('Expected response in message');
       }
 
-      const id = parseInt(response.id.toString(), 10);
-      if (isNaN(id)) {
-        throw new Error(`Invalid response.id: ${response.id.toString()}`);
-      }
+      const id = response.id;
 
       const resolve = this.requests.get(id);
       if (!resolve) {
@@ -130,7 +127,7 @@ export abstract class Service {
   private onClose(): void {
     for (const [id, resolve] of this.requests.entries()) {
       resolve({
-        id: BigInt(id),
+        id,
         status: 500,
         message: 'WebSocket is gone',
         headers: null,

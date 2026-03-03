@@ -151,7 +151,7 @@ export class Server extends BaseServer {
     ProvisionResultQueue
   >();
   private provisionResultQueueByKey = new Map<string, ProvisionResultQueue>();
-  private manifestQueueByAci = new Map<AciString, PromiseQueue<number>>();
+  private manifestQueueByAci = new Map<AciString, PromiseQueue<bigint>>();
   private groupQueueById = new Map<string, PromiseQueue<number>>();
   private transferArchiveByDevice = new Map<Device, TransferArchiveResponse>();
   private transferCallbacksByDevice = new Map<
@@ -309,7 +309,7 @@ export class Server extends BaseServer {
 
   private async waitForStorageManifest(
     device: Device,
-    afterVersion?: number,
+    afterVersion?: bigint,
   ): Promise<void> {
     let queue = this.manifestQueueByAci.get(device.aci);
     if (!queue) {
@@ -317,7 +317,7 @@ export class Server extends BaseServer {
       this.manifestQueueByAci.set(device.aci, queue);
     }
 
-    let version: number;
+    let version: bigint;
     do {
       version = await queue.shift();
     } while (afterVersion !== undefined && version <= afterVersion);
@@ -378,7 +378,9 @@ export class Server extends BaseServer {
     );
     const contactsCDNKey = await this.storeAttachment(contactsAttachment.blob);
     debug('contacts cdn key', contactsCDNKey);
-    debug('groups cdn key', this.emptyAttachment.attachmentIdentifier?.value);
+    if (this.emptyAttachment.attachmentIdentifier === 'cdnKey') {
+      debug('groups cdn key', this.emptyAttachment.cdnKey);
+    }
 
     const primary = new PrimaryDevice(device, {
       profileName: profileName,
@@ -627,7 +629,7 @@ export class Server extends BaseServer {
     envelopeType: EnvelopeType,
     target: Device,
     encrypted: Buffer,
-    timestamp: number,
+    timestamp: bigint,
   ): Promise<void> {
     if (envelopeType !== EnvelopeType.SealedSender) {
       assert(source, 'No source for non-sealed sender envelope');
@@ -664,8 +666,8 @@ export class Server extends BaseServer {
               sourceDeviceId: source?.deviceId ?? null,
               destinationServiceIdBinary:
                 target.getServiceIdBinaryByKind(serviceIdKind),
-              serverTimestamp: BigInt(timestamp),
-              clientTimestamp: BigInt(timestamp),
+              serverTimestamp: timestamp,
+              clientTimestamp: timestamp,
               content: encrypted,
               urgent: null,
               serverGuid: null,
@@ -674,6 +676,11 @@ export class Server extends BaseServer {
               reportSpamToken: null,
               serverGuidBinary: null,
               updatedPniBinary: null,
+
+              // Deprecated string fields
+              sourceServiceId: null,
+              destinationServiceId: null,
+              updatedPni: null,
             }),
           ),
         );
@@ -842,7 +849,7 @@ export class Server extends BaseServer {
       this.manifestQueueByAci.set(device.aci, queue);
     }
 
-    queue.push(Number(version));
+    queue.push(version);
   }
 
   protected override async backupTransitAttachments(

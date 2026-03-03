@@ -199,7 +199,7 @@ export class Connection extends Service {
           return [400, { error: 'Missing ts' }];
         }
 
-        const timestamp = parseInt(query.ts as string, 10);
+        const timestamp = BigInt(query.ts as string);
 
         const message = new SealedSenderMultiRecipientMessage(
           Buffer.from(body),
@@ -346,7 +346,7 @@ export class Connection extends Service {
           this.device,
           params.serviceId as ServiceIdString,
           messages,
-          timestamp,
+          BigInt(timestamp),
         );
 
         switch (prepared.status) {

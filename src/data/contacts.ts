@@ -22,6 +22,7 @@ export function serializeContacts(contacts: ReadonlyArray<Contact>): Buffer {
           expireTimer: null,
           expireTimerVersion: null,
           inboxPosition: null,
+          aci: null,
         }),
       );
     })

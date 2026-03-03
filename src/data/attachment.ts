@@ -16,10 +16,8 @@ export function attachmentToPointer(
 ): Proto.AttachmentPointer.Params {
   return {
     contentType: 'application/octet-stream',
-    attachmentIdentifier: {
-      kind: 'cdnKey',
-      value: cdnKey,
-    },
+    attachmentIdentifier: 'cdnKey',
+    cdnKey,
     key: attachment.key,
     size: attachment.size,
     digest: attachment.digest,

@@ -105,7 +105,7 @@ export type ChallengeResponse = Readonly<{
 }>;
 
 export type PreparedMultiDeviceMessage = Readonly<{
-  timestamp: number;
+  timestamp: bigint;
   targets: ReadonlyArray<[Device, Message]>;
 }>;
 
@@ -689,7 +689,7 @@ export abstract class Server {
     source: Device | undefined,
     targetServiceId: ServiceIdString,
     messages: ReadonlyArray<Message>,
-    timestamp: number,
+    timestamp: bigint,
   ): Promise<PrepareMultiDeviceMessageResult> {
     if (this.isUnregistered(targetServiceId)) {
       return { status: 'unknown' };
@@ -789,7 +789,7 @@ export abstract class Server {
     envelopeType: EnvelopeType,
     target: Device,
     encrypted: Buffer,
-    timestamp: number,
+    timestamp: bigint,
   ): Promise<void>;
 
   public async addWebSocket(device: Device, socket: WebSocket): Promise<void> {
