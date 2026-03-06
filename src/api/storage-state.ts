@@ -12,7 +12,7 @@ import { ServiceIdKind } from '../types';
 import { Group } from './group';
 import { PrimaryDevice } from './primary-device';
 
-type RecordValue = NonNullable<Proto.StorageRecord.Params>;
+type RecordValue = NonNullable<Proto.StorageRecord.Params['record']>;
 
 export type StorageStateRecord<Value extends RecordValue = RecordValue> =
   Readonly<{
@@ -80,7 +80,9 @@ class StorageStateItem<Value extends RecordValue = RecordValue> {
       storageKey,
       recordIkm,
       key: this.key,
-      record: this.record,
+      record: {
+        record: this.record,
+      },
     });
   }
 
@@ -92,20 +94,18 @@ class StorageStateItem<Value extends RecordValue = RecordValue> {
   }
 
   public isAccount(): this is StorageStateItem<
-    Extract<RecordValue, { record?: 'account' }>
+    Extract<RecordValue, { account: unknown }>
   > {
-    return (
-      this.type === IdentifierType.ACCOUNT && this.record.record === 'account'
-    );
+    return this.type === IdentifierType.ACCOUNT && this.record.account != null;
   }
 
   public isGroup(
     group: Group,
-  ): this is StorageStateItem<Extract<RecordValue, { record?: 'groupV2' }>> {
+  ): this is StorageStateItem<Extract<RecordValue, { groupV2: unknown }>> {
     if (this.type !== IdentifierType.GROUPV2) {
       return false;
     }
-    assert(this.record.record === 'groupV2', 'consistency check');
+    assert(this.record.groupV2 != null, 'consistency check');
 
     const masterKey = this.record.groupV2.masterKey;
     if (!masterKey) {
@@ -118,11 +118,11 @@ class StorageStateItem<Value extends RecordValue = RecordValue> {
   public isContact(
     device: Device,
     serviceIdKind: ServiceIdKind,
-  ): this is StorageStateItem<Extract<RecordValue, { record?: 'contact' }>> {
+  ): this is StorageStateItem<Extract<RecordValue, { contact: unknown }>> {
     if (this.type !== IdentifierType.CONTACT) {
       return false;
     }
-    assert(this.record.record === 'contact', 'consistency check');
+    assert(this.record.contact != null, 'consistency check');
 
     if (serviceIdKind === ServiceIdKind.ACI) {
       const existingAci = this.record.contact.aciBinary;
@@ -327,7 +327,6 @@ export class StorageState {
     return this.addItem({
       type: IdentifierType.GROUPV2,
       record: {
-        record: 'groupV2',
         groupV2: {
           ...EMPTY_GROUP,
           ...diff,
@@ -345,7 +344,6 @@ export class StorageState {
       (item) => item.isGroup(group),
       (record) => {
         return {
-          record: 'groupV2',
           groupV2: {
             ...record.groupV2,
             ...diff,
@@ -367,10 +365,10 @@ export class StorageState {
     assert(account, 'No account record found');
 
     return (account.pinnedConversations ?? []).some((convo) => {
-      if (convo.identifier !== 'groupMasterKey') {
+      if (convo.identifier?.groupMasterKey == null) {
         return false;
       }
-      return group.masterKey.equals(convo.groupMasterKey);
+      return group.masterKey.equals(convo.identifier.groupMasterKey);
     });
   }
 
@@ -386,7 +384,6 @@ export class StorageState {
     return this.addItem({
       type: IdentifierType.CONTACT,
       record: {
-        record: 'contact',
         contact: {
           ...EMPTY_CONTACT,
           aciBinary:
@@ -473,10 +470,10 @@ export class StorageState {
     assert(account, 'No account record found');
 
     return (account.pinnedConversations ?? []).some((convo) => {
-      if (convo.identifier !== 'contact') {
+      if (convo.identifier?.contact == null) {
         return false;
       }
-      const existing = convo.contact.serviceIdBinary;
+      const existing = convo.identifier.contact.serviceIdBinary;
       return existing && Buffer.compare(existing, device.aciRawUuid) === 0;
     });
   }
@@ -546,14 +543,14 @@ export class StorageState {
   }
 
   public getAllGroupRecords(): ReadonlyArray<
-    StorageStateRecord<Extract<RecordValue, { record?: 'groupV2' }>>
+    StorageStateRecord<Extract<RecordValue, { groupV2: unknown }>>
   > {
     return this.items
       .filter(
         (
           item,
         ): item is StorageStateItem<
-          Extract<RecordValue, { record?: 'groupV2' }>
+          Extract<RecordValue, { groupV2: unknown }>
         > => item.type === IdentifierType.GROUPV2,
       )
       .map((item) => item.toRecord());
@@ -751,10 +748,10 @@ export class StorageState {
         const newPinnedConversations = pinnedConversations?.slice() ?? [];
 
         const existingIndex = newPinnedConversations.findIndex((convo) => {
-          if (convo.identifier !== 'contact') {
+          if (convo.identifier?.contact == null) {
             return false;
           }
-          const existing = convo.contact.serviceIdBinary;
+          const existing = convo.identifier.contact.serviceIdBinary;
           return (
             existing && Buffer.compare(existing, deviceServiceIdBinary) === 0
           );
@@ -762,10 +759,11 @@ export class StorageState {
 
         if (isPinned && existingIndex === -1) {
           newPinnedConversations.push({
-            identifier: 'contact',
-            contact: {
-              e164: null,
-              serviceIdBinary: deviceServiceIdBinary,
+            identifier: {
+              contact: {
+                e164: null,
+                serviceIdBinary: deviceServiceIdBinary,
+              },
             },
           });
         } else if (!isPinned && existingIndex !== -1) {
@@ -773,7 +771,6 @@ export class StorageState {
         }
 
         return {
-          record: 'account',
           account: {
             ...account,
             pinnedConversations: newPinnedConversations,
@@ -794,23 +791,23 @@ export class StorageState {
         const newPinnedConversations = pinnedConversations?.slice() ?? [];
 
         const existingIndex = newPinnedConversations.findIndex((convo) => {
-          if (convo.identifier !== 'groupMasterKey') {
+          if (convo.identifier?.groupMasterKey == null) {
             return false;
           }
-          return group.masterKey.equals(convo.groupMasterKey);
+          return group.masterKey.equals(convo.identifier.groupMasterKey);
         });
 
         if (isPinned && existingIndex === -1) {
           newPinnedConversations.push({
-            identifier: 'groupMasterKey',
-            groupMasterKey: group.masterKey,
+            identifier: {
+              groupMasterKey: group.masterKey,
+            },
           });
         } else if (!isPinned && existingIndex !== -1) {
           newPinnedConversations.splice(existingIndex, 1);
         }
 
         return {
-          record: 'account',
           account: {
             ...account,
             pinnedConversations: newPinnedConversations,

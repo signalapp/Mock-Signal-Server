@@ -378,8 +378,8 @@ export class Server extends BaseServer {
     );
     const contactsCDNKey = await this.storeAttachment(contactsAttachment.blob);
     debug('contacts cdn key', contactsCDNKey);
-    if (this.emptyAttachment.attachmentIdentifier === 'cdnKey') {
-      debug('groups cdn key', this.emptyAttachment.cdnKey);
+    if (this.emptyAttachment.attachmentIdentifier?.cdnKey != null) {
+      debug('groups cdn key', this.emptyAttachment.attachmentIdentifier.cdnKey);
     }
 
     const primary = new PrimaryDevice(device, {

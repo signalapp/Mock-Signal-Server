@@ -994,11 +994,12 @@ export class PrimaryDevice {
           const envelope = await this.encryptContent(
             device,
             {
-              content: 'dataMessage',
-              dataMessage: {
-                ...EMPTY_DATA_MESSAGE,
-                groupV2,
-                timestamp: BigInt(encryptOptions.timestamp),
+              content: {
+                dataMessage: {
+                  ...EMPTY_DATA_MESSAGE,
+                  groupV2,
+                  timestamp: BigInt(encryptOptions.timestamp),
+                },
               },
               pniSignatureMessage: null,
               senderKeyDistributionMessage: null,
@@ -1067,11 +1068,12 @@ export class PrimaryDevice {
           ...options,
         };
         const content: Proto.Content.Params = {
-          content: 'dataMessage',
-          dataMessage: {
-            ...EMPTY_DATA_MESSAGE,
-            groupV2,
-            timestamp: BigInt(encryptOptions.timestamp),
+          content: {
+            dataMessage: {
+              ...EMPTY_DATA_MESSAGE,
+              groupV2,
+              timestamp: BigInt(encryptOptions.timestamp),
+            },
           },
           pniSignatureMessage: null,
           senderKeyDistributionMessage: null,
@@ -1205,68 +1207,60 @@ export class PrimaryDevice {
     });
 
     let handled = true;
-    switch (content.content) {
-      case 'decryptionErrorMessage':
-        assert.strictEqual(
-          serviceIdKind,
-          ServiceIdKind.ACI,
-          'Got sync message on PNI',
-        );
-        this.handleResendRequest(
-          unsealedSource,
-          serviceIdKind,
-          unsealedType,
-          content,
-          content.decryptionErrorMessage,
-        );
-        break;
-      case 'syncMessage':
-        assert.strictEqual(
-          serviceIdKind,
-          ServiceIdKind.ACI,
-          'Got sync message on PNI',
-        );
-        await this.handleSync(unsealedSource, content.syncMessage);
-        break;
-      case 'dataMessage':
-        this.handleDataMessage(
-          unsealedSource,
-          serviceIdKind,
-          unsealedType,
-          content,
-          content.dataMessage,
-        );
-        break;
-      case 'storyMessage':
-        this.handleStoryMessage(
-          unsealedSource,
-          serviceIdKind,
-          unsealedType,
-          content,
-          content.storyMessage,
-        );
-        break;
-      case 'editMessage':
-        this.handleEditMessage(
-          unsealedSource,
-          serviceIdKind,
-          unsealedType,
-          content,
-          content.editMessage,
-        );
-        break;
-      case 'receiptMessage':
-        this.handleReceiptMessage(
-          unsealedSource,
-          serviceIdKind,
-          unsealedType,
-          content,
-          content.receiptMessage,
-        );
-        break;
-      default:
-        handled = false;
-        break;
+    if (content.content?.decryptionErrorMessage) {
+      assert.strictEqual(
+        serviceIdKind,
+        ServiceIdKind.ACI,
+        'Got sync message on PNI',
+      );
+      this.handleResendRequest(
+        unsealedSource,
+        serviceIdKind,
+        unsealedType,
+        content,
+        content.content.decryptionErrorMessage,
+      );
+    } else if (content.content?.syncMessage) {
+      assert.strictEqual(
+        serviceIdKind,
+        ServiceIdKind.ACI,
+        'Got sync message on PNI',
+      );
+      await this.handleSync(unsealedSource, content.content.syncMessage);
+    } else if (content.content?.dataMessage) {
+      this.handleDataMessage(
+        unsealedSource,
+        serviceIdKind,
+        unsealedType,
+        content,
+        content.content.dataMessage,
+      );
+    } else if (content.content?.storyMessage) {
+      this.handleStoryMessage(
+        unsealedSource,
+        serviceIdKind,
+        unsealedType,
+        content,
+        content.content.storyMessage,
+      );
+    } else if (content.content?.editMessage) {
+      this.handleEditMessage(
+        unsealedSource,
+        serviceIdKind,
+        unsealedType,
+        content,
+        content.content.editMessage,
+      );
+    } else if (content.content?.receiptMessage) {
+      this.handleReceiptMessage(
+        unsealedSource,
+        serviceIdKind,
+        unsealedType,
+        content,
+        content.content.receiptMessage,
+      );
+    } else {
+      handled = false;
     }
 
     const { senderKeyDistributionMessage } = content;
@@ -1310,13 +1304,16 @@ export class PrimaryDevice {
     }
 
     const content: Proto.Content.Params = {
-      content: 'dataMessage',
-      dataMessage: {
-        ...EMPTY_DATA_MESSAGE,
-        groupV2: options.group?.toContext() ?? null,
-        body: text,
-        profileKey: options.withProfileKey ? this.profileKey.serialize() : null,
-        timestamp: BigInt(encryptOptions.timestamp),
+      content: {
+        dataMessage: {
+          ...EMPTY_DATA_MESSAGE,
+          groupV2: options.group?.toContext() ?? null,
+          body: text,
+          profileKey: options.withProfileKey
+            ? this.profileKey.serialize()
+            : null,
+          timestamp: BigInt(encryptOptions.timestamp),
+        },
       },
       pniSignatureMessage,
       senderKeyDistributionMessage: null,
@@ -1336,29 +1333,31 @@ export class PrimaryDevice {
     };
 
     const content: Proto.Content.Params = {
-      content: 'syncMessage',
-      syncMessage: {
-        content: 'sent',
-        sent: {
-          destinationServiceIdBinary: ServiceId.parseFromServiceIdString(
-            options.destinationServiceId,
-          ).getServiceIdBinary(),
-          timestamp: BigInt(options.timestamp),
-          message: dataMessage,
-          destinationE164: null,
-          unidentifiedStatus: null,
-          isRecipientUpdate: null,
-          expirationStartTimestamp: null,
-          storyMessage: null,
-          storyMessageRecipients: null,
-          editMessage: null,
+      content: {
+        syncMessage: {
+          content: {
+            sent: {
+              destinationServiceIdBinary: ServiceId.parseFromServiceIdString(
+                options.destinationServiceId,
+              ).getServiceIdBinary(),
+              timestamp: BigInt(options.timestamp),
+              message: dataMessage,
+              destinationE164: null,
+              unidentifiedStatus: null,
+              isRecipientUpdate: null,
+              expirationStartTimestamp: null,
+              storyMessage: null,
+              storyMessageRecipients: null,
+              editMessage: null,
 
-          destinationServiceId: null,
+              destinationServiceId: null,
+            },
+          },
+          stickerPackOperation: null,
+          read: null,
+          viewed: null,
+          padding: null,
         },
-        stickerPackOperation: null,
-        read: null,
-        viewed: null,
-        padding: null,
       },
       pniSignatureMessage: null,
       senderKeyDistributionMessage: null,
@@ -1371,22 +1370,23 @@ export class PrimaryDevice {
     options: SyncReadOptions,
   ): Promise<Buffer> {
     const content: Proto.Content.Params = {
-      content: 'syncMessage',
-      syncMessage: {
-        content: null,
-        stickerPackOperation: null,
-        read: options.messages.map(({ senderAci, timestamp }) => {
-          return {
-            senderAciBinary:
-              Aci.parseFromServiceIdString(senderAci).getRawUuidBytes(),
-            timestamp: BigInt(timestamp),
+      content: {
+        syncMessage: {
+          content: null,
+          stickerPackOperation: null,
+          read: options.messages.map(({ senderAci, timestamp }) => {
+            return {
+              senderAciBinary:
+                Aci.parseFromServiceIdString(senderAci).getRawUuidBytes(),
+              timestamp: BigInt(timestamp),
 
-            // Deprecated string field
-            senderAci: null,
-          };
-        }),
-        viewed: null,
-        padding: null,
+              // Deprecated string field
+              senderAci: null,
+            };
+          }),
+          viewed: null,
+          padding: null,
+        },
       },
       pniSignatureMessage: null,
       senderKeyDistributionMessage: null,
@@ -1396,16 +1396,18 @@ export class PrimaryDevice {
 
   public async sendFetchStorage(options: FetchStorageOptions): Promise<void> {
     const content: Proto.Content.Params = {
-      content: 'syncMessage',
-      syncMessage: {
-        content: 'fetchLatest',
-        fetchLatest: {
-          type: Proto.SyncMessage.FetchLatest.Type.STORAGE_MANIFEST,
+      content: {
+        syncMessage: {
+          content: {
+            fetchLatest: {
+              type: Proto.SyncMessage.FetchLatest.Type.STORAGE_MANIFEST,
+            },
+          },
+          stickerPackOperation: null,
+          read: null,
+          viewed: null,
+          padding: null,
         },
-        stickerPackOperation: null,
-        read: null,
-        viewed: null,
-        padding: null,
       },
       pniSignatureMessage: null,
       senderKeyDistributionMessage: null,
@@ -1420,19 +1422,20 @@ export class PrimaryDevice {
     const Type = Proto.SyncMessage.StickerPackOperation.Type;
 
     const content: Proto.Content.Params = {
-      content: 'syncMessage',
-      syncMessage: {
-        content: null,
-        stickerPackOperation: [
-          {
-            packId: options.packId,
-            packKey: options.packKey,
-            type: options.type === 'install' ? Type.INSTALL : Type.REMOVE,
-          },
-        ],
-        read: null,
-        viewed: null,
-        padding: null,
+      content: {
+        syncMessage: {
+          content: null,
+          stickerPackOperation: [
+            {
+              packId: options.packId,
+              packKey: options.packKey,
+              type: options.type === 'install' ? Type.INSTALL : Type.REMOVE,
+            },
+          ],
+          read: null,
+          viewed: null,
+          padding: null,
+        },
       },
       pniSignatureMessage: null,
       senderKeyDistributionMessage: null,
@@ -1454,12 +1457,13 @@ export class PrimaryDevice {
     }
 
     const content: Proto.Content.Params = {
-      content: 'receiptMessage',
-      receiptMessage: {
-        type,
-        timestamp: options.messageTimestamps.map((timestamp) =>
-          BigInt(timestamp),
-        ),
+      content: {
+        receiptMessage: {
+          type,
+          timestamp: options.messageTimestamps.map((timestamp) =>
+            BigInt(timestamp),
+          ),
+        },
       },
       pniSignatureMessage: null,
       senderKeyDistributionMessage: null,
@@ -1563,20 +1567,22 @@ export class PrimaryDevice {
         const { signedPreKeyRecord, lastResortKeyRecord } = keys;
 
         const content: Proto.Content.Params = {
-          content: 'syncMessage',
-          syncMessage: {
-            content: 'pniChangeNumber',
-            pniChangeNumber: {
-              identityKeyPair: newPniIdentity.serialize(),
-              lastResortKyberPreKey: lastResortKeyRecord.serialize(),
-              signedPreKey: signedPreKeyRecord.serialize(),
-              registrationId: newPniRegistrationId,
-              newE164: newNumber,
+          content: {
+            syncMessage: {
+              content: {
+                pniChangeNumber: {
+                  identityKeyPair: newPniIdentity.serialize(),
+                  lastResortKyberPreKey: lastResortKeyRecord.serialize(),
+                  signedPreKey: signedPreKeyRecord.serialize(),
+                  registrationId: newPniRegistrationId,
+                  newE164: newNumber,
+                },
+              },
+              read: null,
+              stickerPackOperation: null,
+              viewed: null,
+              padding: null,
             },
-            read: null,
-            stickerPackOperation: null,
-            viewed: null,
-            padding: null,
           },
           pniSignatureMessage: null,
           senderKeyDistributionMessage: null,
@@ -1854,7 +1860,7 @@ export class PrimaryDevice {
     source: Device,
     sync: Proto.SyncMessage,
   ): Promise<void> {
-    if (sync.content !== 'request') {
+    if (sync.content?.request == null) {
       debug('got generic sync message');
       this.syncMessageQueue.push({
         source,
@@ -1863,17 +1869,20 @@ export class PrimaryDevice {
       return;
     }
 
-    const { request } = sync;
+    const {
+      content: { request },
+    } = sync;
 
     let stateChange: SyncState;
     let response: Proto.SyncMessage.Params;
     if (request.type === Proto.SyncMessage.Request.Type.CONTACTS) {
       debug('got sync contacts request');
       response = {
-        content: 'contacts',
-        contacts: {
-          blob: this.contactsBlob,
-          complete: true,
+        content: {
+          contacts: {
+            blob: this.contactsBlob,
+            complete: true,
+          },
         },
         stickerPackOperation: null,
         read: null,
@@ -1884,14 +1893,15 @@ export class PrimaryDevice {
     } else if (request.type === Proto.SyncMessage.Request.Type.BLOCKED) {
       debug('got sync blocked request');
       response = {
-        content: 'blocked',
-        blocked: {
-          numbers: null,
-          groupIds: null,
-          acisBinary: null,
+        content: {
+          blocked: {
+            numbers: null,
+            groupIds: null,
+            acisBinary: null,
 
-          // Deprecated string field
-          acis: null,
+            // Deprecated string field
+            acis: null,
+          },
         },
         stickerPackOperation: null,
         read: null,
@@ -1902,12 +1912,13 @@ export class PrimaryDevice {
     } else if (request.type === Proto.SyncMessage.Request.Type.CONFIGURATION) {
       debug('got sync configuration request');
       response = {
-        content: 'configuration',
-        configuration: {
-          readReceipts: true,
-          unidentifiedDeliveryIndicators: false,
-          typingIndicators: false,
-          linkPreviews: false,
+        content: {
+          configuration: {
+            readReceipts: true,
+            unidentifiedDeliveryIndicators: false,
+            typingIndicators: false,
+            linkPreviews: false,
+          },
         },
         stickerPackOperation: null,
         read: null,
@@ -1918,11 +1929,12 @@ export class PrimaryDevice {
     } else if (request.type === Proto.SyncMessage.Request.Type.KEYS) {
       debug('got sync keys request');
       response = {
-        content: 'keys',
-        keys: {
-          master: this.masterKey,
-          mediaRootBackupKey: this.mediaRootBackupKey,
-          accountEntropyPool: this.accountEntropyPool,
+        content: {
+          keys: {
+            master: this.masterKey,
+            mediaRootBackupKey: this.mediaRootBackupKey,
+            accountEntropyPool: this.accountEntropyPool,
+          },
         },
         stickerPackOperation: null,
         read: null,
@@ -1936,8 +1948,9 @@ export class PrimaryDevice {
     }
 
     const encrypted = await this.encryptContent(source, {
-      content: 'syncMessage',
-      syncMessage: response,
+      content: {
+        syncMessage: response,
+      },
       pniSignatureMessage: null,
       senderKeyDistributionMessage: null,
     });
@@ -2373,7 +2386,7 @@ export class PrimaryDevice {
         return {
           type,
           key: keyBuffer,
-          record: decrypted,
+          record: decrypted.record,
         };
       }),
     );
