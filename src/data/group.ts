@@ -44,7 +44,7 @@ export abstract class Group {
   public getChangesSince(since: number): Readonly<Proto.GroupChanges.Params> {
     return {
       groupChanges: this.changes.groupChanges?.slice(since) ?? null,
-      groupSendEndorsementResponse: null,
+      groupSendEndorsementsResponse: null,
     };
   }
 

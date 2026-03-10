@@ -286,24 +286,26 @@ const EMPTY_GROUP_ACTIONS: Proto.GroupChange.Actions.Params = {
   deleteMembers: null,
   modifyMemberRoles: null,
   modifyMemberProfileKeys: null,
-  addPendingMembers: null,
-  deletePendingMembers: null,
-  promotePendingMembers: null,
+  addMembersPendingProfileKey: null,
+  deleteMembersPendingProfileKey: null,
+  promoteMembersPendingProfileKey: null,
   modifyTitle: null,
   modifyAvatar: null,
-  modifyDisappearingMessagesTimer: null,
+  modifyDisappearingMessageTimer: null,
   modifyAttributesAccess: null,
   modifyMemberAccess: null,
   modifyAddFromInviteLinkAccess: null,
-  addMemberPendingAdminApprovals: null,
-  deleteMemberPendingAdminApprovals: null,
-  promoteMemberPendingAdminApprovals: null,
+  addMembersPendingAdminApproval: null,
+  deleteMembersPendingAdminApproval: null,
+  promoteMembersPendingAdminApproval: null,
   modifyInviteLinkPassword: null,
   modifyDescription: null,
   modifyAnnouncementsOnly: null,
   addMembersBanned: null,
   deleteMembersBanned: null,
   promoteMembersPendingPniAciProfileKey: null,
+  modifyMemberLabels: null,
+  modifyMemberLabelAccess: null,
 };
 
 export const EMPTY_DATA_MESSAGE: Proto.DataMessage.Params = {
@@ -950,7 +952,7 @@ export class PrimaryDevice {
       actions: {
         ...EMPTY_GROUP_ACTIONS,
         version: group.revision + 1,
-        addPendingMembers: [
+        addMembersPendingProfileKey: [
           {
             added: {
               member: {
@@ -959,6 +961,8 @@ export class PrimaryDevice {
                 profileKey: null,
                 presentation: null,
                 joinedAtVersion: null,
+                labelEmoji: null,
+                labelString: null,
               },
               addedByUserId: null,
               timestamp: null,
@@ -2382,9 +2386,8 @@ export class PrimaryDevice {
             `Missing item record ${keyBuffer.toString('base64')}`,
           );
         }
-
         return {
-          type,
+          type: type as Proto.ManifestRecord.Identifier.Type,
           key: keyBuffer,
           record: decrypted.record,
         };

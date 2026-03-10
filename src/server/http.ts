@@ -427,7 +427,7 @@ export const createHandler = (
       return;
     }
     const { group } = auth;
-    const groupSendEndorsementResponse = group.getGroupSendEndorsementResponse(
+    const groupSendEndorsementsResponse = group.getGroupSendEndorsementResponse(
       auth.aciCiphertext,
     );
     return send(
@@ -435,7 +435,7 @@ export const createHandler = (
       200,
       Proto.GroupResponse.encode({
         group: group.state,
-        groupSendEndorsementResponse,
+        groupSendEndorsementsResponse,
       }),
     );
   });
@@ -465,6 +465,8 @@ export const createHandler = (
           profileKey: null,
           presentation: null,
           joinedAtVersion: member.joinedAtVersion,
+          labelEmoji: null,
+          labelString: null,
         }),
       );
     },
@@ -537,14 +539,14 @@ export const createHandler = (
         actions.addMembers.length > 0 ||
         actions.deleteMembers.length > 0 ||
         actions.promoteMembersPendingPniAciProfileKey.length > 0 ||
-        actions.promotePendingMembers.length > 0
+        actions.promoteMembersPendingProfileKey.length > 0
       );
     });
 
-    let groupSendEndorsementResponse: Uint8Array | null = null;
+    let groupSendEndorsementsResponse: Uint8Array | null = null;
 
     if (membershipChange || expiresInLessThanSixHours) {
-      groupSendEndorsementResponse = group.getGroupSendEndorsementResponse(
+      groupSendEndorsementsResponse = group.getGroupSendEndorsementResponse(
         auth.aciCiphertext,
       );
     }
@@ -554,7 +556,7 @@ export const createHandler = (
       200,
       Proto.GroupChanges.encode({
         groupChanges,
-        groupSendEndorsementResponse,
+        groupSendEndorsementsResponse,
       }),
     );
   });
@@ -597,7 +599,7 @@ export const createHandler = (
       200,
       Proto.GroupResponse.encode({
         group: group.state,
-        groupSendEndorsementResponse: group.getGroupSendEndorsementResponse(
+        groupSendEndorsementsResponse: group.getGroupSendEndorsementResponse(
           auth.aciCiphertext,
         ),
       }),
@@ -665,7 +667,7 @@ export const createHandler = (
       200,
       Proto.GroupChangeResponse.encode({
         groupChange: signedChange,
-        groupSendEndorsementResponse:
+        groupSendEndorsementsResponse:
           group.getGroupSendEndorsementResponse(aciCiphertext),
       }),
     );

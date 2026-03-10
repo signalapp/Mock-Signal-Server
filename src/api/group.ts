@@ -78,7 +78,7 @@ export class Group extends GroupData {
           groupChange: null,
         },
       ],
-      groupSendEndorsementResponse: null,
+      groupSendEndorsementsResponse: null,
     };
   }
 
@@ -99,6 +99,7 @@ export class Group extends GroupData {
         attributes: AccessRequired.MEMBER,
         members: AccessRequired.MEMBER,
         addFromInviteLink: AccessRequired.UNSATISFIABLE,
+        memberLabel: AccessRequired.MEMBER,
       },
 
       members: members.map(({ presentation }) => {
@@ -108,15 +109,17 @@ export class Group extends GroupData {
           userId: null,
           profileKey: null,
           joinedAtVersion: null,
+          labelEmoji: null,
+          labelString: null,
         };
       }),
 
-      avatar: null,
+      avatarUrl: null,
       disappearingMessagesTimer: null,
       membersPendingProfileKey: null,
       membersPendingAdminApproval: null,
       inviteLinkPassword: null,
-      descriptionBytes: null,
+      description: null,
       announcementsOnly: null,
       membersBanned: null,
     };

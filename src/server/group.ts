@@ -74,7 +74,7 @@ export class ServerGroup extends Group {
           groupChange: null,
         },
       ],
-      groupSendEndorsementResponse: null,
+      groupSendEndorsementsResponse: null,
     };
   }
 
@@ -113,24 +113,26 @@ export class ServerGroup extends Group {
       deleteMembers: null,
       modifyMemberRoles: null,
       modifyMemberProfileKeys: null,
-      addPendingMembers: null,
-      deletePendingMembers: null,
-      promotePendingMembers: null,
+      addMembersPendingProfileKey: null,
+      deleteMembersPendingProfileKey: null,
+      promoteMembersPendingProfileKey: null,
       modifyTitle: null,
       modifyAvatar: null,
-      modifyDisappearingMessagesTimer: null,
+      modifyDisappearingMessageTimer: null,
       modifyAttributesAccess: null,
       modifyMemberAccess: null,
       modifyAddFromInviteLinkAccess: null,
-      addMemberPendingAdminApprovals: null,
-      deleteMemberPendingAdminApprovals: null,
-      promoteMemberPendingAdminApprovals: null,
+      addMembersPendingAdminApproval: null,
+      deleteMembersPendingAdminApproval: null,
+      promoteMembersPendingAdminApproval: null,
       modifyInviteLinkPassword: null,
       modifyDescription: null,
       modifyAnnouncementsOnly: null,
       addMembersBanned: null,
       deleteMembersBanned: null,
       promoteMembersPendingPniAciProfileKey: null,
+      modifyMemberLabels: null,
+      modifyMemberLabelAccess: null,
     };
 
     assert.ok(actions.version, 'Actions should have a new version');
@@ -184,16 +186,23 @@ export class ServerGroup extends Group {
       ];
     }
 
-    const addPendingMembers = actions.addPendingMembers ?? [];
-    for (const { added } of addPendingMembers) {
+    const addMembersPendingProfileKey =
+      actions.addMembersPendingProfileKey ?? [];
+    for (const { added } of addMembersPendingProfileKey) {
       assert.ok(added, 'Missing addPendingMember.added');
 
       const { member } = added;
-      assert.ok(member, 'Missing addPendingMembers.added.member');
+      assert.ok(member, 'Missing addMembersPendingProfileKey.added.member');
 
       const { userId, role } = member;
-      assert.ok(userId, 'Missing addPendingMembers.added.member.userId');
-      assert.ok(role != null, 'Missing addPendingMembers.added.member.role');
+      assert.ok(
+        userId,
+        'Missing addMembersPendingProfileKey.added.member.userId',
+      );
+      assert.ok(
+        role != null,
+        'Missing addMembersPendingProfileKey.added.member.role',
+      );
 
       this.verifyAccess(
         'pendingMembers',
@@ -208,6 +217,8 @@ export class ServerGroup extends Group {
           profileKey: null,
           presentation: null,
           joinedAtVersion: null,
+          labelEmoji: null,
+          labelString: null,
         },
         addedByUserId: sourceAci.serialize(),
         timestamp,
@@ -218,14 +229,15 @@ export class ServerGroup extends Group {
         newPendingMember,
       ];
 
-      appliedActions.addPendingMembers = [
-        ...(appliedActions.addPendingMembers ?? []),
+      appliedActions.addMembersPendingProfileKey = [
+        ...(appliedActions.addMembersPendingProfileKey ?? []),
         { added: newPendingMember },
       ];
     }
 
-    const deletePendingMembers = actions.deletePendingMembers ?? [];
-    for (const { deletedUserId } of deletePendingMembers) {
+    const deleteMembersPendingProfileKey =
+      actions.deleteMembersPendingProfileKey ?? [];
+    for (const { deletedUserId } of deleteMembersPendingProfileKey) {
       assert.ok(deletedUserId, 'Missing deletedUserId');
 
       assert.ok(
@@ -243,15 +255,19 @@ export class ServerGroup extends Group {
         newState.membersPendingProfileKey ?? []
       ).filter((entry) => entry !== pendingMember);
 
-      appliedActions.deletePendingMembers = [
-        ...(appliedActions.deletePendingMembers ?? []),
+      appliedActions.deleteMembersPendingProfileKey = [
+        ...(appliedActions.deleteMembersPendingProfileKey ?? []),
         { deletedUserId },
       ];
     }
 
-    const promotePendingMembers = actions.promotePendingMembers ?? [];
-    for (const { presentation } of promotePendingMembers) {
-      assert.ok(presentation, 'Missing presentation in promotePendingMembers');
+    const promoteMembersPendingProfileKey =
+      actions.promoteMembersPendingProfileKey ?? [];
+    for (const { presentation } of promoteMembersPendingProfileKey) {
+      assert.ok(
+        presentation,
+        'Missing presentation in deleteMembersPendingProfileKey',
+      );
       const presentationFFI = new ProfileKeyCredentialPresentation(
         Buffer.from(presentation),
       );
@@ -291,11 +307,13 @@ export class ServerGroup extends Group {
           profileKey,
           presentation: null,
           joinedAtVersion: null,
+          labelEmoji: null,
+          labelString: null,
         },
       ];
 
-      appliedActions.promotePendingMembers = [
-        ...(appliedActions.promotePendingMembers ?? []),
+      appliedActions.promoteMembersPendingProfileKey = [
+        ...(appliedActions.promoteMembersPendingProfileKey ?? []),
         { userId, profileKey, presentation: null },
       ];
     }
@@ -340,6 +358,8 @@ export class ServerGroup extends Group {
           profileKey: profileKey.serialize(),
           presentation: null,
           joinedAtVersion: null,
+          labelEmoji: null,
+          labelString: null,
         },
       ];
 
@@ -398,7 +418,7 @@ export class ServerGroup extends Group {
   private verifyAccess(
     attribute: string,
     member: Proto.Member.Params | undefined,
-    access: Proto.AccessControl.AccessRequired,
+    access: Proto.AccessControl['attributes'],
     affectedUserId?: Uint8Array,
   ): void {
     // Changing something about ourselves is always allowed
@@ -455,6 +475,8 @@ export class ServerGroup extends Group {
       profileKey: presentationFFI.getProfileKeyCiphertext().serialize(),
       presentation: null,
       joinedAtVersion: null,
+      labelEmoji: null,
+      labelString: null,
     };
   }
 }
