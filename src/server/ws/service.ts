@@ -75,7 +75,7 @@ export abstract class Service {
         throw new Error('Expected response in message');
       }
 
-      const id = response.id;
+      const id = response.id ?? 0n;
 
       const resolve = this.requests.get(id);
       if (!resolve) {

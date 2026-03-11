@@ -1268,7 +1268,10 @@ export class PrimaryDevice {
     }
 
     const { senderKeyDistributionMessage } = content;
-    if (senderKeyDistributionMessage.length > 0) {
+    if (
+      senderKeyDistributionMessage != null &&
+      senderKeyDistributionMessage.length > 0
+    ) {
       handled = true;
       await this.processSenderKeyDistribution(
         unsealedSource,
@@ -1686,8 +1689,9 @@ export class PrimaryDevice {
     const envelope = Proto.Envelope.decode(encrypted);
 
     if (
+      envelope.sourceServiceIdBinary != null &&
       source.getServiceIdBinaryKind(envelope.sourceServiceIdBinary) !==
-      ServiceIdKind.ACI
+        ServiceIdKind.ACI
     ) {
       throw new Error(
         `Invalid envelope source. Expected: ${source.aci}, got PNI`,
@@ -1705,7 +1709,7 @@ export class PrimaryDevice {
       throw new Error('Unsupported envelope type');
     }
 
-    const serviceIdKind = envelope.destinationServiceIdBinary.length
+    const serviceIdKind = envelope.destinationServiceIdBinary?.length
       ? this.device.getServiceIdBinaryKind(envelope.destinationServiceIdBinary)
       : ServiceIdKind.ACI;
 
@@ -1713,7 +1717,7 @@ export class PrimaryDevice {
       source,
       serviceIdKind,
       envelopeType,
-      Buffer.from(envelope.content),
+      envelope.content ? Buffer.from(envelope.content) : Buffer.alloc(0),
     );
   }
 
@@ -2005,7 +2009,7 @@ export class PrimaryDevice {
     this.messageQueue.push({
       source,
       serviceIdKind,
-      body,
+      body: body ?? '',
       envelopeType,
       dataMessage,
       content,
