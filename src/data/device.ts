@@ -92,9 +92,9 @@ export class Device {
   };
 
   public backupLevel = BackupLevel.Paid;
-  public accessKey?: Buffer;
+  public accessKey?: Buffer<ArrayBuffer>;
   public profileKeyCommitment?: ProfileKeyCommitment;
-  public profileName?: Buffer;
+  public profileName?: Buffer<ArrayBuffer>;
 
   private keys = new Map<ServiceIdKind, InternalDeviceKeys>();
 
@@ -137,7 +137,7 @@ export class Device {
     }
   }
 
-  public get aciBinary(): Uint8Array {
+  public get aciBinary(): Uint8Array<ArrayBuffer> {
     return Aci.parseFromServiceIdString(this.aci).getServiceIdBinary();
   }
 
@@ -145,15 +145,15 @@ export class Device {
     return this.privPni;
   }
 
-  public get pniBinary(): Uint8Array {
+  public get pniBinary(): Uint8Array<ArrayBuffer> {
     return Pni.parseFromServiceIdString(this.pni).getServiceIdBinary();
   }
 
-  public get aciRawUuid(): Uint8Array {
+  public get aciRawUuid(): Uint8Array<ArrayBuffer> {
     return Aci.parseFromServiceIdString(this.aci).getRawUuidBytes();
   }
 
-  public get pniRawUuid(): Uint8Array {
+  public get pniRawUuid(): Uint8Array<ArrayBuffer> {
     return Pni.parseFromServiceIdString(this.pni).getRawUuidBytes();
   }
 
@@ -292,7 +292,9 @@ export class Device {
     }
   }
 
-  public getServiceIdBinaryByKind(serviceIdKind: ServiceIdKind): Uint8Array {
+  public getServiceIdBinaryByKind(
+    serviceIdKind: ServiceIdKind,
+  ): Uint8Array<ArrayBuffer> {
     switch (serviceIdKind) {
       case ServiceIdKind.ACI:
         return this.aciBinary;
@@ -311,7 +313,9 @@ export class Device {
     throw new Error(`Unknown serviceId: ${serviceId}`);
   }
 
-  public getServiceIdBinaryKind(serviceIdBinary: Uint8Array): ServiceIdKind {
+  public getServiceIdBinaryKind(
+    serviceIdBinary: Uint8Array<ArrayBuffer>,
+  ): ServiceIdKind {
     if (timingSafeEqual(serviceIdBinary, this.aciBinary)) {
       return ServiceIdKind.ACI;
     }

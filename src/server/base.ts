@@ -76,7 +76,7 @@ export enum EnvelopeType {
 }
 
 export type ProvisioningResponse = Readonly<{
-  envelope: Buffer;
+  envelope: Buffer<ArrayBuffer>;
 }>;
 
 export type CredentialsRange = Readonly<{
@@ -162,7 +162,7 @@ export type ConfirmUsernameResult = Readonly<{
 }>;
 
 export type SetUsernameLinkResult = Readonly<{
-  entropy: Uint8Array;
+  entropy: Uint8Array<ArrayBuffer>;
   serverId: string;
 }>;
 
@@ -186,14 +186,14 @@ export type StorageWriteResult = Readonly<
 export type ModifyGroupOptions = Readonly<{
   group: ServerGroup;
   actions: Proto.GroupChange.Actions.Params;
-  aciCiphertext: Uint8Array;
-  pniCiphertext: Uint8Array;
+  aciCiphertext: Uint8Array<ArrayBuffer>;
+  pniCiphertext: Uint8Array<ArrayBuffer>;
 }>;
 
 export type EncryptedStickerPack = Readonly<{
-  id: Buffer;
-  manifest: Buffer;
-  stickers: ReadonlyArray<Buffer>;
+  id: Buffer<ArrayBuffer>;
+  manifest: Buffer<ArrayBuffer>;
+  stickers: ReadonlyArray<Buffer<ArrayBuffer>>;
 }>;
 
 export type IsSendRateLimitedOptions = Readonly<{
@@ -204,11 +204,11 @@ export type IsSendRateLimitedOptions = Readonly<{
 export { type ModifyGroupResult };
 
 interface WebSocket {
-  sendMessage: (message: Buffer | 'empty') => Promise<void>;
+  sendMessage: (message: Buffer<ArrayBuffer> | 'empty') => Promise<void>;
 }
 
 interface SerializableCredential {
-  serialize: () => Uint8Array;
+  serialize: () => Uint8Array<ArrayBuffer>;
 }
 
 type AuthEntry = Readonly<{
@@ -223,13 +223,13 @@ type StorageAuthEntry = Readonly<{
 }>;
 
 type MessageQueueEntry = {
-  readonly message: Buffer;
+  readonly message: Buffer<ArrayBuffer>;
   resolve: () => void;
   reject: (error: Error) => void;
 };
 
 export type CallLinkEntry = Readonly<{
-  adminPasskey: Buffer;
+  adminPasskey: Buffer<ArrayBuffer>;
   encryptedName: string;
   restrictions: 'none' | 'adminApproval';
   revoked: boolean;
@@ -317,13 +317,13 @@ export abstract class Server {
   >();
   private readonly storageItemsByAci = new Map<
     AciString,
-    Map<string, Buffer>
+    Map<string, Buffer<ArrayBuffer>>
   >();
   private readonly provisioningCodes = new Map<
     string,
     Map<ProvisioningCode, ProvisionIdString>
   >();
-  private readonly attachments = new Map<AttachmentId, Buffer>();
+  private readonly attachments = new Map<AttachmentId, Buffer<ArrayBuffer>>();
   private readonly stickerPacks = new Map<string, EncryptedStickerPack>();
   private readonly webSockets = new Map<Device, Set<WebSocket>>();
   private readonly messageQueue = new WeakMap<
@@ -339,7 +339,7 @@ export abstract class Server {
     ServiceIdString,
     string
   >();
-  private readonly usernameLinkById = new Map<string, Buffer>();
+  private readonly usernameLinkById = new Map<string, Buffer<ArrayBuffer>>();
   private readonly callLinksByRoomId = new Map<string, CallLinkEntry>();
   private readonly backupAuthReqByAci = new Map<
     AciString,
@@ -633,7 +633,9 @@ export abstract class Server {
   // CDN
   //
 
-  protected async storeAttachment(attachment: Buffer): Promise<AttachmentId> {
+  protected async storeAttachment(
+    attachment: Buffer<ArrayBuffer>,
+  ): Promise<AttachmentId> {
     const id = crypto
       .createHash('sha256')
       .update(attachment)
@@ -642,18 +644,22 @@ export abstract class Server {
     return id;
   }
 
-  public async fetchAttachment(id: AttachmentId): Promise<Buffer | undefined> {
+  public async fetchAttachment(
+    id: AttachmentId,
+  ): Promise<Buffer<ArrayBuffer> | undefined> {
     return this.attachments.get(id);
   }
 
-  public async fetchStickerPack(packId: string): Promise<Buffer | undefined> {
+  public async fetchStickerPack(
+    packId: string,
+  ): Promise<Buffer<ArrayBuffer> | undefined> {
     return this.stickerPacks.get(packId)?.manifest;
   }
 
   public async fetchSticker(
     packId: string,
     stickerId: number,
-  ): Promise<Buffer | undefined> {
+  ): Promise<Buffer<ArrayBuffer> | undefined> {
     return this.stickerPacks.get(packId)?.stickers[stickerId];
   }
 
@@ -788,7 +794,7 @@ export abstract class Server {
     serviceIdKind: ServiceIdKind,
     envelopeType: EnvelopeType,
     target: Device,
-    encrypted: Buffer,
+    encrypted: Buffer<ArrayBuffer>,
     timestamp: bigint,
   ): Promise<void>;
 
@@ -817,7 +823,10 @@ export abstract class Server {
   }
 
   // TODO(indutny): timeout
-  public async send(target: Device, message: Buffer): Promise<void> {
+  public async send(
+    target: Device,
+    message: Buffer<ArrayBuffer>,
+  ): Promise<void> {
     const sockets = this.webSockets.get(target);
     if (sockets) {
       debug(
@@ -908,7 +917,7 @@ export abstract class Server {
   }
 
   public async getGroup(
-    publicParams: Uint8Array,
+    publicParams: Uint8Array<ArrayBuffer>,
   ): Promise<ServerGroup | undefined> {
     return this.groups.get(Buffer.from(publicParams).toString('base64'));
   }
@@ -1032,8 +1041,8 @@ export abstract class Server {
 
   private async setStorageItem(
     device: Device,
-    key: Buffer,
-    value: Buffer,
+    key: Buffer<ArrayBuffer>,
+    value: Buffer<ArrayBuffer>,
   ): Promise<void> {
     let map = this.storageItemsByAci.get(device.aci);
     if (!map) {
@@ -1046,8 +1055,8 @@ export abstract class Server {
 
   public async getStorageItem(
     device: Device,
-    key: Buffer,
-  ): Promise<Buffer | undefined> {
+    key: Buffer<ArrayBuffer>,
+  ): Promise<Buffer<ArrayBuffer> | undefined> {
     const map = this.storageItemsByAci.get(device.aci);
     if (!map) {
       return undefined;
@@ -1056,7 +1065,9 @@ export abstract class Server {
     return map.get(key.toString('hex'));
   }
 
-  public async getAllStorageKeys(device: Device): Promise<Array<Buffer>> {
+  public async getAllStorageKeys(
+    device: Device,
+  ): Promise<Array<Buffer<ArrayBuffer>>> {
     const map = this.storageItemsByAci.get(device.aci);
     if (!map) {
       return [];
@@ -1067,7 +1078,7 @@ export abstract class Server {
 
   public async getStorageItems(
     device: Device,
-    keys: ReadonlyArray<Buffer>,
+    keys: ReadonlyArray<Buffer<ArrayBuffer>>,
   ): Promise<Array<Proto.StorageItem.Params> | undefined> {
     const result = new Array<Proto.StorageItem.Params>();
 
@@ -1083,7 +1094,10 @@ export abstract class Server {
     return result;
   }
 
-  public async deleteStorageItem(device: Device, key: Buffer): Promise<void> {
+  public async deleteStorageItem(
+    device: Device,
+    key: Buffer<ArrayBuffer>,
+  ): Promise<void> {
     const map = this.storageItemsByAci.get(device.aci);
     if (!map) {
       return;
@@ -1104,7 +1118,7 @@ export abstract class Server {
   public async reserveUsername(
     aci: AciString,
     { usernameHashes }: UsernameReservation,
-  ): Promise<Buffer | undefined> {
+  ): Promise<Buffer<ArrayBuffer> | undefined> {
     // Clear previously reserved usernames
     const reserved = this.reservedUsernameByAci.get(aci);
     if (reserved !== undefined) {
@@ -1180,14 +1194,14 @@ export abstract class Server {
   }
 
   public async lookupByUsernameHash(
-    usernameHash: Buffer,
+    usernameHash: Buffer<ArrayBuffer>,
   ): Promise<AciString | undefined> {
     return this.aciByUsername.get(usernameHash.toString('hex'));
   }
 
   public async replaceUsernameLink(
     aci: AciString,
-    encryptedValue: Uint8Array,
+    encryptedValue: Uint8Array<ArrayBuffer>,
   ): Promise<string> {
     const lookupId = uuidv4();
 
@@ -1204,7 +1218,7 @@ export abstract class Server {
 
   public async lookupByUsernameLink(
     lookupId: string,
-  ): Promise<Buffer | undefined> {
+  ): Promise<Buffer<ArrayBuffer> | undefined> {
     return this.usernameLinkById.get(lookupId);
   }
 
@@ -1416,8 +1430,8 @@ export abstract class Server {
   }
 
   public async verifyGroupCredentials(
-    publicParams: Buffer,
-    credential: Buffer,
+    publicParams: Buffer<ArrayBuffer>,
+    credential: Buffer<ArrayBuffer>,
   ): Promise<AuthCredentialPresentation> {
     const auth = new ServerZkAuthOperations(this.zkSecret);
 
@@ -1447,7 +1461,7 @@ export abstract class Server {
   public async issueExpiringProfileKeyCredential(
     { aci, profileKeyCommitment }: Device,
     request: ProfileKeyCredentialRequest,
-  ): Promise<Buffer | undefined> {
+  ): Promise<Buffer<ArrayBuffer> | undefined> {
     if (!profileKeyCommitment) {
       return undefined;
     }

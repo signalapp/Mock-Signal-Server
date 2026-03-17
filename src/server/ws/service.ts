@@ -15,7 +15,7 @@ const debug = createDebug('mock:ws:service');
 const WSMessage = SignalService.WebSocketMessage;
 
 interface RequestOptions {
-  readonly body?: Uint8Array;
+  readonly body?: Uint8Array<ArrayBuffer>;
   readonly headers?: Array<string> | null;
 }
 
@@ -67,6 +67,7 @@ export abstract class Service {
       throw new Error('Unexpected input');
     }
 
+    // @ts-expect-error -- Can't refine to Uint8Array<ArrayBuffer>
     const message = WSMessage.decode(raw);
 
     if (message.type === WSMessage.Type.RESPONSE) {

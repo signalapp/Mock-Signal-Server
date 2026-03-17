@@ -95,7 +95,7 @@ export class Connection extends Service {
         return [401, { error: accessError }];
       }
 
-      let credential: Buffer | undefined;
+      let credential: Buffer<ArrayBuffer> | undefined;
       if (params.request) {
         const request = new ProfileKeyCredentialRequest(
           Buffer.from(params.request, 'hex'),
@@ -1017,7 +1017,9 @@ export class Connection extends Service {
     }
   }
 
-  public async sendMessage(message: Buffer | 'empty'): Promise<void> {
+  public async sendMessage(
+    message: Buffer<ArrayBuffer> | 'empty',
+  ): Promise<void> {
     let response;
     if (message === 'empty') {
       response = await this.send('PUT', '/api/v1/queue/empty', {});

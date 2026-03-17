@@ -80,7 +80,7 @@ export class ServerGroup extends Group {
 
   public getGroupSendEndorsementResponse(
     sourceAci: UuidCiphertext,
-  ): Uint8Array | null {
+  ): Uint8Array<ArrayBuffer> | null {
     const authMember = this.getMember(sourceAci);
     if (!authMember) {
       return null;
@@ -419,7 +419,7 @@ export class ServerGroup extends Group {
     attribute: string,
     member: Proto.Member.Params | undefined,
     access: Proto.AccessControl['attributes'],
-    affectedUserId?: Uint8Array,
+    affectedUserId?: Uint8Array<ArrayBuffer>,
   ): void {
     // Changing something about ourselves is always allowed
     if (

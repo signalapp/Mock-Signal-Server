@@ -4,9 +4,9 @@
 import { signalservice as Proto } from '../../protos/compiled';
 
 export type Attachment = {
-  key: Buffer;
-  blob: Buffer;
-  digest: Buffer;
+  key: Buffer<ArrayBuffer>;
+  blob: Buffer<ArrayBuffer>;
+  digest: Buffer<ArrayBuffer>;
   size: number;
 };
 

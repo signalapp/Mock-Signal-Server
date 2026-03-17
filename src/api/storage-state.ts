@@ -17,13 +17,13 @@ type RecordValue = NonNullable<Proto.StorageRecord.Params['record']>;
 export type StorageStateRecord<Value extends RecordValue = RecordValue> =
   Readonly<{
     type: Proto.ManifestRecord.Identifier.Type;
-    key: Buffer;
+    key: Buffer<ArrayBuffer>;
     record: Value;
   }>;
 
 export type StorageStateNewRecord = Readonly<{
   type: Proto.ManifestRecord.Identifier.Type;
-  key?: Buffer;
+  key?: Buffer<ArrayBuffer>;
   record: RecordValue;
 }>;
 
@@ -38,13 +38,13 @@ const IdentifierType = Proto.ManifestRecord.Identifier.Type;
 type IdentifierType = Proto.ManifestRecord.Identifier.Type;
 
 export type ToStorageItemOptions = Readonly<{
-  storageKey: Buffer;
-  recordIkm: Buffer | undefined;
+  storageKey: Buffer<ArrayBuffer>;
+  recordIkm: Buffer<ArrayBuffer> | undefined;
 }>;
 
 export type CreateWriteOperationOptions = Readonly<{
-  storageKey: Buffer;
-  recordIkm: Buffer | undefined;
+  storageKey: Buffer<ArrayBuffer>;
+  recordIkm: Buffer<ArrayBuffer> | undefined;
   previous?: StorageState;
 }>;
 
@@ -59,7 +59,7 @@ type StorageItemPredicate<Value extends RecordValue> = (
 
 class StorageStateItem<Value extends RecordValue = RecordValue> {
   public readonly type: IdentifierType;
-  public readonly key: Buffer;
+  public readonly key: Buffer<ArrayBuffer>;
   public readonly record: Value;
 
   constructor({ type, key, record }: StorageStateRecord<Value>) {
@@ -556,7 +556,7 @@ export class StorageState {
       .map((item) => item.toRecord());
   }
 
-  public hasKey(storageKey: Buffer): boolean {
+  public hasKey(storageKey: Buffer<ArrayBuffer>): boolean {
     return this.hasRecord((item) => item.key.equals(storageKey));
   }
 
@@ -817,7 +817,7 @@ export class StorageState {
     );
   }
 
-  private static createStorageID(): Buffer {
+  private static createStorageID(): Buffer<ArrayBuffer> {
     return crypto.randomBytes(KEY_SIZE);
   }
 }

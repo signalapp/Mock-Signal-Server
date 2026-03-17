@@ -21,7 +21,7 @@ export type AbbreviatedResponse = Readonly<
 
 export type Handler = (
   params: Record<string, string>,
-  body: Uint8Array | undefined,
+  body: Uint8Array<ArrayBuffer> | undefined,
   headers: Record<string, string>,
   query?: ParsedUrlQuery,
 ) => Promise<AbbreviatedResponse>;

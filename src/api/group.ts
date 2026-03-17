@@ -38,14 +38,14 @@ export type GroupFromConfigOptions = Readonly<{
 function encryptBlob(
   cipher: ClientZkGroupCipher,
   proto: Proto.GroupAttributeBlob.Params,
-): Buffer {
+): Buffer<ArrayBuffer> {
   const plaintext = Proto.GroupAttributeBlob.encode(proto);
   return Buffer.from(cipher.encryptBlob(plaintext));
 }
 
 function decryptBlob(
   cipher: ClientZkGroupCipher,
-  ciphertext: Uint8Array,
+  ciphertext: Uint8Array<ArrayBuffer>,
 ): Proto.GroupAttributeBlob {
   const plaintext = cipher.decryptBlob(Buffer.from(ciphertext));
   return Proto.GroupAttributeBlob.decode(plaintext);
@@ -130,7 +130,7 @@ export class Group extends GroupData {
     });
   }
 
-  public get masterKey(): Buffer {
+  public get masterKey(): Buffer<ArrayBuffer> {
     return Buffer.from(this.secretParams.getMasterKey().serialize());
   }
 
@@ -143,7 +143,7 @@ export class Group extends GroupData {
     };
   }
 
-  public encryptServiceId(serviceId: ServiceIdString): Buffer {
+  public encryptServiceId(serviceId: ServiceIdString): Buffer<ArrayBuffer> {
     const cipher = new ClientZkGroupCipher(this.secretParams);
     return Buffer.from(
       cipher
@@ -152,7 +152,9 @@ export class Group extends GroupData {
     );
   }
 
-  public decryptServiceId(ciphertext: Uint8Array): ServiceIdString {
+  public decryptServiceId(
+    ciphertext: Uint8Array<ArrayBuffer>,
+  ): ServiceIdString {
     const cipher = new ClientZkGroupCipher(this.secretParams);
     const uuidCiphertext = new UuidCiphertext(Buffer.from(ciphertext));
     return cipher

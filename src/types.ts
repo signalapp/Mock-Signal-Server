@@ -23,13 +23,13 @@ export enum ServiceIdKind {
 export type SignedPreKey = Readonly<{
   keyId: number;
   publicKey: PublicKey;
-  signature: Buffer;
+  signature: Buffer<ArrayBuffer>;
 }>;
 
 export type KyberPreKey = Readonly<{
   keyId: number;
   publicKey: KEMPublicKey;
-  signature: Buffer;
+  signature: Buffer<ArrayBuffer>;
 }>;
 
 export type PreKey = Readonly<{

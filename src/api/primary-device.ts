@@ -99,7 +99,7 @@ export type Config = Readonly<{
     device: Device,
     options: ChangeNumberOptions,
   ) => Promise<void>;
-  send: (device: Device, message: Buffer) => Promise<void>;
+  send: (device: Device, message: Buffer<ArrayBuffer>) => Promise<void>;
   getSenderCertificate: () => Promise<SenderCertificate>;
   getDeviceByServiceId: (
     serviceId: ServiceIdString,
@@ -108,16 +108,20 @@ export type Config = Readonly<{
   issueExpiringProfileKeyCredential: (
     device: Device,
     request: ProfileKeyCredentialRequest,
-  ) => Promise<Buffer | undefined>;
+  ) => Promise<Buffer<ArrayBuffer> | undefined>;
 
-  getGroup: (publicParams: Uint8Array) => Promise<ServerGroup | undefined>;
+  getGroup: (
+    publicParams: Uint8Array<ArrayBuffer>,
+  ) => Promise<ServerGroup | undefined>;
   createGroup: (group: Proto.Group.Params) => Promise<ServerGroup>;
   modifyGroup: (options: ModifyGroupOptions) => Promise<ModifyGroupResult>;
   waitForGroupUpdate: (group: GroupData) => Promise<void>;
 
   getStorageManifest: () => Promise<Proto.StorageManifest.Params | undefined>;
-  getStorageItem: (key: Buffer) => Promise<Buffer | undefined>;
-  getAllStorageKeys: () => Promise<Array<Buffer>>;
+  getStorageItem: (
+    key: Buffer<ArrayBuffer>,
+  ) => Promise<Buffer<ArrayBuffer> | undefined>;
+  getAllStorageKeys: () => Promise<Array<Buffer<ArrayBuffer>>>;
   waitForStorageManifest: (afterVersion?: bigint) => Promise<void>;
   applyStorageWrite: (
     operation: Proto.WriteOperation.Params,
@@ -176,8 +180,8 @@ export type FetchStorageOptions = Readonly<{
 
 export type SendStickerPackSyncOptions = Readonly<{
   type: 'install' | 'remove';
-  packId: Buffer;
-  packKey: Buffer;
+  packId: Buffer<ArrayBuffer>;
+  packKey: Buffer<ArrayBuffer>;
   timestamp?: number;
 }>;
 
@@ -250,7 +254,7 @@ export type SyncMessageQueueEntry = Readonly<{
 
 export type PrepareChangeNumberEntry = Readonly<{
   device: Device;
-  envelope: Buffer;
+  envelope: Buffer<ArrayBuffer>;
 }>;
 
 export type PrepareChangeNumberResult = ReadonlyArray<PrepareChangeNumberEntry>;
@@ -541,7 +545,7 @@ export class PrimaryDevice {
   private lockPromise: Promise<void> | undefined;
 
   private readonly syncStates = new WeakMap<Device, SyncEntry>();
-  private readonly storageKey: Buffer;
+  private readonly storageKey: Buffer<ArrayBuffer>;
   private readonly privateKey = PrivateKey.generate();
   private pniPrivateKey = PrivateKey.generate();
   private readonly contactsBlob: Proto.AttachmentPointer.Params;
@@ -572,10 +576,11 @@ export class PrimaryDevice {
   public readonly mediaRootBackupKey = crypto.randomBytes(32);
 
   // Forwarded in provisioning envelope
-  public ephemeralBackupKey: Buffer | undefined;
+  public ephemeralBackupKey: Buffer<ArrayBuffer> | undefined;
 
   // Overridable to test legacy encryption modes
-  public storageRecordIkm: Buffer | undefined = crypto.randomBytes(32);
+  public storageRecordIkm: Buffer<ArrayBuffer> | undefined =
+    crypto.randomBytes(32);
 
   // TODO(indutny): make primary device type configurable
   public readonly userAgent = 'OWI';
@@ -815,7 +820,6 @@ export class PrimaryDevice {
     target: Device,
     key: SingleUseKey,
     serviceIdKind = ServiceIdKind.ACI,
-    usePqRatchet: SignalClient.UsePQRatchet = SignalClient.UsePQRatchet.No,
   ): Promise<void> {
     assert.ok(this.isInitialized, 'Not initialized');
     debug('adding singleUseKey for', target.debugId);
@@ -847,7 +851,6 @@ export class PrimaryDevice {
       target.getAddressByKind(serviceIdKind),
       this.sessions,
       identity,
-      usePqRatchet,
     );
   }
 
@@ -1164,7 +1167,7 @@ export class PrimaryDevice {
     return this.convertManifestToStorageState(writeOperation.manifest);
   }
 
-  public async getOrphanedStorageKeys(): Promise<Array<Buffer>> {
+  public async getOrphanedStorageKeys(): Promise<Array<Buffer<ArrayBuffer>>> {
     const manifest = await this.config.getStorageManifest();
     if (!manifest) {
       return [];
@@ -1200,7 +1203,7 @@ export class PrimaryDevice {
     source: Device | undefined,
     serviceIdKind: ServiceIdKind,
     envelopeType: EnvelopeType,
-    encrypted: Buffer,
+    encrypted: Buffer<ArrayBuffer>,
   ): Promise<void> {
     const {
       unsealedSource,
@@ -1288,7 +1291,7 @@ export class PrimaryDevice {
     target: Device,
     text: string,
     options: EncryptTextOptions = {},
-  ): Promise<Buffer> {
+  ): Promise<Buffer<ArrayBuffer>> {
     const encryptOptions = {
       timestamp: Date.now(),
       ...options,
@@ -1332,7 +1335,7 @@ export class PrimaryDevice {
     target: Device,
     text: string,
     options: SyncSentOptions,
-  ): Promise<Buffer> {
+  ): Promise<Buffer<ArrayBuffer>> {
     const dataMessage: Proto.DataMessage.Params = {
       ...EMPTY_DATA_MESSAGE,
       body: text,
@@ -1375,7 +1378,7 @@ export class PrimaryDevice {
   public async encryptSyncRead(
     target: Device,
     options: SyncReadOptions,
-  ): Promise<Buffer> {
+  ): Promise<Buffer<ArrayBuffer>> {
     const content: Proto.Content.Params = {
       content: {
         syncMessage: {
@@ -1454,7 +1457,7 @@ export class PrimaryDevice {
   public async encryptReceipt(
     target: Device,
     options: ReceiptOptions,
-  ): Promise<Buffer> {
+  ): Promise<Buffer<ArrayBuffer>> {
     let type: Proto.ReceiptMessage.Type;
     if (options.type === ReceiptType.Delivery) {
       type = Proto.ReceiptMessage.Type.DELIVERY;
@@ -1685,7 +1688,10 @@ export class PrimaryDevice {
     this.secondaryDevices.splice(index, 1);
   }
 
-  public async receive(source: Device, encrypted: Buffer): Promise<void> {
+  public async receive(
+    source: Device,
+    encrypted: Buffer<ArrayBuffer>,
+  ): Promise<void> {
     const envelope = Proto.Envelope.decode(encrypted);
 
     if (
@@ -1811,7 +1817,7 @@ export class PrimaryDevice {
     target: Device,
     content: Proto.Content.Params,
     options?: EncryptOptions,
-  ): Promise<Buffer> {
+  ): Promise<Buffer<ArrayBuffer>> {
     const encoded = Buffer.from(Proto.Content.encode(content));
 
     return this.lock(async () => {
@@ -1981,7 +1987,7 @@ export class PrimaryDevice {
     serviceIdKind: ServiceIdKind,
     envelopeType: EnvelopeType,
     content: Proto.Content,
-    decryptionErrorMessage: Uint8Array,
+    decryptionErrorMessage: Uint8Array<ArrayBuffer>,
   ): void {
     const request = DecryptionErrorMessage.deserialize(
       Buffer.from(decryptionErrorMessage),
@@ -2066,7 +2072,7 @@ export class PrimaryDevice {
 
   private async encrypt(
     target: Device,
-    message: Buffer,
+    message: Buffer<ArrayBuffer>,
     {
       timestamp = Date.now(),
       sealed = false,
@@ -2075,14 +2081,14 @@ export class PrimaryDevice {
       distributionId,
       group,
     }: EncryptOptions = {},
-  ): Promise<Buffer> {
+  ): Promise<Buffer<ArrayBuffer>> {
     assert.ok(this.isInitialized, 'Not initialized');
 
     // "Pad"
     const paddedMessage = Buffer.concat([message, Buffer.from([0x80])]);
 
     let envelopeType: Proto.Envelope.Type;
-    let content: Uint8Array;
+    let content: Uint8Array<ArrayBuffer>;
 
     // Outgoing stores
     const identity = this.identity.get(ServiceIdKind.ACI);
@@ -2195,8 +2201,7 @@ export class PrimaryDevice {
     source: Device | undefined,
     serviceIdKind: ServiceIdKind,
     envelopeType: EnvelopeType,
-    encrypted: Uint8Array,
-    usePqRatchet: SignalClient.UsePQRatchet = SignalClient.UsePQRatchet.No,
+    encrypted: Uint8Array<ArrayBuffer>,
   ): Promise<DecryptResult> {
     debug('decrypting envelope type=%s start', envelopeType);
 
@@ -2210,7 +2215,7 @@ export class PrimaryDevice {
       'Should have identity, prekey/kyber/signed/senderkey stores',
     );
 
-    let decrypted: Uint8Array;
+    let decrypted: Uint8Array<ArrayBuffer>;
 
     if (envelopeType === EnvelopeType.Plaintext) {
       assert(source !== undefined, 'Plaintext must have source');
@@ -2237,7 +2242,6 @@ export class PrimaryDevice {
         preKeys,
         signedPreKeys,
         kyberPreKeys,
-        usePqRatchet,
       );
     } else if (envelopeType === EnvelopeType.SenderKey) {
       assert(source !== undefined, 'SenderKey must have source');
@@ -2345,7 +2349,7 @@ export class PrimaryDevice {
 
   private async processSenderKeyDistribution(
     source: Device,
-    rawMessage: Uint8Array,
+    rawMessage: Uint8Array<ArrayBuffer>,
   ): Promise<void> {
     const message = SenderKeyDistributionMessage.deserialize(
       Buffer.from(rawMessage),

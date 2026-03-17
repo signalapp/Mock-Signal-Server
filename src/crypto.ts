@@ -32,8 +32,8 @@ const AUTH_TAG_SIZE = 16;
 const MASTER_KEY_SIZE = 32;
 
 export type EncryptedProvisionMessage = {
-  body: Buffer;
-  ephemeralKey: Buffer;
+  body: Buffer<ArrayBuffer>;
+  ephemeralKey: Buffer<ArrayBuffer>;
 };
 
 export type ServerCertificate = {
@@ -50,7 +50,7 @@ export type Sender = {
 };
 
 export function encryptProvisionMessage(
-  data: Buffer,
+  data: Buffer<ArrayBuffer>,
   remotePubKey: PublicKey,
 ): EncryptedProvisionMessage {
   const privateKey = PrivateKey.generate();
@@ -88,13 +88,13 @@ export function encryptProvisionMessage(
 }
 
 export type EncryptAttachmentOptions = Readonly<{
-  aesKey: Buffer;
-  macKey: Buffer;
-  iv: Buffer;
+  aesKey: Buffer<ArrayBuffer>;
+  macKey: Buffer<ArrayBuffer>;
+  iv: Buffer<ArrayBuffer>;
 }>;
 
 export function encryptAttachment(
-  cleartext: Buffer,
+  cleartext: Buffer<ArrayBuffer>,
   { aesKey, macKey, iv }: EncryptAttachmentOptions = {
     aesKey: crypto.randomBytes(32),
     macKey: crypto.randomBytes(32),
@@ -176,7 +176,9 @@ export function generateSenderCertificate(
   return SenderCertificate.deserialize(certificate);
 }
 
-export function deriveAccessKey(profileKey: Uint8Array): Buffer {
+export function deriveAccessKey(
+  profileKey: Uint8Array<ArrayBuffer>,
+): Buffer<ArrayBuffer> {
   const cipher = crypto.createCipheriv(
     'aes-256-gcm',
     profileKey,
@@ -186,7 +188,9 @@ export function deriveAccessKey(profileKey: Uint8Array): Buffer {
   return Buffer.concat([cipher.update(Buffer.alloc(16)), cipher.final()]);
 }
 
-export function deriveMasterKey(accountEntropyPool: string): Buffer {
+export function deriveMasterKey(
+  accountEntropyPool: string,
+): Buffer<ArrayBuffer> {
   return Buffer.from(
     hkdf(
       MASTER_KEY_SIZE,
@@ -197,13 +201,18 @@ export function deriveMasterKey(accountEntropyPool: string): Buffer {
   );
 }
 
-export function deriveStorageKey(masterKey: Buffer): Buffer {
+export function deriveStorageKey(
+  masterKey: Buffer<ArrayBuffer>,
+): Buffer<ArrayBuffer> {
   const hash = crypto.createHmac('sha256', masterKey);
   hash.update('Storage Service Encryption');
   return hash.digest();
 }
 
-function deriveStorageManifestKey(storageKey: Buffer, version: bigint): Buffer {
+function deriveStorageManifestKey(
+  storageKey: Buffer<ArrayBuffer>,
+  version: bigint,
+): Buffer<ArrayBuffer> {
   const hash = crypto.createHmac('sha256', storageKey);
   hash.update(`Manifest_${version.toString()}`);
   return hash.digest();
@@ -214,16 +223,16 @@ const STORAGE_SERVICE_ITEM_KEY_INFO_PREFIX =
 const STORAGE_SERVICE_ITEM_KEY_LEN = 32;
 
 export type DeriveStorageItemKeyOptions = Readonly<{
-  storageKey: Buffer;
-  recordIkm: Buffer | undefined;
-  key: Buffer;
+  storageKey: Buffer<ArrayBuffer>;
+  recordIkm: Buffer<ArrayBuffer> | undefined;
+  key: Buffer<ArrayBuffer>;
 }>;
 
 export function deriveStorageItemKey({
   storageKey,
   recordIkm,
   key,
-}: DeriveStorageItemKeyOptions): Buffer {
+}: DeriveStorageItemKeyOptions): Buffer<ArrayBuffer> {
   if (recordIkm === undefined) {
     const hash = crypto.createHmac('sha256', storageKey);
     hash.update(`Item_${key.toString('base64')}`);
@@ -240,7 +249,10 @@ export function deriveStorageItemKey({
   );
 }
 
-function decryptAESGCM(ciphertext: Buffer, key: Buffer): Buffer {
+function decryptAESGCM(
+  ciphertext: Buffer<ArrayBuffer>,
+  key: Buffer<ArrayBuffer>,
+): Buffer<ArrayBuffer> {
   const iv = ciphertext.subarray(0, AESGCM_IV_SIZE);
   const tag = ciphertext.subarray(ciphertext.length - AUTH_TAG_SIZE);
   const rest = ciphertext.subarray(iv.length, ciphertext.length - tag.length);
@@ -252,7 +264,10 @@ function decryptAESGCM(ciphertext: Buffer, key: Buffer): Buffer {
   return Buffer.concat([decipher.update(rest), decipher.final()]);
 }
 
-function encryptAESGCM(plaintext: Uint8Array, key: Uint8Array): Buffer {
+function encryptAESGCM(
+  plaintext: Uint8Array<ArrayBuffer>,
+  key: Uint8Array<ArrayBuffer>,
+): Buffer<ArrayBuffer> {
   const iv = crypto.randomBytes(AESGCM_IV_SIZE);
   const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
 
@@ -264,7 +279,7 @@ function encryptAESGCM(plaintext: Uint8Array, key: Uint8Array): Buffer {
 }
 
 export function decryptStorageManifest(
-  storageKey: Buffer,
+  storageKey: Buffer<ArrayBuffer>,
   manifest: Proto.StorageManifest.Params,
 ): Proto.ManifestRecord {
   if (!manifest.value?.length) {
@@ -288,7 +303,7 @@ export function decryptStorageManifest(
 }
 
 export function encryptStorageManifest(
-  storageKey: Buffer,
+  storageKey: Buffer<ArrayBuffer>,
   manifestRecord: Proto.ManifestRecord.Params,
 ): Proto.StorageManifest.Params {
   if (!manifestRecord.version) {
@@ -312,8 +327,8 @@ export function encryptStorageManifest(
 }
 
 export type DecryptStorageItemOptions = Readonly<{
-  storageKey: Buffer;
-  recordIkm: Buffer | undefined;
+  storageKey: Buffer<ArrayBuffer>;
+  recordIkm: Buffer<ArrayBuffer> | undefined;
   item: Proto.StorageItem.Params;
 }>;
 
@@ -341,9 +356,9 @@ export function decryptStorageItem({
 }
 
 export type EncryptStorageItemOptions = Readonly<{
-  storageKey: Buffer;
-  key: Buffer;
-  recordIkm: Buffer | undefined;
+  storageKey: Buffer<ArrayBuffer>;
+  key: Buffer<ArrayBuffer>;
+  recordIkm: Buffer<ArrayBuffer> | undefined;
   record: Proto.StorageRecord.Params;
 }>;
 
@@ -371,15 +386,17 @@ export function encryptStorageItem({
 }
 
 export function encryptProfileName(
-  profileKey: Uint8Array,
+  profileKey: Uint8Array<ArrayBuffer>,
   name: string,
-): Buffer {
+): Buffer<ArrayBuffer> {
   const encrypted = encryptAESGCM(Buffer.from(name), profileKey);
 
   return encrypted;
 }
 
-export function generateAccessKeyVerifier(accessKey: Buffer): Buffer {
+export function generateAccessKeyVerifier(
+  accessKey: Buffer<ArrayBuffer>,
+): Buffer<ArrayBuffer> {
   const zeroes = Buffer.alloc(32);
 
   return crypto.createHmac('sha256', accessKey).update(zeroes).digest();
@@ -418,7 +435,7 @@ export function decodeKyberPreKey({
 
 export function hashRemoteConfig(
   config: ReadonlyDeep<Array<[string, string]>>,
-): Buffer {
+): Buffer<ArrayBuffer> {
   // Not necessarily secure, but this will let us detect changes. The exact
   // format isn't important so long as it's deterministic.
   const mac = crypto.createHmac('sha256', 'remoteConfig');

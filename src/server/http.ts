@@ -324,7 +324,7 @@ export const createHandler = (
   }
 
   type GroupAuthResult = Readonly<{
-    publicParams: Buffer;
+    publicParams: Buffer<ArrayBuffer>;
     aciCiphertext: UuidCiphertext;
     pniCiphertext: UuidCiphertext;
   }>;
@@ -543,7 +543,7 @@ export const createHandler = (
       );
     });
 
-    let groupSendEndorsementsResponse: Uint8Array | null = null;
+    let groupSendEndorsementsResponse: Uint8Array<ArrayBuffer> | null = null;
 
     if (membershipChange || expiresInLessThanSixHours) {
       groupSendEndorsementsResponse = group.getGroupSendEndorsementResponse(

@@ -503,7 +503,7 @@ export class Server extends BaseServer {
   public async storeAttachmentOnCdn(
     cdnNumber: number,
     cdnKey: string,
-    data: Uint8Array | Readable,
+    data: Uint8Array<ArrayBuffer> | Readable,
   ): Promise<void> {
     assert.strictEqual(cdnNumber, 3, 'Only cdn 3 currently supported');
     const { cdn3Path } = this.config;
@@ -523,8 +523,8 @@ export class Server extends BaseServer {
   }
 
   public async storeBackupOnCdn(
-    backupId: Uint8Array,
-    data: Uint8Array | Readable,
+    backupId: Uint8Array<ArrayBuffer>,
+    data: Uint8Array<ArrayBuffer> | Readable,
   ): Promise<void> {
     const { cdn3Path } = this.config;
     assert(cdn3Path, 'cdn3Path must be provided to store attachments');
@@ -628,7 +628,7 @@ export class Server extends BaseServer {
     serviceIdKind: ServiceIdKind,
     envelopeType: EnvelopeType,
     target: Device,
-    encrypted: Buffer,
+    encrypted: Buffer<ArrayBuffer>,
     timestamp: bigint,
   ): Promise<void> {
     if (envelopeType !== EnvelopeType.SealedSender) {
@@ -804,7 +804,7 @@ export class Server extends BaseServer {
   // storage read keys.
   public override async getStorageItems(
     device: Device,
-    keys: ReadonlyArray<Buffer>,
+    keys: ReadonlyArray<Buffer<ArrayBuffer>>,
   ): Promise<Array<Proto.StorageItem.Params> | undefined> {
     if (
       this.config.maxStorageReadKeys !== undefined &&
@@ -873,7 +873,7 @@ export class Server extends BaseServer {
         const finalPath = path.join(mediaDir, item.mediaId);
 
         // TODO(indutny): streams
-        let data: Buffer;
+        let data: Buffer<ArrayBuffer>;
         try {
           data = await fsPromises.readFile(transitPath);
         } catch (error) {

@@ -4,12 +4,14 @@
 import { signalservice as Proto } from '../../protos/compiled';
 
 export type Contact = Readonly<{
-  aciBinary: Uint8Array;
+  aciBinary: Uint8Array<ArrayBuffer>;
   number: string;
   profileName: string;
 }>;
 
-export function serializeContacts(contacts: ReadonlyArray<Contact>): Buffer {
+export function serializeContacts(
+  contacts: ReadonlyArray<Contact>,
+): Buffer<ArrayBuffer> {
   const chunks = contacts
     .map((contact) => {
       const { aciBinary, number, profileName: name } = contact;
