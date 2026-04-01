@@ -32,10 +32,20 @@ type Route = Readonly<{
   handler: Handler;
 }>;
 
+export type RouterOptions = Readonly<{
+  beforeRequest: (
+    verb: string,
+    path: string,
+    headers: Record<string, string>,
+  ) => Promise<void>;
+}>;
+
 export class Router {
   private readonly routes: Array<Route> = [];
 
   private isAuthenticated = false;
+
+  constructor(private options: RouterOptions) {}
 
   public register(method: string, pattern: string, handler: Handler): void {
     this.routes.push({
@@ -82,6 +92,12 @@ export class Router {
 
     // eslint-disable-next-line @typescript-eslint/no-deprecated
     const { pathname, query } = parseURL(request.path ?? '');
+
+    await this.options.beforeRequest(
+      request.verb ?? '',
+      pathname ?? '',
+      headers,
+    );
 
     for (const { method, pattern, handler } of this.routes) {
       if (method !== request.verb) {

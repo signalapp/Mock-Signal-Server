@@ -1,0 +1,30 @@
+diff --git a/index.d.ts b/index.d.ts
+index 6d08adc155873e948d2ffebf40622fe405159bc0..4041a625f51d84d719c878244aad2f74bc9791d9 100644
+--- a/index.d.ts
++++ b/index.d.ts
+@@ -10,6 +10,7 @@ import {
+     Server as HTTPServer,
+ } from "http";
+ import { Server as HTTPSServer } from "https";
++import { ServerHttp2Stream } from "http2";
+ import { createConnection } from "net";
+ import { Duplex, DuplexOptions } from "stream";
+ import { SecureContextOptions } from "tls";
+@@ -76,7 +77,7 @@ declare class WebSocket extends EventEmitter {
+     onclose: ((event: WebSocket.CloseEvent) => void) | null;
+     onmessage: ((event: WebSocket.MessageEvent) => void) | null;
+ 
+-    constructor(address: null);
++    constructor(address: null, protocols: undefined, options: WebSocket.ClientOptions | ClientRequestArgs);
+     constructor(address: string | URL, options?: WebSocket.ClientOptions | ClientRequestArgs);
+     constructor(
+         address: string | URL,
+@@ -84,6 +85,8 @@ declare class WebSocket extends EventEmitter {
+         options?: WebSocket.ClientOptions | ClientRequestArgs,
+     );
+ 
++    setSocket(socket: ServerHttp2Stream, head: Buffer, options: WebSocket.ClientOptions | ClientRequestArgs): void;
++
+     close(code?: number, data?: string | Buffer): void;
+     ping(data?: any, mask?: boolean, cb?: (err: Error) => void): void;
+     pong(data?: any, mask?: boolean, cb?: (err: Error) => void): void;

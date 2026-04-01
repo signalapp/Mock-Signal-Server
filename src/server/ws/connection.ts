@@ -3,7 +3,7 @@
 
 import assert from 'assert';
 import { Buffer } from 'buffer';
-import { IncomingMessage } from 'http';
+import { Http2ServerRequest } from 'http2';
 import { timingSafeEqual } from 'crypto';
 import createDebug from 'debug';
 import {
@@ -64,10 +64,14 @@ const debug = createDebug('mock:ws:connection');
 
 export class Connection extends Service {
   private device: Device | undefined;
-  private readonly router = new Router();
+  private readonly router = new Router({
+    beforeRequest: (verb, path, headers) => {
+      return this.handleAuth(verb, path, headers);
+    },
+  });
 
   constructor(
-    private readonly request: IncomingMessage,
+    private readonly request: Http2ServerRequest,
     ws: WebSocket,
     private readonly server: Server,
   ) {
@@ -1011,10 +1015,9 @@ export class Connection extends Service {
     }
 
     if (path === '/v1/websocket/') {
-      return this.handleNormal(this.request);
-    } else {
-      debug('websocket connection has unexpected URL %s', url);
+      return;
     }
+    debug('websocket connection has unexpected URL %s', url);
   }
 
   public async sendMessage(
@@ -1067,8 +1070,17 @@ export class Connection extends Service {
     }
   }
 
-  private async handleNormal(incomingMessage: IncomingMessage) {
-    const authHeaders = incomingMessage.headers.authorization;
+  private async handleAuth(
+    verb: string,
+    path: string,
+    headers: Record<string, string>,
+  ) {
+    // We are actively registering device
+    if (verb === 'PUT' && path === '/v1/devices/link') {
+      return;
+    }
+
+    const authHeaders = headers.authorization;
     if (!authHeaders) {
       debug('Websocket connection does not include Authorization header');
       return;
@@ -1088,11 +1100,16 @@ export class Connection extends Service {
 
     const device = await this.server.auth(username, password);
     if (!device) {
-      debug('Invalid WebSocket credentials @ %s: %j', incomingMessage.url, {
+      debug('Invalid WebSocket credentials @ %j', {
         username,
         password,
       });
       this.ws.close(3000);
+      return;
+    }
+
+    if (this.device !== undefined) {
+      assert.strictEqual(this.device, device, 'Cannot change active device');
       return;
     }
 

@@ -1,5 +1,6 @@
 {
   "name": "@signalapp/mock-server",
+  "packageManager": "pnpm@10.18.1",
   "version": "18.3.0",
   "description": "Mock Signal Server for writing tests",
   "main": "src/index.js",
@@ -73,5 +74,10 @@
     "mocha": "^9.2.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.44.1"
+  },
+  "pnpm": {
+    "patchedDependencies": {
+      "@types/ws": "patches/@types__ws.patch"
+    }
   }
 }

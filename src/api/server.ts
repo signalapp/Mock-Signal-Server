@@ -6,7 +6,12 @@ import fs from 'fs';
 import fsPromises from 'fs/promises';
 import { type Readable } from 'stream';
 import path from 'path';
-import https, { ServerOptions } from 'https';
+import type { IncomingMessage, ServerResponse } from 'http';
+import http2, {
+  SecureServerOptions,
+  Http2ServerRequest,
+  Http2ServerResponse,
+} from 'http2';
 import { parse as parseURL } from 'url';
 import { PrivateKey, PublicKey } from '@signalapp/libsignal-client';
 import {
@@ -77,7 +82,7 @@ type ZKParams = Readonly<{
 type StrictConfig = Readonly<{
   trustRoot: TrustRoot;
   zkParams: ZKParams;
-  https: ServerOptions;
+  https: SecureServerOptions;
   timeout: number;
   maxStorageReadKeys?: number;
   cdn3Path?: string;
@@ -87,7 +92,7 @@ type StrictConfig = Readonly<{
 export type Config = Readonly<{
   trustRoot?: TrustRoot;
   zkParams?: ZKParams;
-  https?: ServerOptions;
+  https?: SecureServerOptions;
   timeout?: number;
   maxStorageReadKeys?: number;
   cdn3Path?: string;
@@ -178,7 +183,12 @@ export class Server extends BaseServer {
       https: {
         key: KEY,
         cert: CERT,
+        allowHTTP1: true,
         ...(config.https ?? {}),
+        settings: {
+          ...(config.https?.settings ?? {}),
+          enableConnectProtocol: true,
+        },
       },
     };
 
@@ -223,63 +233,32 @@ export class Server extends BaseServer {
       updates2Path: this.config.updates2Path,
     });
 
-    const server = https.createServer(this.config.https, (req, res) => {
-      void run(req, res, httpHandler);
-    });
+    const server = http2
+      .createSecureServer(this.config.https, (req, res) => {
+        // micro is actually compatible with http2 requests, but the types are
+        // not.
+        void run(
+          req as unknown as IncomingMessage,
+          res as unknown as ServerResponse,
+          httpHandler,
+        );
+      })
+      .on('connect', (req: Http2ServerRequest, res: Http2ServerResponse) => {
+        // WebSocket
+        if (req.method === 'CONNECT') {
+          res.writeHead(200, this.wsUpgradeResponseHeaders);
 
-    const wss = new WebSocket.Server({
-      server,
-      // eslint-disable-next-line @typescript-eslint/no-misused-promises
-      verifyClient: async (info, callback) => {
-        const { url } = info.req;
-        assert(url, 'verifyClient: expected a URL on incoming request');
-        const { query } = parseURL(url, true);
+          const websocket = new WebSocket(null, undefined, {});
+          websocket.setSocket(req.stream, Buffer.alloc(0), {});
+          const conn = new WSConnection(req, websocket, this);
 
-        if (query.login == null && query.password == null) {
-          debug('verifyClient: Allowing connection with no credentials');
-          callback(true);
+          conn.start().catch((error: unknown) => {
+            websocket.close();
+            debug('Websocket handling error', error);
+          });
           return;
         }
-
-        // Note: when a device has been unlinked, it will use '' as its password
-        if (
-          query.login == null ||
-          Array.isArray(query.login) ||
-          typeof query.password !== 'string' ||
-          Array.isArray(query.password)
-        ) {
-          debug('verifyClient: Malformed credentials @ %s: %j', url, query);
-          callback(false, 403);
-          return;
-        }
-
-        const device = await this.auth(query.login, query.password);
-        if (!device) {
-          debug('verifyClient: Invalid credentials @ %s: %j', url, query);
-          callback(false, 403);
-          return;
-        }
-
-        callback(true);
-      },
-    });
-
-    wss.on('connection', (ws, request) => {
-      const conn = new WSConnection(request, ws, this);
-
-      conn.start().catch((error: unknown) => {
-        ws.close();
-        debug('Websocket handling error', error);
       });
-    });
-
-    wss.on('headers', (headers) => {
-      Object.entries(this.wsUpgradeResponseHeaders).forEach(
-        ([header, value]) => {
-          headers.push(`${header}: ${value}`);
-        },
-      );
-    });
 
     this.https = server;
 

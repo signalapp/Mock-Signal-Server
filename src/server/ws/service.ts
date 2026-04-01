@@ -35,7 +35,9 @@ export abstract class Service {
         debug('onMessage error', error.stack);
       }
     });
-    this.ws.once('close', () => this.onClose());
+    this.ws.once('close', () => {
+      this.onClose();
+    });
   }
 
   public async send(

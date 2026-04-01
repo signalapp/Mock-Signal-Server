@@ -26,7 +26,7 @@ import {
   UuidCiphertext,
 } from '@signalapp/libsignal-client/zkgroup';
 import assert from 'assert';
-import https from 'https';
+import http2 from 'http2';
 import crypto from 'crypto';
 import createDebug from 'debug';
 import { v4 as uuidv4 } from 'uuid';
@@ -222,11 +222,7 @@ type StorageAuthEntry = Readonly<{
   device: Device;
 }>;
 
-type MessageQueueEntry = {
-  readonly message: Buffer<ArrayBuffer>;
-  resolve: () => void;
-  reject: (error: Error) => void;
-};
+type MessageQueueEntry = (socket: WebSocket) => Promise<void>;
 
 export type CallLinkEntry = Readonly<{
   adminPasskey: Buffer<ArrayBuffer>;
@@ -360,7 +356,7 @@ export abstract class Server {
   protected privZKSecret: ServerSecretParams | undefined;
   protected privGenericServerSecret: GenericServerSecretParams | undefined;
   protected privBackupServerSecret: GenericServerSecretParams | undefined;
-  protected https: https.Server | undefined;
+  protected https: http2.Http2SecureServer | undefined;
 
   public address(): AddressInfo {
     if (!this.https) {
@@ -807,7 +803,8 @@ export abstract class Server {
     }
     sockets.add(socket);
 
-    await this.sendQueue(device, socket);
+    // Don't wait for send to be over
+    void this.sendQueue(device, socket);
   }
 
   public removeWebSocket(device: Device, socket: WebSocket): void {
@@ -862,21 +859,13 @@ export abstract class Server {
 
     debug('queueing message for device=%s', target.debugId);
 
-    await new Promise<void>((resolve, reject) => {
-      // NOTE: set and push have to happen in the same tick, otherwise a race
-      // condition is possible in `removeWebSocket`.
-      let queue = this.messageQueue.get(target);
-      if (!queue) {
-        queue = [];
-        this.messageQueue.set(target, queue);
-      }
+    let queue = this.messageQueue.get(target);
+    if (!queue) {
+      queue = [];
+      this.messageQueue.set(target, queue);
+    }
 
-      queue.push({
-        message,
-        resolve,
-        reject,
-      });
-    });
+    queue.push((socket) => socket.sendMessage(message));
 
     debug('queued message sent to device=%s', target.debugId);
   }
@@ -1756,24 +1745,13 @@ export abstract class Server {
     }
 
     debug('sending queued %d messages to %s', queue.length, device.debugId);
-    await Promise.all(
-      queue.map(async (entry) => {
-        const { message, resolve, reject } = entry;
-
-        try {
-          await socket.sendMessage(message);
-        } catch (error) {
-          assert(error instanceof Error);
-          reject(error);
-          return;
-        }
-
-        resolve();
-      }),
-    );
-
-    debug('queue for %s is empty', device.debugId);
-    await socket.sendMessage('empty');
+    try {
+      await Promise.all(
+        queue.map((fn) => fn(socket)).concat(socket.sendMessage('empty')),
+      );
+    } catch {
+      // Ignore errors, socket likely closed
+    }
   }
 
   private issueCredentials(
