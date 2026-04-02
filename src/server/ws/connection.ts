@@ -1041,6 +1041,10 @@ export class Connection extends Service {
     );
   }
 
+  public close(code: number): void {
+    this.ws.close(code);
+  }
+
   //
   // Service implementation
   //

@@ -205,6 +205,7 @@ export { type ModifyGroupResult };
 
 interface WebSocket {
   sendMessage: (message: Buffer<ArrayBuffer> | 'empty') => Promise<void>;
+  close: (code: number) => void;
 }
 
 interface SerializableCredential {
@@ -321,7 +322,7 @@ export abstract class Server {
   >();
   private readonly attachments = new Map<AttachmentId, Buffer<ArrayBuffer>>();
   private readonly stickerPacks = new Map<string, EncryptedStickerPack>();
-  private readonly webSockets = new Map<Device, Set<WebSocket>>();
+  private readonly webSockets = new Map<Device, WebSocket>();
   private readonly messageQueue = new WeakMap<
     Device,
     Array<MessageQueueEntry>
@@ -796,27 +797,25 @@ export abstract class Server {
 
   public async addWebSocket(device: Device, socket: WebSocket): Promise<void> {
     debug('adding websocket for device=%s', device.debugId);
-    let sockets = this.webSockets.get(device);
-    if (!sockets) {
-      sockets = new Set();
-      this.webSockets.set(device, sockets);
+    const existing = this.webSockets.get(device);
+    if (existing !== undefined) {
+      debug('closing stale socket for devices=%s', device.debugId);
+      existing.close(4409);
     }
-    sockets.add(socket);
+    this.webSockets.set(device, socket);
 
     // Don't wait for send to be over
     void this.sendQueue(device, socket);
   }
 
   public removeWebSocket(device: Device, socket: WebSocket): void {
-    debug('removing websocket for device=%s', device.debugId);
-    const sockets = this.webSockets.get(device);
-    if (!sockets) {
+    const existing = this.webSockets.get(device);
+    if (existing !== socket) {
       return;
     }
-    sockets.delete(socket);
-    if (sockets.size === 0) {
-      this.webSockets.delete(device);
-    }
+
+    debug('removing websocket for device=%s', device.debugId);
+    this.webSockets.delete(device);
   }
 
   // TODO(indutny): timeout
@@ -824,37 +823,21 @@ export abstract class Server {
     target: Device,
     message: Buffer<ArrayBuffer>,
   ): Promise<void> {
-    const sockets = this.webSockets.get(target);
-    if (sockets) {
-      debug(
-        'sending message to %d sockets of %s',
-        sockets.size,
-        target.debugId,
-      );
-      let success = false;
-      await Promise.all<void>(
-        Array.from(sockets).map(async (socket) => {
-          try {
-            await socket.sendMessage(message);
-            success = true;
-          } catch (error) {
-            assert(error instanceof Error);
-            debug(
-              'failed to send message to socket of %s, error %s',
-              target.debugId,
-              error.message,
-            );
-          }
-        }),
-      );
+    const socket = this.webSockets.get(target);
+    if (socket) {
+      debug('sending message to %d socket', target.debugId);
+      try {
+        await socket.sendMessage(message);
 
-      // At least one send should succeed, if not - queue
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      if (success) {
         return;
+      } catch (error) {
+        assert(error instanceof Error);
+        debug(
+          'failed to send message to socket of %s, error %s',
+          target.debugId,
+          error.message,
+        );
       }
-
-      debug("message couldn't be sent to %s", sockets.size, target.debugId);
     }
 
     debug('queueing message for device=%s', target.debugId);
@@ -865,8 +848,18 @@ export abstract class Server {
       this.messageQueue.set(target, queue);
     }
 
-    queue.push((socket) => socket.sendMessage(message));
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
 
+    queue.push(async (socket) => {
+      try {
+        await socket.sendMessage(message);
+        resolve();
+      } catch (error) {
+        reject(error);
+      }
+    });
+
+    await promise;
     debug('queued message sent to device=%s', target.debugId);
   }
 
@@ -1752,6 +1745,7 @@ export abstract class Server {
     } catch {
       // Ignore errors, socket likely closed
     }
+    debug('sent queued %d messages to %s', queue.length, device.debugId);
   }
 
   private issueCredentials(
