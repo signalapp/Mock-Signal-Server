@@ -133,6 +133,7 @@ export class ServerGroup extends Group {
       promoteMembersPendingPniAciProfileKey: null,
       modifyMemberLabels: null,
       modifyMemberLabelAccess: null,
+      terminateGroup: null,
     };
 
     assert.ok(actions.version, 'Actions should have a new version');
@@ -374,6 +375,13 @@ export class ServerGroup extends Group {
           presentation: null,
         },
       ];
+    }
+
+    if (actions.terminateGroup !== null) {
+      this.verifyAccess('terminated', authMember, AccessRequired.ADMINISTRATOR);
+
+      appliedActions.terminateGroup = {};
+      newState.terminated = true;
     }
 
     const { version: oldVersion } = this.state;

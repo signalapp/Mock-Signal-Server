@@ -310,6 +310,7 @@ const EMPTY_GROUP_ACTIONS: Proto.GroupChange.Actions.Params = {
   promoteMembersPendingPniAciProfileKey: null,
   modifyMemberLabels: null,
   modifyMemberLabelAccess: null,
+  terminateGroup: null,
 };
 
 export const EMPTY_DATA_MESSAGE: Proto.DataMessage.Params = {

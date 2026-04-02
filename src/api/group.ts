@@ -122,6 +122,7 @@ export class Group extends GroupData {
       description: null,
       announcementsOnly: null,
       membersBanned: null,
+      terminated: null,
     };
 
     return new Group({
