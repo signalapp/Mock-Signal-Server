@@ -1015,8 +1015,10 @@ export class Connection extends Service {
     }
 
     if (path === '/v1/websocket/') {
+      await this.handleAuthHeaders(this.request.headers);
       return;
     }
+
     debug('websocket connection has unexpected URL %s', url);
   }
 
@@ -1080,9 +1082,19 @@ export class Connection extends Service {
       return;
     }
 
+    await this.handleAuthHeaders(headers);
+  }
+
+  private async handleAuthHeaders(
+    headers: Record<string, string | Array<string> | undefined>,
+  ) {
     const authHeaders = headers.authorization;
-    if (!authHeaders) {
+    if (authHeaders === undefined) {
       debug('Websocket connection does not include Authorization header');
+      return;
+    }
+    if (Array.isArray(authHeaders)) {
+      debug('Websocket connection includes multiple Authorization headers');
       return;
     }
     const { error, username, password } = parseAuthHeader(authHeaders, {

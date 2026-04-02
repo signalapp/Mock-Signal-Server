@@ -1011,7 +1011,7 @@ export abstract class Server {
     await Promise.all(deletes);
 
     debug(
-      'updating storage manifest to version=%j for=%j',
+      'updating storage manifest to version=%d for=%j',
       manifest.version,
       device.debugId,
     );
