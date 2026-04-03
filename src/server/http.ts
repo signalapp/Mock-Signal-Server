@@ -34,19 +34,15 @@ import {
   UpdateCallLinkSchema,
 } from '../data/schemas';
 import { AttachmentId } from '../types';
-import { ParseAuthHeaderResult, parseAuthHeader } from '../util';
 import { CallLinkEntry, Server } from './base';
 import { ServerGroup } from './group';
+import { parsePassword, auth } from './common';
 import { join } from 'path';
 import { createHash } from 'crypto';
 
 const debug = createDebug('mock:http');
 
 const ALL_METHODS = [get, post, put, patch, del, head, options] as const;
-
-const parsePassword = (req: ServerRequest): ParseAuthHeaderResult => {
-  return parseAuthHeader(req.headers.authorization);
-};
 
 function getContentType(filePath: string): string {
   const ext = filePath.toLowerCase().split('.').pop();
@@ -301,27 +297,6 @@ export const createHandler = (
   //
   // Authorized requests
   //
-
-  async function auth(
-    req: ServerRequest,
-    res: ServerResponse,
-  ): Promise<Device | undefined> {
-    const { username, password, error } = parsePassword(req);
-    if (error) {
-      debug('%s %s auth failed, error %j', req.method, req.url, error);
-      void send(res, 401, { error });
-      return;
-    }
-
-    const device = await server.auth(username ?? '', password ?? '');
-    if (!device) {
-      debug('%s %s auth failed, need re-provisioning', req.method, req.url);
-      void send(res, 401, { error: 'Need re-provisioning' });
-      return;
-    }
-
-    return device;
-  }
 
   type GroupAuthResult = Readonly<{
     publicParams: Buffer<ArrayBuffer>;
@@ -762,7 +737,7 @@ export const createHandler = (
   });
 
   const notFoundAfterAuth: RouteHandler = async (req, res) => {
-    const device = await auth(req, res);
+    const device = await auth(server, req, res);
     if (!device) {
       return;
     }

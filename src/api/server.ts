@@ -20,7 +20,7 @@ import {
 } from '@signalapp/libsignal-client/zkgroup';
 import createDebug from 'debug';
 import WebSocket from 'ws';
-import { run } from 'micro';
+import { run, type RequestHandler } from 'micro';
 
 import { attachmentToPointer } from '../data/attachment';
 import { BackupMediaBatch } from '../data/schemas';
@@ -61,6 +61,7 @@ import {
 } from '../util';
 
 import { createHandler as createHTTPHandler } from '../server/http';
+import { createHandler as createGRPCHandler } from '../server/grpc';
 import { Connection as WSConnection } from '../server/ws';
 
 import { PrimaryDevice } from './primary-device';
@@ -233,14 +234,23 @@ export class Server extends BaseServer {
       updates2Path: this.config.updates2Path,
     });
 
+    const grpcHandler = createGRPCHandler(this);
+
     const server = http2
       .createSecureServer(this.config.https, (req, res) => {
+        let handler: RequestHandler;
+        if (req.headers['content-type'] === 'application/grpc') {
+          handler = grpcHandler;
+        } else {
+          handler = httpHandler;
+        }
+
         // micro is actually compatible with http2 requests, but the types are
         // not.
         void run(
           req as unknown as IncomingMessage,
           res as unknown as ServerResponse,
-          httpHandler,
+          handler,
         );
       })
       .on('connect', (req: Http2ServerRequest, res: Http2ServerResponse) => {

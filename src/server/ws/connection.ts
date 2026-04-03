@@ -10,7 +10,6 @@ import {
   CreateCallLinkCredentialRequest,
   ProfileKeyCredentialRequest,
 } from '@signalapp/libsignal-client/zkgroup';
-import SealedSenderMultiRecipientMessage from '@signalapp/libsignal-client/dist/SealedSenderMultiRecipientMessage';
 
 import WebSocket from 'ws';
 import { v4 as uuidv4 } from 'uuid';
@@ -23,7 +22,6 @@ import {
   BackupMediaBatchSchema,
   CreateCallLinkAuthSchema,
   DeviceKeysSchema,
-  Message,
   MessageListSchema,
   PutUsernameLinkSchema,
   SetBackupIdSchema,
@@ -35,7 +33,6 @@ import {
   DeviceId,
   ProvisionIdString,
   ProvisioningCode,
-  RegistrationId,
   ServiceIdKind,
   ServiceIdString,
   untagPni,
@@ -191,121 +188,6 @@ export class Connection extends Service {
           replyHeaders,
         ] as const;
       }),
-    );
-
-    this.router.put(
-      '/v1/messages/multi_recipient',
-      async (_params, body, _headers, query = {}) => {
-        if (!body) {
-          return [400, { error: 'Missing body' }];
-        }
-        if (query.ts == null) {
-          return [400, { error: 'Missing ts' }];
-        }
-
-        const timestamp = BigInt(query.ts as string);
-
-        const message = new SealedSenderMultiRecipientMessage(
-          Buffer.from(body),
-        );
-
-        const listByServiceId = new Map<ServiceIdString, Array<Message>>();
-
-        const recipients = message.recipientsByServiceIdString();
-        for (const [serviceId, recipient] of Object.entries(recipients)) {
-          let list: Array<Message> | undefined = listByServiceId.get(
-            serviceId as ServiceIdString,
-          );
-          if (!list) {
-            list = [];
-            listByServiceId.set(serviceId as ServiceIdString, list);
-          }
-
-          for (const [i, deviceId] of recipient.deviceIds.entries()) {
-            const registrationId = recipient.registrationIds.at(i);
-
-            list.push({
-              type: Proto.Envelope.Type.UNIDENTIFIED_SENDER,
-              destinationDeviceId: deviceId as DeviceId,
-              destinationRegistrationId: registrationId as RegistrationId,
-              content: Buffer.from(
-                message.messageForRecipient(recipient),
-              ).toString('base64'),
-            });
-          }
-        }
-
-        // TODO(indutny): verify access key xor
-
-        const results = await Promise.all(
-          Array.from(listByServiceId.entries()).map(
-            async ([serviceId, messages]) => {
-              return {
-                uuid: serviceId,
-                prepared: await this.server.prepareMultiDeviceMessage(
-                  undefined,
-                  serviceId,
-                  messages,
-                  timestamp,
-                ),
-              };
-            },
-          ),
-        );
-
-        const incomplete = results.filter(
-          ({ prepared }) => prepared.status === 'incomplete',
-        );
-
-        if (incomplete.length !== 0) {
-          return [
-            409,
-            incomplete.map(({ uuid, prepared }) => {
-              assert.ok(prepared.status === 'incomplete');
-              return {
-                uuid,
-                devices: {
-                  missingDevices: prepared.missingDevices,
-                  extraDevices: prepared.extraDevices,
-                },
-              };
-            }),
-          ];
-        }
-
-        const stale = results.filter(
-          ({ prepared }) => prepared.status === 'stale',
-        );
-
-        if (stale.length !== 0) {
-          return [
-            410,
-            stale.map(({ uuid, prepared }) => {
-              assert.ok(prepared.status === 'stale');
-              return { uuid, devices: { staleDevices: prepared.staleDevices } };
-            }),
-          ];
-        }
-
-        const uuids404 = results
-          .filter(({ prepared }) => prepared.status === 'unknown')
-          .map(({ uuid }) => uuid);
-
-        const ok = results.filter(({ prepared }) => prepared.status === 'ok');
-
-        await Promise.all(
-          ok.map(({ prepared }) => {
-            assert.ok(prepared.status === 'ok');
-            return this.server.handlePreparedMultiDeviceMessage(
-              undefined,
-              prepared.targetServiceId,
-              prepared.result,
-            );
-          }),
-        );
-
-        return [200, { uuids404 }];
-      },
     );
 
     this.router.put(
