@@ -1,7 +1,7 @@
 {
   "name": "@signalapp/mock-server",
   "packageManager": "pnpm@10.18.1",
-  "version": "20.0.0",
+  "version": "20.0.1",
   "description": "Mock Signal Server for writing tests",
   "main": "src/index.js",
   "types": "src/index.d.ts",
