@@ -99,123 +99,132 @@ function grpcRoute<Endpoint extends keyof typeof $services>(
 export const createHandler = (server: Server): RequestHandler => {
   // gRPC
 
-  const onSendMultiRecipientMessage = grpcRoute(
-    'org.signal.chat.messages.MessagesAnonymous/SendMultiRecipientMessage',
-    async (request) => {
-      const {
-        message: givenMessage,
-        // TODO(indutny): check it at all?
-        // groupSendToken,
-      } = request;
+  async function onMultiRecipientMessage(
+    request:
+      | org.signal.chat.messages.SendMultiRecipientMessageRequest
+      | org.signal.chat.messages.SendMultiRecipientStoryRequest,
+  ): Promise<org.signal.chat.messages.SendMultiRecipientMessageResponse.Params> {
+    const {
+      message: givenMessage,
+      // TODO(indutny): check it at all?
+      // groupSendToken,
+    } = request;
 
-      if (givenMessage == null) {
-        throw new Error('Missing message');
+    if (givenMessage == null) {
+      throw new Error('Missing message');
+    }
+
+    const { timestamp, payload } = givenMessage;
+
+    const message = new SealedSenderMultiRecipientMessage(Buffer.from(payload));
+
+    const listByServiceId = new Map<ServiceIdString, Array<Message>>();
+
+    const recipients = message.recipientsByServiceIdString();
+    for (const [serviceId, recipient] of Object.entries(recipients)) {
+      let list: Array<Message> | undefined = listByServiceId.get(
+        serviceId as ServiceIdString,
+      );
+      if (!list) {
+        list = [];
+        listByServiceId.set(serviceId as ServiceIdString, list);
       }
 
-      const { timestamp, payload } = givenMessage;
+      for (const [i, deviceId] of recipient.deviceIds.entries()) {
+        const registrationId = recipient.registrationIds.at(i);
 
-      const message = new SealedSenderMultiRecipientMessage(
-        Buffer.from(payload),
-      );
-
-      const listByServiceId = new Map<ServiceIdString, Array<Message>>();
-
-      const recipients = message.recipientsByServiceIdString();
-      for (const [serviceId, recipient] of Object.entries(recipients)) {
-        let list: Array<Message> | undefined = listByServiceId.get(
-          serviceId as ServiceIdString,
-        );
-        if (!list) {
-          list = [];
-          listByServiceId.set(serviceId as ServiceIdString, list);
-        }
-
-        for (const [i, deviceId] of recipient.deviceIds.entries()) {
-          const registrationId = recipient.registrationIds.at(i);
-
-          list.push({
-            type: Proto.Envelope.Type.UNIDENTIFIED_SENDER,
-            destinationDeviceId: deviceId as DeviceId,
-            destinationRegistrationId: registrationId as RegistrationId,
-            content: Buffer.from(
-              message.messageForRecipient(recipient),
-            ).toString('base64'),
-          });
-        }
+        list.push({
+          type: Proto.Envelope.Type.UNIDENTIFIED_SENDER,
+          destinationDeviceId: deviceId as DeviceId,
+          destinationRegistrationId: registrationId as RegistrationId,
+          content: Buffer.from(message.messageForRecipient(recipient)).toString(
+            'base64',
+          ),
+        });
       }
+    }
 
-      const results = await Promise.all(
-        Array.from(listByServiceId.entries()).map(
-          async ([serviceId, messages]) => {
-            return {
-              uuid: serviceId,
-              prepared: await server.prepareMultiDeviceMessage(
-                undefined,
-                serviceId,
-                messages,
-                timestamp,
-              ),
-            };
-          },
-        ),
-      );
+    const results = await Promise.all(
+      Array.from(listByServiceId.entries()).map(
+        async ([serviceId, messages]) => {
+          return {
+            uuid: serviceId,
+            prepared: await server.prepareMultiDeviceMessage(
+              undefined,
+              serviceId,
+              messages,
+              timestamp,
+            ),
+          };
+        },
+      ),
+    );
 
-      const mismatchedDevices = results.filter(({ prepared }) => {
-        return prepared.status === 'incomplete' || prepared.status === 'stale';
-      });
+    const mismatchedDevices = results.filter(({ prepared }) => {
+      return prepared.status === 'incomplete' || prepared.status === 'stale';
+    });
 
-      if (mismatchedDevices.length > 0) {
-        return {
-          response: {
-            mismatchedDevices: {
-              mismatchedDevices: mismatchedDevices.map(({ uuid, prepared }) => {
-                if (prepared.status === 'incomplete') {
-                  return {
-                    serviceIdentifier: toServiceIdentifier(uuid),
-                    missingDevices: prepared.missingDevices.slice(),
-                    extraDevices: prepared.extraDevices.slice(),
-                    staleDevices: null,
-                  };
-                }
-
-                assert.ok(prepared.status === 'stale');
-                return {
-                  serviceIdentifier: toServiceIdentifier(uuid),
-                  missingDevices: null,
-                  extraDevices: null,
-                  staleDevices: prepared.staleDevices.slice(),
-                };
-              }),
-            },
-          },
-        };
-      }
-
-      const uuids404 = results
-        .filter(({ prepared }) => prepared.status === 'unknown')
-        .map(({ uuid }) => uuid);
-
-      const ok = results.filter(({ prepared }) => prepared.status === 'ok');
-
-      await Promise.all(
-        ok.map(({ prepared }) => {
-          assert.ok(prepared.status === 'ok');
-          return server.handlePreparedMultiDeviceMessage(
-            undefined,
-            prepared.targetServiceId,
-            prepared.result,
-          );
-        }),
-      );
-
+    if (mismatchedDevices.length > 0) {
       return {
         response: {
-          success: {
-            unresolvedRecipients: uuids404.map(toServiceIdentifier),
+          mismatchedDevices: {
+            mismatchedDevices: mismatchedDevices.map(({ uuid, prepared }) => {
+              if (prepared.status === 'incomplete') {
+                return {
+                  serviceIdentifier: toServiceIdentifier(uuid),
+                  missingDevices: prepared.missingDevices.slice(),
+                  extraDevices: prepared.extraDevices.slice(),
+                  staleDevices: null,
+                };
+              }
+
+              assert.ok(prepared.status === 'stale');
+              return {
+                serviceIdentifier: toServiceIdentifier(uuid),
+                missingDevices: null,
+                extraDevices: null,
+                staleDevices: prepared.staleDevices.slice(),
+              };
+            }),
           },
         },
       };
-    },
+    }
+
+    const uuids404 = results
+      .filter(({ prepared }) => prepared.status === 'unknown')
+      .map(({ uuid }) => uuid);
+
+    const ok = results.filter(({ prepared }) => prepared.status === 'ok');
+
+    await Promise.all(
+      ok.map(({ prepared }) => {
+        assert.ok(prepared.status === 'ok');
+        return server.handlePreparedMultiDeviceMessage(
+          undefined,
+          prepared.targetServiceId,
+          prepared.result,
+        );
+      }),
+    );
+
+    return {
+      response: {
+        success: {
+          unresolvedRecipients: uuids404.map(toServiceIdentifier),
+        },
+      },
+    };
+  }
+
+  const onSendMultiRecipientMessage = grpcRoute(
+    'org.signal.chat.messages.MessagesAnonymous/SendMultiRecipientMessage',
+    onMultiRecipientMessage,
+  );
+
+  const onSendMultiRecipientStory = grpcRoute(
+    'org.signal.chat.messages.MessagesAnonymous/SendMultiRecipientStory',
+    onMultiRecipientMessage,
   );
 
   const notFoundAfterAuth: RouteHandler = async (req, res) => {
@@ -231,6 +240,7 @@ export const createHandler = (server: Server): RequestHandler => {
   const routes = router(
     // gRPC
     onSendMultiRecipientMessage,
+    onSendMultiRecipientStory,
 
     ...ALL_METHODS.map((method) => method('/*', notFoundAfterAuth)),
   );
