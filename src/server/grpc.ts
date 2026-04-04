@@ -4,6 +4,7 @@
 import assert from 'assert';
 import { Buffer } from 'buffer';
 import createDebug from 'debug';
+import { stringify as stringifyUuid } from 'uuid';
 import { RequestHandler, buffer, send as sendRaw } from 'micro';
 import {
   AugmentedRequestHandler as RouteHandler,
@@ -227,6 +228,50 @@ export const createHandler = (server: Server): RequestHandler => {
     onMultiRecipientMessage,
   );
 
+  const onLookupUsernameHash = grpcRoute(
+    'org.signal.chat.account.AccountsAnonymous/LookupUsernameHash',
+    async ({ usernameHash }) => {
+      const uuid = await server.lookupByUsernameHash(Buffer.from(usernameHash));
+
+      if (!uuid) {
+        return {
+          response: {
+            notFound: {},
+          },
+        };
+      }
+
+      return {
+        response: {
+          serviceIdentifier: toServiceIdentifier(uuid),
+        },
+      };
+    },
+  );
+
+  const onLookupUsernameLink = grpcRoute(
+    'org.signal.chat.account.AccountsAnonymous/LookupUsernameLink',
+    async ({ usernameLinkHandle }) => {
+      const usernameCiphertext = await server.lookupByUsernameLink(
+        stringifyUuid(usernameLinkHandle),
+      );
+
+      if (!usernameCiphertext) {
+        return {
+          response: {
+            notFound: {},
+          },
+        };
+      }
+
+      return {
+        response: {
+          usernameCiphertext,
+        },
+      };
+    },
+  );
+
   const notFoundAfterAuth: RouteHandler = async (req, res) => {
     const device = await auth(server, req, res);
     if (!device) {
@@ -241,6 +286,8 @@ export const createHandler = (server: Server): RequestHandler => {
     // gRPC
     onSendMultiRecipientMessage,
     onSendMultiRecipientStory,
+    onLookupUsernameHash,
+    onLookupUsernameLink,
 
     ...ALL_METHODS.map((method) => method('/*', notFoundAfterAuth)),
   );

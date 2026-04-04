@@ -46,7 +46,6 @@ import {
 } from '../../crypto';
 import { Server } from '../base';
 import {
-  fromURLSafeBase64,
   getDevicesKeysResult,
   parseAuthHeader,
   serviceIdKindFromQuery,
@@ -760,33 +759,6 @@ export class Connection extends Service {
         return [204, { ok: true }];
       }),
     );
-
-    this.router.get('/v1/accounts/username_hash/:hash', async (params) => {
-      const { hash = '' } = params;
-
-      const uuid = await server.lookupByUsernameHash(fromURLSafeBase64(hash));
-
-      if (!uuid) {
-        return [404, { error: 'Not found' }];
-      }
-
-      return [200, { uuid }];
-    });
-
-    this.router.get('/v1/accounts/username_link/:uuid', async (params) => {
-      const { uuid: linkUuid = '' } = params;
-
-      const encryptedValue = await server.lookupByUsernameLink(linkUuid);
-
-      if (!encryptedValue) {
-        return [404, { error: 'Not found' }];
-      }
-
-      return [
-        200,
-        { usernameLinkEncryptedValue: toURLSafeBase64(encryptedValue) },
-      ];
-    });
 
     this.router.put(
       '/v1/accounts/username_link',
