@@ -695,7 +695,11 @@ export class Connection extends Service {
         const device = this.getDevice();
         return [
           200,
-          { uuid: device.aci, pni: device.pni, number: device.number },
+          {
+            uuid: device.aci,
+            pni: untagPni(device.pni),
+            number: device.number,
+          },
         ];
       }),
     );
