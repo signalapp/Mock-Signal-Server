@@ -20,8 +20,8 @@ importers:
         specifier: 4.0.0
         version: 4.0.0
       '@signalapp/libsignal-client':
-        specifier: ^0.89.0
-        version: 0.89.0
+        specifier: ^0.92.1
+        version: 0.92.1
       '@tus/file-store':
         specifier: ^1.4.0
         version: 1.5.1
@@ -176,8 +176,8 @@ packages:
     resolution: {integrity: sha512-/KCsg3xSlR+nCK8/8ZYSknYxvXHwubJrU82F3Lm1Fp6789VQ0/3RJKfsmRXjqfaTA++23CvC3hqmqe/2GEt6Kw==}
     engines: {node: '>=14'}
 
-  '@signalapp/libsignal-client@0.89.0':
-    resolution: {integrity: sha512-/eiWJuW/k6bwLcW5CodB9NNRSc6kH5ThbT+7NdIAS4Z6NdknbFcgp58452zTZYO2E/3xmP6/UlpeRaXxz2Dh1Q==}
+  '@signalapp/libsignal-client@0.92.1':
+    resolution: {integrity: sha512-vLGxN+WFLPXvg3RP3rmrPLk+CuYyd6F42RZ6c9YKHquwQe7jHjQN85iHuKpX4zjf8g7DLMXqa3I2qK//tMiahA==}
 
   '@tus/file-store@1.5.1':
     resolution: {integrity: sha512-bEaZ9zPCezpJW0Cr7rfles+gylXZ+0rSGfQvoTHXoTAbwyy4iIytC25njf1PdWkh3JQU0dKIhZuspnAvVOMntA==}
@@ -1072,10 +1072,6 @@ packages:
   util-deprecate@1.0.2:
     resolution: {integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==}
 
-  uuid@11.1.0:
-    resolution: {integrity: sha512-0/A9rDy9P7cJ+8w1c9WD9V//9Wj15Ce2MPz8Ri6032usz+NfePxx5AcN3bN+r6ZL6jEo066/yNYB3tn4pQEx+A==}
-    hasBin: true
-
   uuid@8.3.2:
     resolution: {integrity: sha512-+NYs2QeMWy+GWFOEm9xnn6HCDp0l7QBD7ml8zLUmJ+93Q5NF0NocErnwkTkXVFNiX3/fpC6afS8Dhb/gz7R7eg==}
     hasBin: true
@@ -1227,11 +1223,10 @@ snapshots:
       yallist: 4.0.0
     optional: true
 
-  '@signalapp/libsignal-client@0.89.0':
+  '@signalapp/libsignal-client@0.92.1':
     dependencies:
       node-gyp-build: 4.8.4
       type-fest: 4.41.0
-      uuid: 11.1.0
 
   '@tus/file-store@1.5.1':
     dependencies:
@@ -2156,8 +2151,6 @@ snapshots:
   url-pattern@1.0.3: {}
 
   util-deprecate@1.0.2: {}
-
-  uuid@11.1.0: {}
 
   uuid@8.3.2: {}
 
