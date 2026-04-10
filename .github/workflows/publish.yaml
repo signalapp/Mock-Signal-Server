@@ -33,7 +33,7 @@ jobs:
           registry-url: 'https://registry.npmjs.org/'
 
       - name: Install node_modules
-        run: pnpm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Lint
         run: pnpm run lint
