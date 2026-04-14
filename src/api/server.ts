@@ -13,7 +13,12 @@ import http2, {
   Http2ServerResponse,
 } from 'http2';
 import { parse as parseURL } from 'url';
-import { PrivateKey, PublicKey } from '@signalapp/libsignal-client';
+import {
+  PrivateKey,
+  PublicKey,
+  initLogger,
+  LogLevel as SignalClientLogLevel,
+} from '@signalapp/libsignal-client';
 import {
   GenericServerSecretParams,
   ServerSecretParams,
@@ -127,6 +132,7 @@ type ProvisionResultQueue = Readonly<{
 }>;
 
 const debug = createDebug('mock:server:mock');
+const libsignalDebug = createDebug('mock:server:libsignal');
 
 const CERTS_DIR = path.join(__dirname, '..', '..', 'certs');
 
@@ -142,6 +148,27 @@ const ZK_PARAMS: ZKParams = JSON.parse(
 );
 
 const DEFAULT_API_TIMEOUT = 60000;
+
+initLogger(
+  SignalClientLogLevel.Info,
+  (
+    level: SignalClientLogLevel,
+    target: string,
+    file: string | null,
+    line: number | null,
+    message: string,
+  ) => {
+    let fileString = '';
+    if (file && line) {
+      fileString = ` ${file}:${line}`;
+    } else if (file) {
+      fileString = ` ${file}`;
+    }
+    const logString = `${SignalClientLogLevel[level]} ${message} ${target}${fileString}`;
+
+    libsignalDebug(logString);
+  },
+);
 
 export class Server extends BaseServer {
   private readonly config: StrictConfig;

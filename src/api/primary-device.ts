@@ -2145,7 +2145,7 @@ export class PrimaryDevice {
       const ciphertext = await SignalClient.signalEncrypt(
         paddedMessage,
         target.getAddressByKind(serviceIdKind),
-        this.device.getAddressByKind(serviceIdKind),
+        this.device.getAddressByKind(ServiceIdKind.ACI),
         this.sessions,
         identity,
       );
@@ -2229,7 +2229,7 @@ export class PrimaryDevice {
 
       decrypted = await SignalClient.signalDecrypt(
         SignalMessage.deserialize(encrypted),
-        source.getAddressByKind(serviceIdKind),
+        source.getAddressByKind(ServiceIdKind.ACI),
         this.sessions,
         identity,
       );
@@ -2238,7 +2238,7 @@ export class PrimaryDevice {
 
       decrypted = await SignalClient.signalDecryptPreKey(
         PreKeySignalMessage.deserialize(encrypted),
-        source.getAddressByKind(serviceIdKind),
+        source.getAddressByKind(ServiceIdKind.ACI),
         this.device.getAddressByKind(serviceIdKind),
         this.sessions,
         identity,
