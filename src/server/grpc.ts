@@ -4,7 +4,7 @@
 import assert from 'assert';
 import { Buffer } from 'buffer';
 import createDebug from 'debug';
-import { stringify as stringifyUuid } from 'uuid';
+import { stringify as stringifyUuid, v4 as uuidv4 } from 'uuid';
 import { RequestHandler, buffer, send as sendRaw } from 'micro';
 import {
   AugmentedRequestHandler as RouteHandler,
@@ -272,6 +272,24 @@ export const createHandler = (server: Server): RequestHandler => {
     },
   );
 
+  const onGetUploadForm = grpcRoute(
+    'org.signal.chat.attachments.Attachments/GetUploadForm',
+    async () => {
+      const { cdn, key, headers, signedUploadLocation } =
+        await server.getAttachmentUploadForm('attachments', uuidv4());
+      return {
+        outcome: {
+          uploadForm: {
+            cdn,
+            key,
+            headers: new Map(Object.entries(headers)),
+            signedUploadLocation,
+          },
+        },
+      };
+    },
+  );
+
   const notFoundAfterAuth: RouteHandler = async (req, res) => {
     const device = await auth(server, req, res);
     if (!device) {
@@ -288,6 +306,7 @@ export const createHandler = (server: Server): RequestHandler => {
     onSendMultiRecipientStory,
     onLookupUsernameHash,
     onLookupUsernameLink,
+    onGetUploadForm,
 
     ...ALL_METHODS.map((method) => method('/*', notFoundAfterAuth)),
   );

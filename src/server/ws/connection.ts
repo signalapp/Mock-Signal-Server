@@ -12,7 +12,6 @@ import {
 } from '@signalapp/libsignal-client/zkgroup';
 
 import WebSocket from 'ws';
-import { v4 as uuidv4 } from 'uuid';
 
 import { signalservice as Proto } from '../../../protos/compiled';
 import { Device } from '../../data/device';
@@ -671,18 +670,6 @@ export class Connection extends Service {
 
     this.router.get('/v1/keepalive', async () => {
       return [200, { ok: true }];
-    });
-
-    //
-    // Attachment upload forms
-    //
-
-    this.router.get('/v4/attachments/form/upload', async () => {
-      const key = uuidv4();
-      return [
-        200,
-        await this.server.getAttachmentUploadForm('attachments', key),
-      ];
     });
 
     //
