@@ -89,6 +89,7 @@ export class Device {
     deleteSync: boolean;
     versionedExpirationTimer: boolean;
     ssre2: boolean;
+    usernameChangeSyncMessage: boolean;
   };
 
   public backupLevel = BackupLevel.Paid;
@@ -121,6 +122,7 @@ export class Device {
       deleteSync: true,
       versionedExpirationTimer: true,
       ssre2: true,
+      usernameChangeSyncMessage: true,
     };
   }
 
