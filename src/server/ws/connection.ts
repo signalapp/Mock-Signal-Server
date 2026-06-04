@@ -223,7 +223,7 @@ export class Connection extends Service {
             target: targetServiceId,
           })
         ) {
-          return [428, { token: 'token', options: ['recaptcha'] }];
+          return [428, { token: 'token', options: ['captcha'] }];
         }
 
         const prepared = await this.server.prepareMultiDeviceMessage(
