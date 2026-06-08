@@ -384,6 +384,19 @@ export class ServerGroup extends Group {
       newState.terminated = true;
     }
 
+    if (actions.modifyDisappearingMessageTimer !== null) {
+      this.verifyAccess(
+        'disappearingMessagesTimer',
+        authMember,
+        accessControl?.attributes ?? AccessRequired.UNKNOWN,
+      );
+
+      appliedActions.modifyDisappearingMessageTimer =
+        actions.modifyDisappearingMessageTimer;
+      newState.disappearingMessagesTimer =
+        actions.modifyDisappearingMessageTimer.timer;
+    }
+
     const { version: oldVersion } = this.state;
     assert.ok(
       typeof oldVersion === 'number',
