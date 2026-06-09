@@ -158,16 +158,18 @@ export type SendUpdateToList = ReadonlyArray<
   }>
 >;
 
-export type InviteToGroupOptions = Readonly<{
+export type GroupActionsOptions = Readonly<{
   timestamp?: number;
-  serviceIdKind?: ServiceIdKind;
   sendUpdateTo?: SendUpdateToList;
 }>;
 
-export type AcceptPniInviteOptions = Readonly<{
-  timestamp?: number;
-  sendUpdateTo?: SendUpdateToList;
-}>;
+export type InviteToGroupOptions = Readonly<
+  GroupActionsOptions & {
+    serviceIdKind?: ServiceIdKind;
+  }
+>;
+
+export type AcceptPniInviteOptions = GroupActionsOptions;
 
 export type SyncSentOptions = Readonly<{
   timestamp: number;
@@ -282,7 +284,7 @@ type DecryptResult = Readonly<{
   envelopeType: EnvelopeType;
 }>;
 
-const EMPTY_GROUP_ACTIONS: Proto.GroupChange.Actions.Params = {
+export const EMPTY_GROUP_ACTIONS: Proto.GroupChange.Actions.Params = {
   sourceUserId: null,
   version: null,
   groupId: null,
@@ -934,45 +936,24 @@ export class PrimaryDevice {
     });
   }
 
-  public async inviteToGroup(
-    group: Group,
-    invitee: Device,
-    {
-      timestamp = Date.now(),
-      serviceIdKind = ServiceIdKind.ACI,
-      sendUpdateTo = [{ device: invitee, options: { serviceIdKind } }],
-    }: InviteToGroupOptions = {},
-  ): Promise<Group> {
+  async #modifyGroup(options: {
+    group: Group;
+    actions: Proto.GroupChange.Actions.Params;
+    timestamp: number;
+    sendUpdateTo: SendUpdateToList;
+  }) {
+    const { group, actions, timestamp, sendUpdateTo } = options;
+
     const serverGroup = await this.config.getGroup(
       group.publicParams.serialize(),
     );
     assert(serverGroup !== undefined, 'Group does not exist on server');
 
-    const targetServiceId = invitee.getServiceIdByKind(serviceIdKind);
-    const userId = group.encryptServiceId(targetServiceId);
-
     const modifyResult = await this.config.modifyGroup({
       group: serverGroup,
       actions: {
-        ...EMPTY_GROUP_ACTIONS,
+        ...actions,
         version: group.revision + 1,
-        addMembersPendingProfileKey: [
-          {
-            added: {
-              member: {
-                userId,
-                role: Proto.Member.Role.DEFAULT,
-                profileKey: null,
-                presentation: null,
-                joinedAtVersion: null,
-                labelEmoji: null,
-                labelString: null,
-              },
-              addedByUserId: null,
-              timestamp: null,
-            },
-          },
-        ],
       },
       aciCiphertext: group.encryptServiceId(this.device.aci),
       pniCiphertext: group.encryptServiceId(this.device.pni),
@@ -993,25 +974,50 @@ export class PrimaryDevice {
 
       await Promise.all(
         sendUpdateTo.map(async ({ device, options }) => {
-          // Send the invitation
+          const sync = device.aci === this.device.aci;
+
           const encryptOptions = {
             timestamp,
             ...options,
           };
 
+          const dataMessage: Proto.DataMessage.Params = {
+            ...EMPTY_DATA_MESSAGE,
+            groupV2,
+            timestamp: BigInt(encryptOptions.timestamp),
+          };
+
+          const syncMessage: Proto.SyncMessage.Params = {
+            content: {
+              sent: {
+                timestamp: BigInt(timestamp),
+                message: dataMessage,
+                destinationServiceIdBinary: device.aciBinary,
+                destinationE164: null,
+                destinationServiceId: null,
+                expirationStartTimestamp: null,
+                unidentifiedStatus: null,
+                isRecipientUpdate: null,
+                storyMessage: null,
+                storyMessageRecipients: null,
+                editMessage: null,
+              },
+            },
+            read: null,
+            stickerPackOperation: null,
+            viewed: null,
+            padding: null,
+          };
+
+          const content: Proto.Content.Params = {
+            content: sync ? { syncMessage } : { dataMessage },
+            pniSignatureMessage: null,
+            senderKeyDistributionMessage: null,
+          };
+
           const envelope = await this.encryptContent(
             device,
-            {
-              content: {
-                dataMessage: {
-                  ...EMPTY_DATA_MESSAGE,
-                  groupV2,
-                  timestamp: BigInt(encryptOptions.timestamp),
-                },
-              },
-              pniSignatureMessage: null,
-              senderKeyDistributionMessage: null,
-            },
+            content,
             encryptOptions,
           );
           await this.config.send(device, envelope);
@@ -1022,27 +1028,57 @@ export class PrimaryDevice {
     return updatedGroup;
   }
 
+  public async inviteToGroup(
+    group: Group,
+    invitee: Device,
+    {
+      timestamp = Date.now(),
+      serviceIdKind = ServiceIdKind.ACI,
+      sendUpdateTo = [{ device: invitee, options: { serviceIdKind } }],
+    }: InviteToGroupOptions = {},
+  ): Promise<Group> {
+    const targetServiceId = invitee.getServiceIdByKind(serviceIdKind);
+    const userId = group.encryptServiceId(targetServiceId);
+
+    return this.#modifyGroup({
+      group,
+      actions: {
+        ...EMPTY_GROUP_ACTIONS,
+        addMembersPendingProfileKey: [
+          {
+            added: {
+              member: {
+                userId,
+                role: Proto.Member.Role.DEFAULT,
+                profileKey: null,
+                presentation: null,
+                joinedAtVersion: null,
+                labelEmoji: null,
+                labelString: null,
+              },
+              addedByUserId: null,
+              timestamp: null,
+            },
+          },
+        ],
+      },
+      timestamp,
+      sendUpdateTo,
+    });
+  }
+
   public async acceptPniInvite(
     group: Group,
     { timestamp = Date.now(), sendUpdateTo = [] }: AcceptPniInviteOptions = {},
   ): Promise<Group> {
-    const serverGroup = await this.config.getGroup(
-      group.publicParams.serialize(),
-    );
-    assert(serverGroup !== undefined, 'Group does not exist on server');
-
-    const aciCiphertext = group.encryptServiceId(this.device.aci);
-    const pniCiphertext = group.encryptServiceId(this.device.pni);
-
     const presentation = await this.getProfileKeyPresentation(
       group.secretParams,
     );
 
-    const modifyResult = await this.config.modifyGroup({
-      group: serverGroup,
+    return this.#modifyGroup({
+      group,
       actions: {
         ...EMPTY_GROUP_ACTIONS,
-        version: group.revision + 1,
         promoteMembersPendingPniAciProfileKey: [
           {
             presentation: presentation.serialize(),
@@ -1052,51 +1088,29 @@ export class PrimaryDevice {
           },
         ],
       },
-      aciCiphertext,
-      pniCiphertext,
+      timestamp,
+      sendUpdateTo,
     });
+  }
 
-    assert(!modifyResult.conflict, 'Group update conflict!');
-
-    const updatedGroup = new Group({
-      secretParams: group.secretParams,
-      groupState: serverGroup.state,
+  public async modifyGroupDisappearingMessageTimer(
+    group: Group,
+    disappearingMessagesDuration: number,
+    { timestamp = Date.now(), sendUpdateTo = [] }: GroupActionsOptions = {},
+  ): Promise<Group> {
+    return this.#modifyGroup({
+      group,
+      actions: {
+        ...EMPTY_GROUP_ACTIONS,
+        modifyDisappearingMessageTimer: {
+          timer: group.encryptBlob({
+            content: { disappearingMessagesDuration },
+          }),
+        },
+      },
+      timestamp,
+      sendUpdateTo,
     });
-
-    const groupV2 = {
-      ...updatedGroup.toContext(),
-      groupChange: Proto.GroupChange.encode(modifyResult.signedChange),
-    };
-
-    await Promise.all(
-      sendUpdateTo.map(async ({ device, options }) => {
-        // Send the accepted invite
-        const encryptOptions = {
-          timestamp,
-          ...options,
-        };
-        const content: Proto.Content.Params = {
-          content: {
-            dataMessage: {
-              ...EMPTY_DATA_MESSAGE,
-              groupV2,
-              timestamp: BigInt(encryptOptions.timestamp),
-            },
-          },
-          pniSignatureMessage: null,
-          senderKeyDistributionMessage: null,
-        };
-
-        const envelope = await this.encryptContent(
-          device,
-          content,
-          encryptOptions,
-        );
-        await this.config.send(device, envelope);
-      }),
-    );
-
-    return updatedGroup;
   }
 
   //

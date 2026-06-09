@@ -1,0 +1,29 @@
+/*
+ * Copyright 2019-2021 Signal Messenger, LLC
+ * SPDX-License-Identifier: AGPL-3.0-only
+ */
+
+syntax = "proto2";
+
+package signaling;
+
+message DeviceToDevice {
+  optional bytes group_id = 1;
+}
+
+message CallMessage {
+  message RingIntention {
+    enum Type {
+      RING = 0;
+      CANCELLED = 1;
+    }
+
+    optional bytes group_id = 1;
+    optional Type type = 2;
+    // This is signed so it fits in a SQLite integer column.
+    optional sfixed64 ring_id = 3;
+  }
+
+  optional DeviceToDevice group_call_message = 1;
+  optional RingIntention ring_intention = 2;
+}

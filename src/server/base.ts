@@ -825,7 +825,7 @@ export abstract class Server {
   ): Promise<void> {
     const socket = this.webSockets.get(target);
     if (socket) {
-      debug('sending message to %d socket', target.debugId);
+      debug('sending message to %s socket', target.debugId);
       try {
         await socket.sendMessage(message);
 
@@ -972,8 +972,8 @@ export abstract class Server {
       if (manifest.version !== existing.version + 1n) {
         debug(
           'not updating storage manifest, current version=%j new version=%j',
-          existing.version,
-          manifest.version,
+          existing.version.toString(),
+          manifest.version.toString(),
         );
         return { updated: false, manifest: existing };
       }

@@ -176,4 +176,10 @@ export class Group extends GroupData {
       new UuidCiphertext(this.encryptServiceId(serviceId)),
     );
   }
+
+  public encryptBlob(
+    proto: Proto.GroupAttributeBlob.Params,
+  ): Buffer<ArrayBuffer> {
+    return encryptBlob(new ClientZkGroupCipher(this.secretParams), proto);
+  }
 }
