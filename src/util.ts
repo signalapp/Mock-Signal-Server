@@ -43,6 +43,14 @@ export type ParseAuthHeaderResult =
       error: string;
     };
 
+function splitOnce(input: string, splitter: string): [string, string] | null {
+  const index = input.indexOf(splitter);
+  if (index === -1) {
+    return null;
+  }
+  return [input.slice(0, index), input.slice(index + 1)];
+}
+
 export function parseAuthHeader(
   header?: string,
   options?: { allowEmptyPassword?: boolean },
@@ -65,7 +73,11 @@ export function parseAuthHeader(
     return { error: error.message };
   }
 
-  const [username, password = ''] = decoded.split(':', 2);
+  const parts = splitOnce(decoded, ':');
+  if (parts == null) {
+    return { error: 'Invalid basic auth' };
+  }
+  const [username, password] = parts;
 
   if (!username) {
     return { error: 'Missing username' };

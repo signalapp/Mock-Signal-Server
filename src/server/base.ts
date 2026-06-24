@@ -66,6 +66,29 @@ import {
 } from '../types';
 import { getTodayInSeconds } from '../util';
 import { ModifyGroupResult, ServerGroup } from './group';
+import { ServerCall } from './call';
+import {
+  CallingError,
+  CallingErrorCode,
+  CallingEraId,
+  getRandomCallingDemuxId,
+  getRandomCallingEraId,
+  CallingRoomId,
+  CallInfo,
+  CallingUserId,
+  CallType,
+  CallingDemuxId,
+} from '../calling';
+import { SfuService } from '../sfu/service';
+import { SfuClientStatus } from '../sfu/call';
+import {
+  getRandomIcePassword,
+  getRandomIceUsernameFragment,
+  IcePassword,
+  IceUsernameFragment,
+} from '../sfu/ice';
+import { Port, ServerMediaAddress } from '../sfu/config';
+import { CallingPublicKey } from '../sfu/crypto';
 
 export enum EnvelopeType {
   CipherText = 'CipherText',
@@ -225,6 +248,32 @@ type StorageAuthEntry = Readonly<{
 
 type MessageQueueEntry = (socket: WebSocket) => Promise<void>;
 
+export type ServerJoinCallRequest = Readonly<{
+  roomId: CallingRoomId;
+  userId: CallingUserId;
+  isAllowedToInitiateGroupCall: boolean;
+  clientIceUsernameFragment: IceUsernameFragment;
+  clientIcePassword: IcePassword;
+  clientPublicKey: CallingPublicKey;
+  clientHkdfExtraInfo: Uint8Array<ArrayBuffer> | null;
+  callType: CallType;
+  isAdmin: boolean;
+  // roomId: CallingRoomId | null;
+  newClientsRequireApproval: boolean;
+  approvedUsers: ReadonlyArray<CallingUserId> | null;
+}>;
+
+export type ServerJoinCallResponse = Readonly<{
+  demuxId: CallingDemuxId;
+  serverMediaAddress: ServerMediaAddress;
+  serverIceUsernameFragment: IceUsernameFragment;
+  serverIcePassword: IcePassword;
+  serverPublicKey: CallingPublicKey;
+  callEraId: CallingEraId;
+  callCreatorUserId: CallingUserId;
+  clientStatus: SfuClientStatus;
+}>;
+
 export type CallLinkEntry = Readonly<{
   adminPasskey: Buffer<ArrayBuffer>;
   encryptedName: string;
@@ -337,6 +386,7 @@ export abstract class Server {
     string
   >();
   private readonly usernameLinkById = new Map<string, Buffer<ArrayBuffer>>();
+  private readonly callsByRoomId = new Map<CallingRoomId, ServerCall>();
   private readonly callLinksByRoomId = new Map<string, CallLinkEntry>();
   private readonly backupAuthReqByAci = new Map<
     AciString,
@@ -353,11 +403,14 @@ export abstract class Server {
   >();
   private readonly backupMediaCursorById = new Map<string, BackupMediaCursor>();
   private readonly remoteConfig = new Map<string, RemoteConfigValueType>();
+
   protected privCertificate: ServerCertificate | undefined;
   protected privZKSecret: ServerSecretParams | undefined;
   protected privGenericServerSecret: GenericServerSecretParams | undefined;
   protected privBackupServerSecret: GenericServerSecretParams | undefined;
   protected https: http2.Http2SecureServer | undefined;
+
+  protected sfuService = new SfuService();
 
   public address(): AddressInfo {
     if (!this.https) {
@@ -1092,6 +1145,112 @@ export abstract class Server {
     device: Device,
     version: bigint,
   ): Promise<void>;
+
+  //
+  // Calls
+  //
+
+  public async joinCall(
+    request: ServerJoinCallRequest,
+  ): Promise<ServerJoinCallResponse> {
+    let call = this.callsByRoomId.get(request.roomId);
+    if (call == null) {
+      if (!request.isAllowedToInitiateGroupCall) {
+        throw new CallingError(CallingErrorCode.NoPermissionToCreateCall);
+      }
+
+      call = new ServerCall({
+        eraId: getRandomCallingEraId(),
+        roomId: request.roomId,
+        creatorUserId: request.userId,
+      });
+
+      this.callsByRoomId.set(request.roomId, call);
+    }
+
+    const demuxId = getRandomCallingDemuxId();
+
+    const serverIceUsernameFragment = getRandomIceUsernameFragment();
+    const serverIcePassword = getRandomIcePassword();
+
+    const response = await this.sfuService.joinCall({
+      eraId: call.eraId,
+      demuxId,
+      roomId: call.roomId,
+      userId: request.userId,
+      clientIceUsernameFragment: request.clientIceUsernameFragment,
+      clientIcePassword: request.clientIcePassword,
+      clientPublicKey: request.clientPublicKey,
+      clientHkdfExtraInfo: request.clientHkdfExtraInfo,
+      serverIceUsernameFragment,
+      serverIcePassword,
+      callType: request.callType,
+      isAdmin: request.isAdmin,
+      newClientsRequireApproval: request.newClientsRequireApproval,
+      approvedUsers: request.approvedUsers,
+    });
+
+    // TODO
+    const mediaServer: ServerMediaAddress = {
+      addresses: [] as ServerMediaAddress['addresses'],
+      hostname: null,
+      ports: {
+        udp: 0 as Port,
+        tcp: 0 as Port,
+        tls: null,
+      },
+    };
+
+    return {
+      demuxId,
+      serverMediaAddress: mediaServer,
+      serverIceUsernameFragment: serverIceUsernameFragment,
+      serverIcePassword: serverIcePassword,
+      serverPublicKey: response.serverPublicKey,
+      callEraId: call.eraId,
+      callCreatorUserId: call.creatorUserId,
+      clientStatus: response.clientStatus,
+    };
+  }
+
+  public async removeCall(
+    roomId: CallingRoomId,
+    eraId: CallingEraId,
+  ): Promise<void> {
+    const existing = this.callsByRoomId.get(roomId);
+    if (existing == null) {
+      return;
+    }
+
+    if (existing.eraId !== eraId) {
+      throw new CallingError(
+        CallingErrorCode.InternalError,
+        'did not match era id',
+      );
+    }
+
+    this.callsByRoomId.delete(roomId);
+
+    // TODO: Should this cleanup sfuService and drop all the clients?
+    throw new Error('incomplete');
+  }
+
+  public async peekCall(
+    roomId: CallingRoomId,
+    userId: CallingUserId,
+  ): Promise<CallInfo> {
+    const call = this.callsByRoomId.get(roomId);
+    if (call == null) {
+      throw new CallingError(CallingErrorCode.CallNotFound);
+    }
+
+    const response = await this.sfuService.peekCall({
+      eraId: call.eraId,
+      userId: userId,
+    });
+
+    return response.info;
+  }
 
   //
   // Usernames

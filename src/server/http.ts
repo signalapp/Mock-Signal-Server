@@ -39,6 +39,31 @@ import { ServerGroup } from './group';
 import { parsePassword, auth } from './common';
 import { join } from 'path';
 import { createHash } from 'crypto';
+import z from 'zod';
+import {
+  CALLING_SERVICE_SECRET,
+  CallingError,
+  CallingErrorCodesToHttpStatus,
+  CallingPublicKeySchema,
+  CallType,
+  CallingUserId,
+  CallingDemuxId,
+  CallingEraId,
+  generateCallingAuthToken,
+  parseCallingAuthHeader,
+  verifyCallingAuthToken,
+  decodeCallingPublicKey,
+  encodeCallingPublicKey,
+  HexString,
+} from '../calling';
+import {
+  IcePassword,
+  IcePasswordSchema,
+  IceUsernameFragment,
+  IceUsernameFragmentSchema,
+} from '../sfu/ice';
+import { SfuClientStatus } from '../sfu/call';
+import { Hostname, IpAddress, Port } from '../sfu/config';
 
 const debug = createDebug('mock:http');
 
@@ -240,6 +265,147 @@ export const createHandler = (
   //
   // Calling
   //
+
+  type GetConferenceParticipantsResponseDeviceInfo = Readonly<{
+    demuxId: CallingDemuxId;
+    opaqueUserId: CallingUserId;
+  }>;
+
+  type GetConferenceParticipantsResponse = Readonly<{
+    conferenceId: CallingEraId;
+    maxDevices: number;
+    creator: CallingUserId;
+    participants: ReadonlyArray<GetConferenceParticipantsResponseDeviceInfo>;
+    pendingClients: ReadonlyArray<GetConferenceParticipantsResponseDeviceInfo>;
+    callLinkState: null;
+  }>;
+
+  const getConferenceParticipants = get(
+    '/v2/conference/participants',
+    async (req, res) => {
+      try {
+        const authToken = parseCallingAuthHeader(req.headers.authorization);
+        const auth = verifyCallingAuthToken(authToken, CALLING_SERVICE_SECRET);
+
+        const roomIdHeader = req.headers['x-room-id'];
+        const epoch = req.headers.epoch;
+
+        if (roomIdHeader != null || epoch != null) {
+          throw new Error('unimplemented for call links');
+        }
+
+        const info = await server.peekCall(auth.roomId, auth.userId);
+
+        const response: GetConferenceParticipantsResponse = {
+          conferenceId: info.eraId,
+          maxDevices: info.maxClients,
+          participants: info.activeClients,
+          creator: info.creatorUserId,
+          pendingClients: info.pendingClients ?? [],
+          callLinkState: null,
+        };
+
+        await send(res, 200, response);
+        return;
+      } catch (error) {
+        if (error instanceof CallingError) {
+          const status = CallingErrorCodesToHttpStatus[error.code];
+          return send(res, status, { message: error.message });
+        } else {
+          debug('Error: %', error);
+          return send(res, 500);
+        }
+      }
+    },
+  );
+
+  const JoinConferenceParticipantsRequestBody = z.object({
+    adminPasskey: z.string().base64().optional(),
+    iceUfrag: IceUsernameFragmentSchema,
+    icePwd: IcePasswordSchema,
+    dhePublicKey: CallingPublicKeySchema,
+    hkdfExtraInfo: z.string().optional(),
+  });
+
+  type JoinConferenceParticipantsResponse = Readonly<{
+    demuxId: CallingDemuxId;
+    ips: ReadonlyArray<IpAddress>;
+    port: Port;
+    portTcp: Port;
+    portTls: Port | null;
+    hostname: Hostname | null;
+    iceUfrag: IceUsernameFragment;
+    icePwd: IcePassword;
+    dhePublicKey: HexString;
+    callCreator: CallingUserId;
+    conferenceId: CallingEraId;
+    clientStatus: SfuClientStatus;
+  }>;
+
+  const joinConferenceParticipants = put(
+    '/v2/conference/participants',
+    async (req, res) => {
+      try {
+        const authToken = parseCallingAuthHeader(req.headers.authorization);
+        const auth = verifyCallingAuthToken(authToken, CALLING_SERVICE_SECRET);
+
+        const roomIdHeader = req.headers['x-room-id'];
+        const epochHeader = req.headers.epoch;
+
+        if (roomIdHeader != null || epochHeader != null) {
+          throw new Error('unimplemented for call links');
+        }
+
+        const body: unknown = await json(req);
+        const data = JoinConferenceParticipantsRequestBody.parse(body);
+
+        const clientHkdfExtraInfo =
+          data.hkdfExtraInfo != null ? Buffer.from(data.hkdfExtraInfo) : null;
+
+        const clientPublicKey = decodeCallingPublicKey(data.dhePublicKey);
+
+        const result = await server.joinCall({
+          roomId: auth.roomId,
+          userId: auth.userId,
+          isAllowedToInitiateGroupCall: auth.isAllowedToInitiateGroupCall,
+          clientIceUsernameFragment: data.iceUfrag,
+          clientIcePassword: data.icePwd,
+          clientPublicKey,
+          clientHkdfExtraInfo,
+          callType: CallType.Group,
+          newClientsRequireApproval: false,
+          isAdmin: false,
+          approvedUsers: null,
+        });
+
+        const response: JoinConferenceParticipantsResponse = {
+          demuxId: result.demuxId,
+          ips: result.serverMediaAddress.addresses,
+          port: result.serverMediaAddress.ports.udp,
+          portTcp: result.serverMediaAddress.ports.tcp,
+          portTls: result.serverMediaAddress.ports.tls,
+          hostname: result.serverMediaAddress.hostname,
+          iceUfrag: result.serverIceUsernameFragment,
+          icePwd: result.serverIcePassword,
+          dhePublicKey: encodeCallingPublicKey(result.serverPublicKey),
+          callCreator: result.callCreatorUserId,
+          conferenceId: result.callEraId,
+          clientStatus: result.clientStatus,
+        };
+
+        await send(res, 200, response);
+        return;
+      } catch (error) {
+        if (error instanceof CallingError) {
+          const status = CallingErrorCodesToHttpStatus[error.code];
+          return send(res, status, { message: error.message });
+        } else {
+          debug('Error: %', error);
+          return send(res, 500);
+        }
+      }
+    },
+  );
 
   function toCallLinkResponse(callLink: CallLinkEntry) {
     return {
@@ -652,6 +818,31 @@ export const createHandler = (
   // Storage Service
   //
 
+  const getGroupToken = get('/v2/groups/token', async (req, res) => {
+    const auth = await groupAuthAndFetch(req, res);
+    if (!auth) {
+      return;
+    }
+
+    const { group } = auth;
+
+    const member = group.getMember(auth.aciCiphertext);
+    if (member == null) {
+      return send(res, 403, { error: 'Not a member of this group' });
+    }
+
+    assert(member.userId != null, 'Missing member.userId');
+
+    const token = generateCallingAuthToken({
+      userId: member.userId,
+      groupId: group.id,
+      isAllowedToInitiateGroupCall: true,
+      key: CALLING_SERVICE_SECRET,
+    });
+
+    return send(res, 200, Proto.ExternalGroupCredential.encode({ token }));
+  });
+
   const getStorageManifest = get('/v1/storage/manifest', async (req, res) => {
     const device = await storageAuth(req, res);
     if (!device) {
@@ -765,8 +956,7 @@ export const createHandler = (
       createGroup,
       modifyGroup,
 
-      // TODO(indutny): support this
-      get('/v2/groups/token', notFound),
+      getGroupToken,
 
       getStorageManifest,
       getStorageManifestByVersion,
@@ -774,9 +964,13 @@ export const createHandler = (
       putStorageRead,
     ),
 
-    getCallLink,
-    createOrUpdateCallLink,
-    deleteCallLink,
+    withNamespace('/callingService')(
+      getConferenceParticipants,
+      joinConferenceParticipants,
+      getCallLink,
+      createOrUpdateCallLink,
+      deleteCallLink,
+    ),
 
     ...[head, patch, post].map((method) =>
       method('/cdn3/*', async (req, res) => {
