@@ -80,6 +80,134 @@ export const AtomicLinkingDataSchema = z.object({
   pniPqLastResortPreKey: SignedPreKeySchema,
 });
 
+export const UpdateProfileSchema = z.object({
+  commitment: z.string(),
+  version: z.string(),
+  name: z.string(),
+  aboutEmoji: z.string().nullish(),
+  about: z.string().nullish(),
+  paymentAddress: z.string().nullish(),
+  avatar: z.boolean(),
+  sameAvatar: z.boolean(),
+  badgeIds: z.array(z.string()).nullish(),
+  phoneNumberSharing: z.string().nullish(),
+});
+export type UploadProfileResponse =
+  | string
+  | undefined
+  | {
+      acl: string;
+      algorithm: string;
+      credential: string;
+      date: string;
+      key: string;
+      policy: string;
+      signature: string;
+    };
+
+export const RegisterAccountSchema = z.object({
+  sessionId: z.string(),
+  recoveryPassword: z.string().optional(),
+  accountAttributes: z.object({
+    fetchesMessages: z.boolean(),
+    registrationId: RegistrationIdSchema,
+    pniRegistrationId: RegistrationIdSchema,
+    name: z.string().optional(),
+    capabilities: z.object({
+      attachmentBackfill: z.boolean(),
+      spqr: z.boolean(),
+      usernameChangeSyncMessage: z.boolean(),
+    }),
+    registrationLock: z.string().optional(),
+    unidentifiedAccessKey: z.array(z.number()),
+    unrestrictedUnidentifiedAccess: z.boolean(),
+    discoverableByPhoneNumber: z.boolean(),
+    recoveryPassword: z.string(),
+    phoneNumberIdentityRegistrationId: z.string().optional(),
+  }),
+  skipDeviceTransfer: z.boolean(),
+  aciIdentityKey: z.string(),
+  pniIdentityKey: z.string(),
+  aciSignedPreKey: SignedPreKeySchema,
+  pniSignedPreKey: SignedPreKeySchema,
+  aciPqLastResortPreKey: SignedPreKeySchema,
+  pniPqLastResortPreKey: SignedPreKeySchema,
+  apnToken: z
+    .object({
+      apnRegistrationId: z.string(),
+    })
+    .optional(),
+  gcmToken: z
+    .object({
+      gcmRegistrationId: z.string(),
+    })
+    .optional(),
+});
+export type RegisterAccountResponse = {
+  uuid: string;
+  number: string;
+  pni: string;
+  usernameHash?: string;
+  usernameLinkHandle?: string;
+  storageCapable: boolean;
+  entitlements: {
+    badges: Array<{
+      id: string;
+      expirationSeconds: number;
+      visible: boolean;
+    }>;
+    backup?: {
+      backupLevel: number;
+      expirationSeconds: number;
+    };
+  };
+  reregistration: boolean;
+};
+
+export const TransportSchema = z.literal('sms').or(z.literal('voice'));
+export type Transport = z.infer<typeof TransportSchema>;
+export const ClientTypeSchema = z
+  .literal('desktop')
+  .or(z.literal('ios'))
+  .or(z.literal('android'));
+
+export const ModifyVerificationSessionSchema = z.object({
+  pushToken: z.string().optional(),
+  pushTokenType: z.string().optional(),
+  pushChallenge: z.string().optional(),
+  captcha: z.string().optional(),
+  mcc: z.string().optional(),
+  mnc: z.string().optional(),
+});
+export const CreateVerificationSessionSchema = z.object({
+  number: z.string(),
+  ...ModifyVerificationSessionSchema.shape,
+});
+
+export type VerificationSession = {
+  id: string;
+  nextSms: number | null;
+  nextCall: number | null;
+  nextVerificationAttempt: number | null;
+  allowedToRequestCode: boolean;
+  requestedInformation: Array<'pushChallenges' | 'captcha'>;
+  verified: boolean;
+};
+export type VerificationSessionStorage = {
+  number: string;
+  session: VerificationSession;
+  lastRequestedCode?: string;
+  lastRequestedTransport?: Transport;
+};
+
+export const RequestVerificationCodeSchema = z.object({
+  transport: TransportSchema,
+  client: ClientTypeSchema,
+});
+export const SubmitVerificationCodeSchema = z.object({
+  code: z.string(),
+});
+
 export const GroupStateSchema = z.object({
   publicKey: z.instanceof(Uint8Array),
   version: z.literal(0),

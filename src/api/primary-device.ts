@@ -554,12 +554,24 @@ export class PrimaryDevice {
   private readonly contactsBlob: Proto.AttachmentPointer.Params;
   private privSenderCertificate: SenderCertificate | undefined;
   private readonly decryptionErrorQueue =
-    new PromiseQueue<DecryptionErrorQueueEntry>();
-  private readonly messageQueue = new PromiseQueue<MessageQueueEntry>();
-  private readonly receiptQueue = new PromiseQueue<ReceiptQueueEntry>();
-  private readonly storyQueue = new PromiseQueue<StoryQueueEntry>();
-  private readonly editMessageQueue = new PromiseQueue<EditMessageQueueEntry>();
-  private readonly syncMessageQueue = new PromiseQueue<SyncMessageQueueEntry>();
+    new PromiseQueue<DecryptionErrorQueueEntry>({
+      name: 'PrimaryDevice.decryptionErrorQueue',
+    });
+  private readonly messageQueue = new PromiseQueue<MessageQueueEntry>({
+    name: 'PrimaryDevice.messageQueue',
+  });
+  private readonly receiptQueue = new PromiseQueue<ReceiptQueueEntry>({
+    name: 'PrimaryDevice.receiptQueue',
+  });
+  private readonly storyQueue = new PromiseQueue<StoryQueueEntry>({
+    name: 'PrimaryDevice.storyQueue',
+  });
+  private readonly editMessageQueue = new PromiseQueue<EditMessageQueueEntry>({
+    name: 'PrimaryDevice.editMessageQueue',
+  });
+  private readonly syncMessageQueue = new PromiseQueue<SyncMessageQueueEntry>({
+    name: 'PrimaryDevice.syncMessageQueue',
+  });
   private privPniPublicKey = this.pniPrivateKey.getPublicKey();
 
   // Various stores

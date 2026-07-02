@@ -61,6 +61,10 @@ export class Router {
     this.register('GET', pattern, handler);
   }
 
+  public patch(pattern: string, handler: Handler): void {
+    this.register('PATCH', pattern, handler);
+  }
+
   public put(pattern: string, handler: Handler): void {
     this.register('PUT', pattern, handler);
   }

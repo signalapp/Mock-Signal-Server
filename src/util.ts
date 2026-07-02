@@ -15,11 +15,14 @@ import { Device } from './data/device';
 
 type PromiseQueueEntry<T> = Readonly<{
   value: T;
+  cancel: () => void;
   resolvePush?: () => void;
 }>;
+type ResolveEntry<T> = { resolve: (value: T) => void; cancel: () => void };
 
 export type PromiseQueueConfig = Readonly<{
   timeout?: number;
+  name: string;
 }>;
 
 export function generateRandomE164(): string {
@@ -93,70 +96,100 @@ export function parseAuthHeader(
 export class PromiseQueue<T> {
   private readonly defaultTimeout: number | undefined;
   private readonly entries: Array<PromiseQueueEntry<T>> = [];
-  private readonly resolvers: Array<(value: T) => void> = [];
+  private readonly resolvers: Array<ResolveEntry<T>> = [];
+  private readonly name;
 
-  constructor(config: PromiseQueueConfig = {}) {
+  constructor(config: PromiseQueueConfig) {
     this.defaultTimeout = config.timeout;
+    this.name = config.name;
   }
 
   public get size(): number {
     return this.entries.length;
   }
 
-  public async pushAndWait(
+  public stop(): void {
+    while (this.entries.length > 0) {
+      const entry = this.entries[0];
+      if (entry) {
+        entry.cancel();
+        this.entries.shift();
+      } else {
+        break;
+      }
+    }
+
+    while (this.resolvers.length > 0) {
+      const entry = this.resolvers.shift();
+      if (entry) {
+        entry.cancel();
+      } else {
+        break;
+      }
+    }
+  }
+
+  public pushAndWait(
     value: T,
     timeout: number | undefined = this.defaultTimeout,
-  ): Promise<void> {
+  ): { promise: Promise<void>; cancel: () => void } {
     // We were waiting for `.shift()` already
     const resolveEntry = this.resolvers.shift();
     if (resolveEntry) {
-      resolveEntry(value);
-      return;
+      resolveEntry.resolve(value);
+      return { promise: Promise.resolve(), cancel: () => undefined };
     }
 
     // Not waiting for `.shift()` - queue.
-    return new Promise((resolve, reject) => {
-      let timer: NodeJS.Timeout | undefined;
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+    let timer: NodeJS.Timeout | undefined;
 
-      const entry = {
-        value,
-        resolvePush() {
-          if (timer !== undefined) {
-            clearTimeout(timer);
-          }
-          timer = undefined;
+    const cancel = () => {
+      const index = this.entries.indexOf(entry);
+      if (index === -1) {
+        throw new Error(`PromiseQueue(${this.name}) entries bookkeeping error`);
+      }
+      this.entries.splice(index, 1);
 
-          resolve();
-        },
-      };
-
-      const cancel = () => {
-        const index = this.entries.indexOf(entry);
-        if (index === -1) {
-          throw new Error('PromiseQueue entries bookkeeping error');
-        }
-        this.entries.splice(index, 1);
-
-        reject(new Error('PromiseQueue pushAndWait timeout'));
-      };
-
-      if (timeout !== undefined) {
-        timer = setTimeout(cancel, timeout);
+      if (timer) {
+        clearTimeout(timer);
+        timer = undefined;
       }
 
-      this.entries.push(entry);
-    });
+      reject(new Error(`PromiseQueue(${this.name}) pushAndWait timeout`));
+    };
+
+    if (timeout !== undefined) {
+      timer = setTimeout(cancel, timeout);
+    }
+
+    const entry = {
+      value,
+      cancel,
+      resolvePush() {
+        if (timer !== undefined) {
+          clearTimeout(timer);
+        }
+        timer = undefined;
+
+        resolve();
+      },
+    };
+
+    this.entries.push(entry);
+
+    return { promise, cancel };
   }
 
   public push(value: T): void {
     // We were waiting for `.shift()` already
     const resolveEntry = this.resolvers.shift();
     if (resolveEntry) {
-      resolveEntry(value);
+      resolveEntry.resolve(value);
       return;
     }
 
-    this.entries.push({ value });
+    this.entries.push({ value, cancel: () => undefined });
   }
 
   public async shift(
@@ -184,20 +217,27 @@ export class PromiseQueue<T> {
       };
 
       const cancel = () => {
-        const index = this.resolvers.indexOf(resolveEntry);
+        const index = this.resolvers.indexOf(entry);
         if (index === -1) {
-          throw new Error('PromiseQueue resolvers bookkeeping error');
+          throw new Error(
+            `PromiseQueue(${this.name}) resolvers bookkeeping error`,
+          );
         }
         this.resolvers.splice(index, 1);
 
-        reject(new Error('PromiseQueue shift timeout'));
+        reject(new Error(`PromiseQueue(${this.name}) shift timeout`));
       };
 
       if (timeout !== undefined) {
         timer = setTimeout(cancel, timeout);
       }
 
-      this.resolvers.push(resolveEntry);
+      const entry = {
+        cancel,
+        resolve: resolveEntry,
+      };
+
+      this.resolvers.push(entry);
     });
   }
 }

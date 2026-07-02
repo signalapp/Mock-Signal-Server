@@ -52,6 +52,7 @@ import {
   UpdateCallLink,
   UsernameConfirmation,
   UsernameReservation,
+  VerificationSessionStorage,
 } from '../data/schemas';
 import {
   AciString,
@@ -409,6 +410,8 @@ export abstract class Server {
   protected privGenericServerSecret: GenericServerSecretParams | undefined;
   protected privBackupServerSecret: GenericServerSecretParams | undefined;
   protected https: http2.Http2SecureServer | undefined;
+  protected verificationStore = new Map<string, VerificationSessionStorage>();
+  protected backupAuth = { username: 'fake', password: 'fake1234' };
 
   protected sfuService = new SfuService();
 
@@ -462,6 +465,8 @@ export abstract class Server {
   public async releaseProvisionId(id: ProvisionIdString): Promise<void> {
     this.usedProvisionIds.delete(id);
   }
+
+  public abstract stopProvisioning(): void;
 
   public abstract getProvisioningResponse(
     id: ProvisionIdString,
@@ -646,6 +651,18 @@ export abstract class Server {
       this.devicesByServiceId.delete(oldPni);
       this.devicesByServiceId.set(options.pni, device);
     }
+  }
+
+  // Verification Sessions
+
+  public getVerificationSession(
+    id: string,
+  ): VerificationSessionStorage | undefined {
+    return this.verificationStore.get(id);
+  }
+
+  public saveVerificationSession(store: VerificationSessionStorage): void {
+    this.verificationStore.set(store.session.id, store);
   }
 
   //
@@ -1750,6 +1767,13 @@ export abstract class Server {
     return {
       authorization,
     };
+  }
+
+  public getBackupAuth(): { username: string; password: string } {
+    return this.backupAuth;
+  }
+  public setBackupAuth(auth: { username: string; password: string }): void {
+    this.backupAuth = auth;
   }
 
   public async authorizeBackupCDN(

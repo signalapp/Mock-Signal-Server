@@ -10,6 +10,8 @@ import {
   CreateCallLinkCredentialRequest,
   ProfileKeyCredentialRequest,
 } from '@signalapp/libsignal-client/zkgroup';
+import { v4 as uuidv4 } from 'uuid';
+import { KEMPublicKey, PublicKey } from '@signalapp/libsignal-client';
 
 import WebSocket from 'ws';
 
@@ -20,13 +22,22 @@ import {
   BackupHeadersSchema,
   BackupMediaBatchSchema,
   CreateCallLinkAuthSchema,
+  CreateVerificationSessionSchema,
   DeviceKeysSchema,
   MessageListSchema,
+  ModifyVerificationSessionSchema,
   PutUsernameLinkSchema,
+  RegisterAccountResponse,
+  RegisterAccountSchema,
+  RequestVerificationCodeSchema,
   SetBackupIdSchema,
   SetBackupKeySchema,
+  SubmitVerificationCodeSchema,
+  UpdateProfileSchema,
+  UploadProfileResponse,
   UsernameConfirmationSchema,
   UsernameReservationSchema,
+  VerificationSession,
 } from '../../data/schemas';
 import {
   DeviceId,
@@ -139,6 +150,40 @@ export class Connection extends Service {
         return handler(params, body, headers, query);
       };
     };
+
+    this.router.put(
+      '/v1/profile',
+      requireAuth(async (_params, body) => {
+        if (!body) {
+          return [400, { error: 'Missing body' }];
+        }
+
+        const parsedResult = UpdateProfileSchema.safeParse(
+          JSON.parse(Buffer.from(body).toString()),
+        );
+        if (parsedResult.error) {
+          debug('/v1/profile malformed body', parsedResult.error.message);
+
+          return [400, { error: 'body is malformed' }];
+        }
+
+        const primaryDevice = this.device;
+        if (!primaryDevice) {
+          return [400, { error: 'missing device!' }];
+        }
+
+        const { data } = parsedResult;
+        const { name } = data;
+
+        primaryDevice.profileName = name
+          ? Buffer.from(name, 'base64')
+          : undefined;
+        // Note: The other fields on UpdateProfileSchema are currently not saved on device
+
+        const result: UploadProfileResponse = 'ok';
+        return [200, result];
+      }),
+    );
 
     this.router.get(
       '/v1/config',
@@ -436,6 +481,301 @@ export class Connection extends Service {
     );
 
     //
+    // Verification and Account Create
+    //
+
+    this.router.post('/v1/verification/session', async (_params, body) => {
+      if (!body) {
+        debug('missing body');
+        return [400, { error: 'missing body' }];
+      }
+
+      const parsedResult = CreateVerificationSessionSchema.safeParse(
+        JSON.parse(Buffer.from(body).toString()),
+      );
+      if (parsedResult.error) {
+        debug(
+          '/v1/verification/session malformed body',
+          parsedResult.error.message,
+        );
+        return [400, { error: 'malformed body' }];
+      }
+
+      const { data } = parsedResult;
+
+      const session: VerificationSession = {
+        id: uuidv4(),
+        nextSms: 60,
+        nextCall: 60,
+        nextVerificationAttempt: null,
+        allowedToRequestCode: false,
+        requestedInformation: ['captcha'],
+        verified: false,
+      };
+      this.server.saveVerificationSession({
+        number: data.number,
+        session,
+      });
+
+      return [200, session];
+    });
+
+    this.router.get('/v1/verification/session/:sessionId', async (params) => {
+      const { sessionId } = params;
+      if (!sessionId) {
+        return [400, { error: 'sessionId parameter is missing' }];
+      }
+
+      const storage = this.server.getVerificationSession(sessionId);
+      if (!storage) {
+        return [404, { error: `No session found with sessionId ${sessionId}` }];
+      }
+
+      return [200, storage.session];
+    });
+
+    this.router.patch(
+      '/v1/verification/session/:sessionId',
+      async (params, body) => {
+        if (!body) {
+          return [400, { error: 'missing body' }];
+        }
+
+        const { sessionId } = params;
+        if (!sessionId) {
+          return [400, { error: 'sessionId parameter is missing' }];
+        }
+
+        const storage = this.server.getVerificationSession(sessionId);
+        if (!storage) {
+          return [
+            404,
+            { error: `No session found with sessionId ${sessionId}` },
+          ];
+        }
+
+        const parsedResult = ModifyVerificationSessionSchema.safeParse(
+          JSON.parse(Buffer.from(body).toString()),
+        );
+        if (parsedResult.error) {
+          debug(
+            '/v1/verification/session/:sessionId malformed body',
+            parsedResult.error.message,
+          );
+          return [400, { error: 'malformed body' }];
+        }
+
+        const { data } = parsedResult;
+        const { session } = storage;
+        if (data.captcha) {
+          session.allowedToRequestCode = true;
+        }
+
+        this.server.saveVerificationSession({ ...storage, session });
+
+        return [200, session];
+      },
+    );
+
+    this.router.put(
+      '/v1/verification/session/:sessionId/code',
+      async (params, body) => {
+        if (!body) {
+          return [400, { error: 'missing body' }];
+        }
+
+        const { sessionId } = params;
+        if (!sessionId) {
+          return [400, { error: 'sessionId parameter is missing' }];
+        }
+
+        const storage = this.server.getVerificationSession(sessionId);
+        if (!storage) {
+          return [
+            404,
+            { error: `No session found with sessionId ${sessionId}` },
+          ];
+        }
+
+        const parsedResult = SubmitVerificationCodeSchema.safeParse(
+          JSON.parse(Buffer.from(body).toString()),
+        );
+        if (parsedResult.error) {
+          debug(
+            '/v1/verification/session/:sessionId/code malformed body',
+            parsedResult.error.message,
+          );
+          return [400, { error: 'malformed body' }];
+        }
+
+        storage.lastRequestedCode = undefined;
+        storage.lastRequestedTransport = undefined;
+
+        const { session } = storage;
+        session.verified = true;
+
+        this.server.saveVerificationSession(storage);
+
+        return [200, session];
+      },
+    );
+
+    this.router.post(
+      '/v1/verification/session/:sessionId/code',
+      async (params, body) => {
+        if (!body) {
+          return [400, { error: 'missing body' }];
+        }
+
+        const { sessionId } = params;
+        if (!sessionId) {
+          return [400, { error: 'sessionId parameter is missing' }];
+        }
+
+        const storage = this.server.getVerificationSession(sessionId);
+        if (!storage) {
+          return [
+            404,
+            { error: `No session found with sessionId ${sessionId}` },
+          ];
+        }
+
+        const parsedResult = RequestVerificationCodeSchema.safeParse(
+          JSON.parse(Buffer.from(body).toString()),
+        );
+        if (parsedResult.error) {
+          debug(
+            '/v1/verification/session/:sessionId/code malformed body',
+            parsedResult.error.message,
+          );
+          return [400, { error: 'malformed body' }];
+        }
+
+        const { data } = parsedResult;
+        storage.lastRequestedCode = '111111';
+        storage.lastRequestedTransport = data.transport;
+
+        const { session } = storage;
+        session.nextCall = 60;
+        session.nextSms = 60;
+
+        this.server.saveVerificationSession(storage);
+
+        return [200, session];
+      },
+    );
+
+    this.router.post('/v1/registration', async (_params, body, headers) => {
+      const { error, password } = parseAuthHeader(headers.authorization);
+
+      if (error) {
+        return [400, { error }];
+      }
+      if (!password) {
+        return [400, { error: 'password not provided' }];
+      }
+
+      if (!body) {
+        return [400, { error: 'missing body' }];
+      }
+
+      const parsedResult = RegisterAccountSchema.safeParse(
+        JSON.parse(Buffer.from(body).toString()),
+      );
+      if (parsedResult.error) {
+        debug('/v1/registration malformed body', parsedResult.error.message);
+        return [400, { error: 'malformed body' }];
+      }
+
+      const { data } = parsedResult;
+      const { accountAttributes, sessionId } = data;
+      const { pniRegistrationId, registrationId } = accountAttributes;
+
+      const storage = this.server.getVerificationSession(sessionId);
+      if (!storage) {
+        return [404, { error: `No session found with sessionId ${sessionId}` }];
+      }
+
+      const { session } = storage;
+      if (!session.verified) {
+        return [400, { error: 'session is not verified' }];
+      }
+
+      const { number } = storage;
+
+      const provisionId = await server.generateProvisionId();
+      const primaryDevice = await server.registerDevice({
+        provisionId,
+        number,
+        password,
+        pniRegistrationId,
+        registrationId,
+      });
+
+      const {
+        aciSignedPreKey,
+        aciPqLastResortPreKey,
+        aciIdentityKey,
+        pniSignedPreKey,
+        pniPqLastResortPreKey,
+        pniIdentityKey,
+      } = data;
+
+      await primaryDevice.setKeys(ServiceIdKind.ACI, {
+        identityKey: PublicKey.deserialize(
+          Buffer.from(aciIdentityKey, 'base64'),
+        ),
+        signedPreKey: {
+          keyId: aciSignedPreKey.keyId,
+          publicKey: PublicKey.deserialize(
+            Buffer.from(aciSignedPreKey.publicKey, 'base64'),
+          ),
+          signature: Buffer.from(aciSignedPreKey.signature, 'base64'),
+        },
+        lastResortKey: {
+          keyId: aciPqLastResortPreKey.keyId,
+          publicKey: KEMPublicKey.deserialize(
+            Buffer.from(aciPqLastResortPreKey.publicKey, 'base64'),
+          ),
+          signature: Buffer.from(aciPqLastResortPreKey.signature, 'base64'),
+        },
+      });
+
+      await primaryDevice.setKeys(ServiceIdKind.PNI, {
+        identityKey: PublicKey.deserialize(
+          Buffer.from(pniIdentityKey, 'base64'),
+        ),
+        signedPreKey: {
+          keyId: pniSignedPreKey.keyId,
+          publicKey: PublicKey.deserialize(
+            Buffer.from(pniSignedPreKey.publicKey, 'base64'),
+          ),
+          signature: Buffer.from(pniSignedPreKey.signature, 'base64'),
+        },
+        lastResortKey: {
+          keyId: pniPqLastResortPreKey.keyId,
+          publicKey: KEMPublicKey.deserialize(
+            Buffer.from(pniPqLastResortPreKey.publicKey, 'base64'),
+          ),
+          signature: Buffer.from(pniPqLastResortPreKey.signature, 'base64'),
+        },
+      });
+
+      const result: RegisterAccountResponse = {
+        uuid: primaryDevice.aci.toString(),
+        number,
+        pni: primaryDevice.pni.toString().replace(/^PNI:/i, ''),
+        storageCapable: false,
+        entitlements: {
+          badges: [],
+        },
+        reregistration: false,
+      };
+
+      return [200, result];
+    });
+
+    //
     // Groups
     //
 
@@ -485,6 +825,13 @@ export class Connection extends Service {
     //
     // Backups
     //
+
+    this.router.get(
+      '/v2/backup/auth',
+      requireAuth(async () => {
+        return [200, this.server.getBackupAuth()];
+      }),
+    );
 
     this.router.put(
       '/v1/archives/backupid',
@@ -838,7 +1185,7 @@ export class Connection extends Service {
     );
   }
 
-  public async start(): Promise<void> {
+  public async start(socket: WebSocket): Promise<void> {
     debug('Got a websocket connection', this.request.url);
     const url = this.request.url;
     if (!url) {
@@ -851,6 +1198,10 @@ export class Connection extends Service {
     if (path.startsWith('/v1/websocket/provisioning')) {
       const id = await this.server.generateProvisionId();
       try {
+        socket.on('close', () => {
+          debug('provision websocket closed; shutting down provisioning');
+          this.server.stopProvisioning();
+        });
         await this.handleProvision(id);
       } catch (error) {
         await this.server.releaseProvisionId(id);
@@ -926,8 +1277,12 @@ export class Connection extends Service {
     path: string,
     headers: Record<string, string>,
   ) {
-    // We are actively registering device
+    // We are actively linking device
     if (verb === 'PUT' && path === '/v1/devices/link') {
+      return;
+    }
+    // We are actively registering an account
+    if (verb === 'POST' && path === '/v1/registration') {
       return;
     }
 

@@ -243,7 +243,7 @@ export class Server extends BaseServer {
 
     this.certificate = generateServerCertificate(this.trustRoot);
 
-    this.provisionQueue = this.createQueue();
+    this.provisionQueue = this.createQueue('api/Server/provisionQueue');
   }
 
   public async listen(port: number, host?: string): Promise<void> {
@@ -289,7 +289,7 @@ export class Server extends BaseServer {
           websocket.setSocket(req.stream, Buffer.alloc(0), {});
           const conn = new WSConnection(req, websocket, this);
 
-          conn.start().catch((error: unknown) => {
+          conn.start(websocket).catch((error: unknown) => {
             websocket.close();
             debug('Websocket handling error', error);
           });
@@ -312,12 +312,18 @@ export class Server extends BaseServer {
 
     debug('closing server');
 
+    this.stopProvisioning();
+
     await new Promise((resolve) => https.close(resolve));
   }
 
   //
   // Various queues
   //
+
+  public stopProvisioning(): void {
+    this.provisionQueue.stop();
+  }
 
   public async waitForProvision(): Promise<PendingProvision> {
     return this.provisionQueue.shift();
@@ -329,7 +335,7 @@ export class Server extends BaseServer {
   ): Promise<void> {
     let queue = this.manifestQueueByAci.get(device.aci);
     if (!queue) {
-      queue = this.createQueue();
+      queue = this.createQueue('api/Server/waitForStorageManifest');
       this.manifestQueueByAci.set(device.aci, queue);
     }
 
@@ -342,7 +348,7 @@ export class Server extends BaseServer {
   public async waitForGroupUpdate(group: GroupData): Promise<void> {
     let queue = this.groupQueueById.get(group.id);
     if (!queue) {
-      queue = this.createQueue();
+      queue = this.createQueue('api/Server/waitForGroupUpdate');
       this.groupQueueById.set(group.id, queue);
     }
 
@@ -564,15 +570,21 @@ export class Server extends BaseServer {
   public async getProvisioningResponse(
     id: ProvisionIdString,
   ): Promise<ProvisioningResponse> {
-    const responseQueue = this.createQueue<PendingProvisionResponse>();
-    const resultQueue = this.createQueue<Device>();
+    const responseQueue = this.createQueue<PendingProvisionResponse>(
+      'api/server/responseQueue',
+    );
+    const resultQueue = this.createQueue<Device>('api/server/resultQueue');
 
-    await this.provisionQueue.pushAndWait({
+    const { promise } = this.provisionQueue.pushAndWait({
       complete: async (response) => {
-        await responseQueue.pushAndWait(response);
+        const { promise } = responseQueue.pushAndWait(response);
+        await promise;
+
         return resultQueue.shift();
       },
     });
+
+    await promise;
 
     const {
       // tsdevice:/?uuid=<uuid>&pub_key=<base64>&capabilities=<...>
@@ -788,7 +800,8 @@ export class Server extends BaseServer {
     }
 
     this.provisionResultQueueByKey.delete(key);
-    await promiseQueue.pushAndWait(device);
+    const { promise } = promiseQueue.pushAndWait(device);
+    await promise;
   }
 
   public override async provisionDevice(
@@ -844,7 +857,7 @@ export class Server extends BaseServer {
 
     let queue = this.groupQueueById.get(group.id);
     if (!queue) {
-      queue = this.createQueue();
+      queue = this.createQueue('api/Server/modifyGroup');
       this.groupQueueById.set(group.id, queue);
     }
 
@@ -861,7 +874,7 @@ export class Server extends BaseServer {
 
     let queue = this.manifestQueueByAci.get(device.aci);
     if (!queue) {
-      queue = this.createQueue();
+      queue = this.createQueue('api/Server/onStorageManifestUpdate');
       this.manifestQueueByAci.set(device.aci, queue);
     }
 
@@ -970,9 +983,10 @@ export class Server extends BaseServer {
   // Private
   //
 
-  private createQueue<T>(): PromiseQueue<T> {
+  private createQueue<T>(name: string): PromiseQueue<T> {
     return new PromiseQueue({
       timeout: this.config.timeout,
+      name,
     });
   }
 

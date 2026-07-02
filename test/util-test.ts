@@ -8,16 +8,16 @@ import { PromiseQueue, assertJsonValue } from '../src/util';
 describe('util', () => {
   describe('PromiseQueue', () => {
     it('should pushAndWait and shift', async () => {
-      const q = new PromiseQueue<number>();
+      const q = new PromiseQueue<number>({ name: 'test' });
 
-      const push = q.pushAndWait(42);
+      const { promise } = q.pushAndWait(42);
 
       assert.strictEqual(await q.shift(), 42);
-      await push;
+      await promise;
     });
 
     it('should push and shift', async () => {
-      const q = new PromiseQueue<number>();
+      const q = new PromiseQueue<number>({ name: 'test' });
 
       q.push(42);
 
@@ -25,17 +25,18 @@ describe('util', () => {
     });
 
     it('should shift and pushAndWait', async () => {
-      const q = new PromiseQueue<number>();
+      const q = new PromiseQueue<number>({ name: 'test' });
 
       const shift = q.shift();
 
-      await q.pushAndWait(23);
+      const { promise } = q.pushAndWait(23);
+      await promise;
 
       assert.strictEqual(await shift, 23);
     });
 
     it('should shift and push', async () => {
-      const q = new PromiseQueue<number>();
+      const q = new PromiseQueue<number>({ name: 'test' });
 
       const shift = q.shift();
 
@@ -45,64 +46,68 @@ describe('util', () => {
     });
 
     it('should timeout on push', async () => {
-      const q = new PromiseQueue<number>();
+      const q = new PromiseQueue<number>({ name: 'test' });
 
       await assert.rejects(
         async () => {
-          await q.pushAndWait(23, 10);
+          const { promise } = q.pushAndWait(23, 10);
+          await promise;
         },
-        { message: 'PromiseQueue pushAndWait timeout' },
+        { message: 'PromiseQueue(test) pushAndWait timeout' },
       );
     });
 
     it('should not timeout on push', async () => {
-      const q = new PromiseQueue<number>();
+      const q = new PromiseQueue<number>({ name: 'test' });
 
-      const push = q.pushAndWait(15, 1000);
+      const { promise } = q.pushAndWait(15, 1000);
 
       assert.strictEqual(await q.shift(), 15);
-      await push;
+      await promise;
     });
 
     it('should timeout on shift', async () => {
-      const q = new PromiseQueue<number>();
+      const q = new PromiseQueue<number>({ name: 'test' });
 
       await assert.rejects(
         async () => {
           await q.shift(10);
         },
-        { message: 'PromiseQueue shift timeout' },
+        { message: 'PromiseQueue(test) shift timeout' },
       );
     });
 
     it('should not timeout on shift', async () => {
-      const q = new PromiseQueue<number>();
+      const q = new PromiseQueue<number>({ name: 'test' });
 
       const shift = q.shift(1000);
 
-      await q.pushAndWait(17);
+      const { promise } = q.pushAndWait(17);
+      await promise;
+
       assert.strictEqual(await shift, 17);
     });
 
     it('should apply default timeouts on push', async () => {
-      const q = new PromiseQueue<number>({ timeout: 10 });
+      const q = new PromiseQueue<number>({ timeout: 10, name: 'test' });
 
       await assert.rejects(
         async () => {
-          await q.pushAndWait(23);
+          const { promise } = q.pushAndWait(23);
+          await promise;
         },
-        { message: 'PromiseQueue pushAndWait timeout' },
+        { message: 'PromiseQueue(test) pushAndWait timeout' },
       );
     });
 
     it('should apply default timeouts on shift', async () => {
-      const q = new PromiseQueue<number>({ timeout: 10 });
+      const q = new PromiseQueue<number>({ timeout: 10, name: 'test' });
 
       await assert.rejects(
         async () => {
           await q.shift();
         },
-        { message: 'PromiseQueue shift timeout' },
+        { message: 'PromiseQueue(test) shift timeout' },
       );
     });
   });
