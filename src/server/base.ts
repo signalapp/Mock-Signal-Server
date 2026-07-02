@@ -466,10 +466,9 @@ export abstract class Server {
     this.usedProvisionIds.delete(id);
   }
 
-  public abstract stopProvisioning(): void;
-
   public abstract getProvisioningResponse(
     id: ProvisionIdString,
+    abortSignal?: AbortSignal,
   ): Promise<ProvisioningResponse>;
 
   public async registerDevice({

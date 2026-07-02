@@ -312,18 +312,12 @@ export class Server extends BaseServer {
 
     debug('closing server');
 
-    this.stopProvisioning();
-
     await new Promise((resolve) => https.close(resolve));
   }
 
   //
   // Various queues
   //
-
-  public stopProvisioning(): void {
-    this.provisionQueue.stop();
-  }
 
   public async waitForProvision(): Promise<PendingProvision> {
     return this.provisionQueue.shift();
@@ -569,19 +563,24 @@ export class Server extends BaseServer {
 
   public async getProvisioningResponse(
     id: ProvisionIdString,
+    abortSignal?: AbortSignal,
   ): Promise<ProvisioningResponse> {
     const responseQueue = this.createQueue<PendingProvisionResponse>(
       'api/server/responseQueue',
     );
     const resultQueue = this.createQueue<Device>('api/server/resultQueue');
 
-    const { promise } = this.provisionQueue.pushAndWait({
+    const { promise, cancel } = this.provisionQueue.pushAndWait({
       complete: async (response) => {
         const { promise } = responseQueue.pushAndWait(response);
         await promise;
 
         return resultQueue.shift();
       },
+    });
+
+    abortSignal?.addEventListener('abort', () => {
+      cancel();
     });
 
     await promise;

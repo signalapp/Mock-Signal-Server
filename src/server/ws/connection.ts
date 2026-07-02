@@ -1198,11 +1198,7 @@ export class Connection extends Service {
     if (path.startsWith('/v1/websocket/provisioning')) {
       const id = await this.server.generateProvisionId();
       try {
-        socket.on('close', () => {
-          debug('provision websocket closed; shutting down provisioning');
-          this.server.stopProvisioning();
-        });
-        await this.handleProvision(id);
+        await this.handleProvision(id, socket);
       } catch (error) {
         await this.server.releaseProvisionId(id);
         throw error;
@@ -1253,7 +1249,7 @@ export class Connection extends Service {
   // Private
   //
 
-  private async handleProvision(id: ProvisionIdString) {
+  private async handleProvision(id: ProvisionIdString, socket: WebSocket) {
     {
       const { status } = await this.send('PUT', '/v1/address', {
         body: Proto.ProvisioningAddress.encode({
@@ -1263,8 +1259,17 @@ export class Connection extends Service {
       assert.strictEqual(status, 200);
     }
 
+    const controller = new AbortController();
+    socket.on('close', () => {
+      debug('provision websocket closed; shutting down provisioning');
+      controller.abort();
+    });
+
     {
-      const { envelope } = await this.server.getProvisioningResponse(id);
+      const { envelope } = await this.server.getProvisioningResponse(
+        id,
+        controller.signal,
+      );
       const { status } = await this.send('PUT', '/v1/message', {
         body: envelope,
       });
