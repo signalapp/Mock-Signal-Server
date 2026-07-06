@@ -579,11 +579,14 @@ export class Server extends BaseServer {
       },
     });
 
-    abortSignal?.addEventListener('abort', () => {
+    const abortListener = () => {
       cancel();
-    });
+    };
+    abortSignal?.addEventListener('abort', abortListener);
 
     await promise;
+
+    abortSignal?.removeEventListener('abort', abortListener);
 
     const {
       // tsdevice:/?uuid=<uuid>&pub_key=<base64>&capabilities=<...>

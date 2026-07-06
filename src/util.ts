@@ -145,16 +145,16 @@ export class PromiseQueue<T> {
     let timer: NodeJS.Timeout | undefined;
 
     const cancel = () => {
-      const index = this.entries.indexOf(entry);
-      if (index === -1) {
-        throw new Error(`PromiseQueue(${this.name}) entries bookkeeping error`);
-      }
-      this.entries.splice(index, 1);
-
       if (timer) {
         clearTimeout(timer);
         timer = undefined;
       }
+
+      const index = this.entries.indexOf(entry);
+      if (index === -1) {
+        return;
+      }
+      this.entries.splice(index, 1);
 
       reject(new Error(`PromiseQueue(${this.name}) pushAndWait timeout`));
     };
