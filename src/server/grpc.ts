@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import assert from 'assert';
+import type { ServerResponse } from 'http';
 import { Buffer } from 'buffer';
 import createDebug from 'debug';
 import { stringify as stringifyUuid, v4 as uuidv4 } from 'uuid';
@@ -51,6 +52,34 @@ function toServiceIdentifier(
   throw new Error(`Invalid service id: ${string}`);
 }
 
+// gRPC status codes used by the mock.
+const GRPC_STATUS_OK = 0;
+const GRPC_STATUS_UNKNOWN = 2;
+
+// A gRPC response over HTTP/2 always uses HTTP status 200; the actual gRPC
+// status code is carried in the trailing HEADERS frame (`grpc-status`). `micro`
+// has no notion of trailers, so we emit them via the HTTP/2 compat API. (Driving
+// the raw stream directly conflicts with the Http2ServerResponse that `micro`
+// holds and throws ERR_HTTP2_TRAILERS_ALREADY_SENT.)
+function sendGrpcResponse(
+  res: ServerResponse,
+  body: Buffer,
+  status: number,
+  message?: string,
+): void {
+  const trailers: Record<string, string> = {
+    'grpc-status': String(status),
+  };
+  if (message !== undefined) {
+    // Per the gRPC spec, `grpc-message` is percent-encoded.
+    trailers['grpc-message'] = encodeURIComponent(message);
+  }
+
+  res.writeHead(200, { 'content-type': 'application/grpc' });
+  res.addTrailers(trailers);
+  res.end(body);
+}
+
 function grpcRoute<Endpoint extends keyof typeof $services>(
   endpoint: Endpoint,
   handler: (
@@ -65,35 +94,47 @@ function grpcRoute<Endpoint extends keyof typeof $services>(
     throw new Error(`Request/response stream is not supported`);
   }
   return post(`/${endpoint}`, async (req, res) => {
-    const raw = await buffer(req);
-    assert(Buffer.isBuffer(raw));
-    assert(raw.buffer instanceof ArrayBuffer);
+    try {
+      const raw = await buffer(req);
+      assert(Buffer.isBuffer(raw));
+      assert(raw.buffer instanceof ArrayBuffer);
 
-    if (raw.length < 5) {
-      throw new Error('gRPC request is too short');
+      if (raw.length < 5) {
+        throw new Error('gRPC request is too short');
+      }
+
+      if (raw[0] !== 0) {
+        throw new Error('Unsupported request compression');
+      }
+
+      const len = raw.readUint32BE(1);
+      if (raw.length !== 5 + len) {
+        throw new Error('Invalid gRPC request size');
+      }
+
+      const request = definition.Request.decode(
+        raw.subarray(5, 5 + len) as Uint8Array<ArrayBuffer>,
+      );
+
+      const response = await handler(request as Parameters<typeof handler>[0]);
+
+      const data = (
+        definition.Response.encode as (
+          params: unknown,
+        ) => Uint8Array<ArrayBuffer>
+      )(response);
+      const header = Buffer.alloc(5);
+      header.writeUint32BE(data.length, 1);
+      sendGrpcResponse(res, Buffer.concat([header, data]), GRPC_STATUS_OK);
+    } catch (error) {
+      debug('gRPC handler error for %s', endpoint, error);
+      sendGrpcResponse(
+        res,
+        Buffer.alloc(0),
+        GRPC_STATUS_UNKNOWN,
+        error instanceof Error ? error.message : String(error),
+      );
     }
-
-    if (raw[0] !== 0) {
-      throw new Error('Unsupported request compression');
-    }
-
-    const len = raw.readUint32BE(1);
-    if (raw.length !== 5 + len) {
-      throw new Error('Invalid gRPC request size');
-    }
-
-    const request = definition.Request.decode(
-      raw.subarray(5, 5 + len) as Uint8Array<ArrayBuffer>,
-    );
-
-    const response = await handler(request as Parameters<typeof handler>[0]);
-
-    const data = (
-      definition.Response.encode as (params: unknown) => Uint8Array<ArrayBuffer>
-    )(response);
-    const header = Buffer.alloc(5);
-    header.writeUint32BE(data.length, 1);
-    return sendRaw(res, 200, Buffer.concat([header, data]));
   });
 }
 
