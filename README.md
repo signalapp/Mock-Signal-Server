@@ -20,5 +20,5 @@ Copyright 2022 Signal, a 501c3 nonprofit
 
 Licensed under the AGPLv3: https://opensource.org/licenses/agpl-3.0
 
-[0]: https://github.com/signalapp/Signal-Desktop/tree/development/ts/test-mock
+[0]: https://github.com/signalapp/Signal-Desktop/tree/main/ts/test-mock
 [1]: https://github.com/signalapp/Mock-Signal-Server/tree/main/src/api
